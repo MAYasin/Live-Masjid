@@ -1,0 +1,9 @@
+[Unit]
+Description=Live Masjid: install the latest GitHub release
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/opt/livemasjid/update.sh
+Nice=10
