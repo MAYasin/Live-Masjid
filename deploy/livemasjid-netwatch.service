@@ -1,0 +1,6 @@
+[Unit]
+Description=Live Masjid: keep Wi-Fi alive (power save off, self-heal drop-outs)
+
+[Service]
+Type=oneshot
+ExecStart=/opt/livemasjid/netwatch.sh

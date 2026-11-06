@@ -1,0 +1,691 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0a0a0a" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>Live Masjid</title>
+<style>
+:root{
+  --bg:#fafafa; --surface:#ffffff; --hover:#f4f4f5; --border:#e4e4e7; --border-2:#d4d4d8;
+  --t1:#18181b; --t2:#52525b; --t3:#a1a1aa;
+  --primary:#18181b; --on-primary:#ffffff;
+  --live:#16a34a; --warn:#d97706; --danger:#dc2626;
+  --r:6px; --side:232px; --bar:56px;
+  --font:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0a0a0a; --surface:#121212; --hover:#1a1a1a; --border:#232323; --border-2:#2e2e2e;
+  --t1:#ededed; --t2:#a1a1a1; --t3:#6b6b6b;
+  --primary:#ededed; --on-primary:#0a0a0a;
+  --live:#22c55e; --warn:#f59e0b; --danger:#f87171;
+  color-scheme:dark;
+}}
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:transparent;scrollbar-gutter:stable}
+html,body{margin:0;max-width:100%;overflow-x:hidden}
+body{background:var(--bg);color:var(--t1);font:14px/1.5 var(--font);-webkit-font-smoothing:antialiased}
+button,input,select{font:inherit;color:inherit;margin:0}
+button{cursor:pointer}
+svg{flex:none}
+[hidden]{display:none!important}
+
+/* ---------- layout ---------- */
+.side{display:none}
+.bar{position:sticky;top:0;z-index:20;height:calc(var(--bar) + env(safe-area-inset-top));padding:env(safe-area-inset-top) 16px 0;
+  display:flex;align-items:center;gap:10px;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:saturate(180%) blur(12px);-webkit-backdrop-filter:saturate(180%) blur(12px);border-bottom:1px solid var(--border)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:15px;letter-spacing:-.01em;min-width:0}
+.brand img{width:24px;height:24px;border-radius:5px}
+.page-title{display:none;font-weight:600;font-size:15px}
+.conn{margin-left:auto;display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t2);white-space:nowrap}
+.content{width:100%;max-width:880px;margin:0 auto;padding:20px 16px calc(84px + env(safe-area-inset-bottom))}
+.bottom{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:var(--surface);border-top:1px solid var(--border);
+  padding:4px 4px calc(4px + env(safe-area-inset-bottom))}
+.bottom button{flex:1;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:7px 0 5px;background:none;border:0;
+  color:var(--t3);font-size:11px;font-weight:500}
+.bottom button.on{color:var(--t1)}
+.bottom svg{width:20px;height:20px}
+@media (min-width:900px){
+  .side{display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;width:var(--side);border-right:1px solid var(--border);
+    background:var(--surface);padding:14px 12px}
+  .side .brand{height:40px;padding:0 8px;margin-bottom:14px}
+  .side nav{display:flex;flex-direction:column;gap:2px}
+  .side nav button{display:flex;align-items:center;gap:10px;height:36px;padding:0 10px;border:0;border-radius:var(--r);background:none;
+    color:var(--t2);font-weight:500;text-align:left}
+  .side nav button:hover{background:var(--hover);color:var(--t1)}
+  .side nav button.on{background:var(--hover);color:var(--t1)}
+  .side nav svg{width:18px;height:18px}
+  .side .foot{margin-top:auto;padding:10px 8px 2px;border-top:1px solid var(--border);font-size:12px;color:var(--t3)}
+  .main{margin-left:var(--side)}
+  .bar .brand{display:none}
+  .page-title{display:block}
+  .bottom{display:none}
+  .content{padding:28px 32px 48px}
+}
+
+/* ---------- type & primitives ---------- */
+h1{font-size:22px;line-height:1.25;font-weight:600;letter-spacing:-.02em;margin:0}
+.section-title{font-size:13px;font-weight:600;color:var(--t1);margin:28px 0 10px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.t2{color:var(--t2)} .t3{color:var(--t3)} .sm{font-size:13px} .xs{font-size:12px}
+.trunc{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.panel{background:var(--surface);border:1px solid var(--border);border-radius:var(--r)}
+.pad{padding:20px}
+@media (max-width:480px){.pad{padding:16px}}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:34px;padding:0 14px;border-radius:var(--r);
+  border:1px solid var(--border-2);background:var(--surface);color:var(--t1);font-weight:500;font-size:13px;white-space:nowrap;
+  transition:background .12s,border-color .12s,opacity .12s}
+.btn:hover{background:var(--hover)}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+.btn.primary:hover{opacity:.88}
+.btn.ghost{border-color:transparent;background:none;color:var(--t2)}
+.btn.ghost:hover{background:var(--hover);color:var(--t1)}
+.btn.danger{color:var(--danger)}
+.btn.sm{height:28px;padding:0 10px;font-size:12px}
+.btn[disabled]{opacity:.45;pointer-events:none}
+.btn svg{width:15px;height:15px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--t3);flex:none;display:inline-block}
+.dot.ok{background:var(--live)} .dot.warn{background:var(--warn)} .dot.err{background:var(--danger)}
+.live-tag{font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--live);display:inline-flex;align-items:center;gap:5px;white-space:nowrap;flex:none}
+.live-tag::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.spin{width:13px;height:13px;border:1.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+@keyframes spin{to{transform:rotate(360deg)}}
+input[type=search],input[type=password],input[type=text],select{height:34px;padding:0 10px;border:1px solid var(--border-2);border-radius:var(--r);
+  background:var(--surface);outline:none;min-width:0;max-width:100%}
+input:focus,select:focus{border-color:var(--t2);box-shadow:0 0 0 3px color-mix(in srgb,var(--t3) 25%,transparent)}
+select{padding-right:28px;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23a1a1aa' stroke-width='1.5' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5 6 7.5 9 4.5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 9px center}
+.switch{position:relative;width:36px;height:20px;flex:none}
+.switch input{position:absolute;opacity:0;width:100%;height:100%;margin:0;cursor:pointer;z-index:1}
+.switch span{position:absolute;inset:0;border-radius:10px;background:var(--border-2);transition:background .15s}
+.switch span::after{content:"";position:absolute;width:16px;height:16px;left:2px;top:2px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+.switch input:checked+span{background:var(--primary)}
+@media (prefers-color-scheme: dark){.switch input:checked+span::after{background:var(--on-primary)}}
+.switch input:checked+span::after{transform:translateX(16px)}
+.switch input:focus-visible+span{box-shadow:0 0 0 3px color-mix(in srgb,var(--t3) 35%,transparent)}
+input[type=range]{-webkit-appearance:none;appearance:none;flex:1;width:100%;min-width:0;height:20px;background:transparent;margin:0}
+input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(to right,var(--t1) var(--p,50%),var(--border-2) var(--p,50%))}
+input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:var(--border-2)}
+input[type=range]::-moz-range-progress{height:4px;border-radius:2px;background:var(--t1)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;margin-top:-5px;border-radius:50%;background:var(--surface);border:1.5px solid var(--t1)}
+input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:var(--surface);border:1.5px solid var(--t1)}
+
+/* ---------- rows / lists ---------- */
+.grow{flex:1;min-width:0}
+.field{display:flex;align-items:center;gap:12px 16px;padding:14px 20px;border-top:1px solid var(--border);flex-wrap:wrap}
+.field:first-child{border-top:0}
+.field .label{flex:1 1 150px;min-width:0}
+.field .label b{display:block;font-weight:500}
+.field .label span{display:block;font-size:12.5px;color:var(--t2);margin-top:1px}
+@media (max-width:480px){.field{padding:12px 16px}}
+.list{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+.item{display:flex;align-items:center;gap:12px;padding:11px 16px;border-top:1px solid var(--border);min-width:0}
+.item:first-child{border-top:0}
+.item.click{cursor:pointer}
+.item.click:hover{background:var(--hover)}
+.item .name{font-weight:500}
+.item .meta{font-size:12.5px;color:var(--t2)}
+.item .check{color:var(--t1);width:16px;height:16px}
+.item-actions{display:flex;gap:6px;flex:none}
+@media (max-width:480px){.item.bt{flex-wrap:wrap}.item.bt .item-actions{width:100%}.item.bt .item-actions .btn{flex:1}}
+.group-label{padding:16px 16px 6px;font-size:11.5px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--t3);border-top:1px solid var(--border);background:var(--bg)}
+.group-label:first-child{border-top:0}
+.empty{padding:40px 16px;text-align:center;color:var(--t2);font-size:13px}
+
+/* ---------- now playing ---------- */
+.status-line{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:500;color:var(--t2);margin-bottom:10px}
+.status-line .dot{width:8px;height:8px}
+.st-playing .status-line{color:var(--live)}
+.st-playing .status-line .dot{background:var(--live);animation:pulse 1.8s ease-out infinite}
+.st-connecting .status-line,.st-reconnecting .status-line{color:var(--warn)}
+.st-connecting .status-line .dot,.st-reconnecting .status-line .dot{background:var(--warn)}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--live) 55%,transparent)}100%{box-shadow:0 0 0 7px transparent}}
+.np-actions{margin-top:18px}
+.vol{display:flex;align-items:center;gap:14px;padding:14px 20px;border-top:1px solid var(--border)}
+.vol svg{width:16px;height:16px;color:var(--t2)}
+.vol output{width:30px;text-align:right;font-variant-numeric:tabular-nums;font-size:13px;color:var(--t2);flex:none}
+@media (max-width:480px){.vol{padding:12px 16px}}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));border:1px solid var(--border);border-radius:var(--r);background:var(--surface);margin-top:16px}
+.stats>div{padding:14px 16px;border-left:1px solid var(--border);min-width:0}
+.stats>div:first-child{border-left:0}
+.stats .k{font-size:12px;color:var(--t2);display:flex;align-items:center;gap:6px}
+.stats .v{font-weight:500;margin-top:4px;font-variant-numeric:tabular-nums}
+@media (max-width:640px){
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stats>div:nth-child(3){border-left:0}
+  .stats>div:nth-child(n+3){border-top:1px solid var(--border)}
+}
+.stats.three{grid-template-columns:repeat(3,minmax(0,1fr));margin-top:0}
+.stats.three>div:nth-child(3){border-left:1px solid var(--border);border-top:0}
+.stats.three .v{font-size:18px;font-weight:600;letter-spacing:-.01em}
+@media (max-width:420px){.stats.three>div{padding:12px}.stats.three .v{font-size:15px}}
+
+/* ---------- masjids ---------- */
+.toolbar{position:sticky;top:calc(var(--bar) + env(safe-area-inset-top));z-index:10;background:var(--bg);padding:4px 0 12px;margin-top:-4px}
+.toolbar input{width:100%;height:38px;padding-left:34px;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23a1a1aa' stroke-width='1.6' stroke-linecap='round' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:11px center}
+.tabs{display:flex;gap:2px;margin-top:10px;overflow-x:auto;scrollbar-width:none;max-width:100%;border-bottom:1px solid var(--border)}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{flex:none;height:32px;padding:0 10px;border:0;background:none;color:var(--t2);font-size:13px;font-weight:500;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button:hover{color:var(--t1)}
+.tabs button.on{color:var(--t1);border-bottom-color:var(--t1)}
+.count{font-size:12px;color:var(--t3);margin:0 0 8px}
+
+/* ---------- misc ---------- */
+.log{font:12px/1.6 var(--mono);max-height:340px;overflow:auto;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r)}
+.log div{white-space:pre-wrap;overflow-wrap:anywhere}
+.log .warn{color:var(--warn)} .log .error{color:var(--danger)}
+.kv{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:8px 20px;font-size:13px;padding:16px 20px;margin:0}
+.kv dt{color:var(--t2)} .kv dd{margin:0;overflow-wrap:anywhere}
+@media (max-width:480px){.kv{padding:14px 16px}}
+.notice{padding:10px 14px;border:1px solid var(--border);border-left:2px solid var(--warn);border-radius:var(--r);background:var(--surface);font-size:13px;color:var(--t2);margin-bottom:16px;overflow-wrap:anywhere}
+.notice.err{border-left-color:var(--danger)}
+.toast{position:fixed;left:50%;bottom:calc(76px + env(safe-area-inset-bottom));transform:translate(-50%,8px);opacity:0;background:var(--primary);color:var(--on-primary);
+  padding:9px 14px;border-radius:var(--r);font-size:13px;font-weight:500;z-index:60;transition:opacity .18s,transform .18s;pointer-events:none;
+  width:max-content;max-width:calc(100vw - 32px);box-shadow:0 4px 16px rgba(0,0,0,.18)}
+.toast.on{opacity:1;transform:translate(-50%,0)}
+@media (min-width:900px){.toast{bottom:24px;left:calc(50% + var(--side)/2)}}
+.modal{position:fixed;inset:0;z-index:70;background:rgba(0,0,0,.4);display:none;align-items:center;justify-content:center;padding:16px}
+.modal.on{display:flex}
+.modal form{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);border-radius:var(--r);padding:20px;box-shadow:0 16px 48px rgba(0,0,0,.2)}
+.modal h3{margin:0 0 4px;font-size:15px;font-weight:600}
+.modal input{width:100%;margin-top:14px}
+.modal .actions{justify-content:flex-end;margin-top:16px}
+.cta{padding:40px 20px;text-align:center}
+.cta p{max-width:380px;margin:8px auto 20px;color:var(--t2)}
+.view{display:none} .view.on{display:block}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+  <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></symbol>
+  <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
+  <symbol id="i-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2"/><circle cx="12" cy="14" r="3.5"/><path d="M12 6.5h.01"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.8v14.4a.8.8 0 0 0 1.2.7l11.4-7.2a.8.8 0 0 0 0-1.4L8.2 4.1A.8.8 0 0 0 7 4.8z"/></symbol>
+  <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+  <symbol id="i-vol" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9.5 9.5 0 0 1 0 13"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/></symbol>
+  </defs>
+</svg>
+
+<aside class="side">
+  <div class="brand"><img src="/icon.svg" alt="">Live Masjid</div>
+  <nav>
+    <button data-v="home" class="on"><svg><use href="#i-home"/></svg>Now playing</button>
+    <button data-v="masjids"><svg><use href="#i-list"/></svg>Masjids</button>
+    <button data-v="speaker"><svg><use href="#i-speaker"/></svg>Speaker</button>
+    <button data-v="history"><svg><use href="#i-clock"/></svg>History</button>
+    <button data-v="settings"><svg><use href="#i-gear"/></svg>Settings</button>
+  </nav>
+  <div class="foot" id="sideFoot">—</div>
+</aside>
+
+<div class="main">
+  <header class="bar">
+    <div class="brand"><img src="/icon.svg" alt="">Live Masjid</div>
+    <div class="page-title" id="pageTitle">Now playing</div>
+    <div class="conn"><span class="dot" id="connDot"></span><span id="connTxt">Connecting</span></div>
+  </header>
+
+  <main class="content">
+    <div class="notice err" id="offline" hidden>Lost connection to the player. Retrying…</div>
+
+    <!-- NOW PLAYING -->
+    <section class="view on" id="v-home">
+      <div class="panel cta" id="noSel" hidden>
+        <h1>Choose a masjid</h1>
+        <p>Audio starts automatically whenever it goes live. This page doesn't need to stay open.</p>
+        <button class="btn primary" data-go="masjids">Browse masjids</button>
+      </div>
+      <div class="panel" id="np">
+        <div class="pad">
+          <div class="status-line"><span class="dot"></span><span id="phaseTxt">—</span></div>
+          <h1 class="trunc" id="stName">—</h1>
+          <div class="t2 trunc" id="stLoc"></div>
+          <div class="t3 sm" id="stSub" style="margin-top:6px"></div>
+          <div class="actions np-actions">
+            <button class="btn primary" id="btnPlay"><svg><use href="#i-play"/></svg>Play now</button>
+            <button class="btn primary" id="btnStop" hidden><svg><use href="#i-stop"/></svg>Stop</button>
+            <button class="btn" data-go="masjids">Change masjid</button>
+          </div>
+        </div>
+        <div class="vol"><svg><use href="#i-vol"/></svg><input type="range" min="0" max="100" id="vol" aria-label="Volume"><output id="volTxt">–</output></div>
+        <div class="field">
+          <div class="label"><b>Auto-play</b><span>Start as soon as this masjid goes live</span></div>
+          <label class="switch"><input type="checkbox" id="autoplay" aria-label="Auto-play"><span></span></label>
+        </div>
+      </div>
+      <div class="stats">
+        <div><div class="k"><span class="dot" id="hOutDot"></span>Output</div><div class="v trunc" id="hOut">—</div></div>
+        <div><div class="k"><span class="dot" id="hSseDot"></span>Live signal</div><div class="v trunc" id="hSse">—</div></div>
+        <div><div class="k"><span class="dot" id="hPollDot"></span>Status check</div><div class="v trunc" id="hPoll">—</div></div>
+        <div><div class="k"><span class="dot" id="hLiveDot"></span>Streams live</div><div class="v trunc" id="hLive">—</div></div>
+      </div>
+      <div class="section-title">Recent broadcasts <button class="btn ghost sm" data-go="history">View all</button></div>
+      <div class="list" id="recent"><div class="empty">No broadcasts recorded yet.</div></div>
+    </section>
+
+    <!-- MASJIDS -->
+    <section class="view" id="v-masjids">
+      <div class="toolbar">
+        <input type="search" id="q" placeholder="Search by name, area or city" autocomplete="off" aria-label="Search">
+        <div class="tabs" id="filters">
+          <button class="on" data-f="all">All</button>
+          <button data-f="live">Live now</button>
+          <button data-f="Masjid">Masaajid</button>
+          <button data-f="Institution">Institutions</button>
+          <button data-f="Aalim">Ulema</button>
+          <button data-f="heard">Recently heard</button>
+        </div>
+      </div>
+      <div class="count" id="count"></div>
+      <div class="list" id="stations"><div class="empty"><span class="spin"></span></div></div>
+    </section>
+
+    <!-- SPEAKER -->
+    <section class="view" id="v-speaker">
+      <div class="notice err" id="btErr" hidden></div>
+      <div class="panel">
+        <div class="field">
+          <div class="label"><b id="btName">No Bluetooth speaker</b><span id="btState">Choose a speaker below</span></div>
+          <button class="btn" id="btnTest">Play test sound</button>
+        </div>
+      </div>
+      <div class="section-title">Bluetooth devices <button class="btn sm" id="btnScan"><svg><use href="#i-refresh"/></svg>Scan</button></div>
+      <div class="t2 sm" style="margin:-4px 0 10px">Put the speaker in pairing mode, then scan. Once chosen, it reconnects automatically after restarts and power cuts.</div>
+      <div class="list" id="btList"><div class="empty">Loading…</div></div>
+      <div class="section-title">Output</div>
+      <div class="panel">
+        <div class="field">
+          <div class="label"><b>Fallback output</b><span>Used when the Bluetooth speaker isn't available</span></div>
+          <select id="fallback" aria-label="Fallback output"></select>
+        </div>
+        <div class="field">
+          <div class="label"><b>Keep speaker awake</b><span>Plays silence while waiting so audio starts instantly and the speaker never sleeps</span></div>
+          <label class="switch"><input type="checkbox" id="keepAwake" aria-label="Keep speaker awake"><span></span></label>
+        </div>
+      </div>
+    </section>
+
+    <!-- HISTORY -->
+    <section class="view" id="v-history">
+      <div class="stats three">
+        <div><div class="k">Last heard</div><div class="v trunc" id="sLast">—</div></div>
+        <div><div class="k">Broadcasts (7d)</div><div class="v" id="sCount">—</div></div>
+        <div><div class="k">Listening (7d)</div><div class="v trunc" id="sTime">—</div></div>
+      </div>
+      <div class="tabs" id="histFilter" style="margin:20px 0 12px">
+        <button class="on" data-h="sel">This masjid</button>
+        <button data-h="all">All masjids</button>
+      </div>
+      <div class="list" id="hist"><div class="empty">Loading…</div></div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="view" id="v-settings">
+      <div class="panel">
+        <div class="field">
+          <div class="label"><b>Stream format</b><span>Auto prefers Opus, which goes live a few seconds before MP3</span></div>
+          <select id="codec" aria-label="Stream format"><option value="auto">Auto</option><option value="opus">Opus</option><option value="mp3">MP3</option></select>
+        </div>
+        <div class="field">
+          <div class="label"><b>Status check interval</b><span>Backup to the live signal. Keep it gentle on livemasjid's servers.</span></div>
+          <select id="poll" aria-label="Status check interval"><option value="10">10 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option><option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option></select>
+        </div>
+        <div class="field">
+          <div class="label"><b>Masjid directory</b><span id="dirInfo">—</span></div>
+          <button class="btn" id="btnDir">Refresh</button>
+        </div>
+      </div>
+      <div class="section-title">Security</div>
+      <div class="panel">
+        <div class="field">
+          <div class="label"><b>Password</b><span id="pwInfo">—</span></div>
+          <button class="btn" id="btnPw">Set password</button>
+        </div>
+        <div class="field" id="logoutRow" hidden>
+          <div class="label"><b>Sign out</b><span>Sign out of this browser</span></div>
+          <button class="btn" id="btnLogout">Sign out</button>
+        </div>
+      </div>
+      <div class="section-title">System</div>
+      <div class="panel">
+        <dl class="kv" id="sysInfo"></dl>
+        <div class="field">
+          <div class="actions">
+            <button class="btn" id="btnUpdate">Check for updates</button>
+            <button class="btn danger" id="btnRestart">Restart service</button>
+          </div>
+        </div>
+      </div>
+      <div class="section-title">Activity <button class="btn ghost sm" id="btnLogs">Refresh</button></div>
+      <div class="log" id="logs"></div>
+    </section>
+  </main>
+</div>
+
+<nav class="bottom">
+  <button data-v="home" class="on"><svg><use href="#i-home"/></svg>Now</button>
+  <button data-v="masjids"><svg><use href="#i-list"/></svg>Masjids</button>
+  <button data-v="speaker"><svg><use href="#i-speaker"/></svg>Speaker</button>
+  <button data-v="history"><svg><use href="#i-clock"/></svg>History</button>
+  <button data-v="settings"><svg><use href="#i-gear"/></svg>Settings</button>
+</nav>
+
+<div class="toast" id="toast" role="status"></div>
+<div class="modal" id="login">
+  <form id="loginForm">
+    <h3>Live Masjid</h3>
+    <div class="t2 sm">Enter the password to continue.</div>
+    <input type="password" id="loginPw" placeholder="Password" autocomplete="current-password">
+    <div class="xs" id="loginErr" style="color:var(--danger);min-height:18px;margin-top:6px"></div>
+    <div class="actions"><button class="btn primary" style="width:100%">Continue</button></div>
+  </form>
+</div>
+<div class="modal" id="pwModal">
+  <form id="pwForm">
+    <h3>Password</h3>
+    <div class="t2 sm">Protects this page on your network. Leave empty to remove it.</div>
+    <input type="password" id="pwNew" placeholder="New password" autocomplete="new-password">
+    <div class="actions"><button type="button" class="btn" id="pwCancel">Cancel</button><button class="btn primary">Save</button></div>
+  </form>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s), $$ = s => [...document.querySelectorAll(s)];
+const VIEWS = {home:"Now playing", masjids:"Masjids", speaker:"Speaker", history:"History", settings:"Settings"};
+let S = null, stations = [], filter = "all", histMode = "sel", es = null, btTimer = null;
+
+/* ---------- utils ---------- */
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const tm = ms => new Date(ms).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
+function ago(ms){
+  if(!ms) return "Never";
+  const d = (Date.now() - ms) / 1000;
+  if(d < 45) return "Just now";
+  if(d < 3600) return Math.max(1, Math.round(d/60)) + " min ago";
+  if(d < 86400){ const h = Math.round(d/3600); return h + (h === 1 ? " hour ago" : " hours ago"); }
+  if(d < 172800) return "Yesterday, " + tm(ms);
+  if(d < 604800) return new Date(ms).toLocaleDateString([], {weekday:"long"}) + ", " + tm(ms);
+  return new Date(ms).toLocaleDateString([], {day:"numeric", month:"short"}) + ", " + tm(ms);
+}
+const lc = s => s.charAt(0).toLowerCase() + s.slice(1);
+function dur(ms){ const m = Math.max(0, Math.round(ms/60000)); if(m < 1) return "<1 min"; if(m < 60) return m + " min"; return Math.floor(m/60) + "h " + String(m%60).padStart(2, "0") + "m"; }
+function toast(msg){ const t = $("#toast"); t.textContent = msg; t.classList.add("on"); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove("on"), 2600); }
+async function api(path, body){
+  const opt = body === undefined ? {} : {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)};
+  const r = await fetch("/api/" + path, opt);
+  if(r.status === 401){ showLogin(); throw new Error("Sign-in required"); }
+  const txt = await r.text(); let j; try { j = JSON.parse(txt); } catch { j = txt; }
+  if(!r.ok) throw new Error(typeof j === "string" && j ? j : (j && j.message) || "Request failed");
+  return j;
+}
+async function act(btn, fn, ok){
+  let html;
+  if(btn){ html = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<span class="spin"></span>'; }
+  try { const r = await fn(); if(ok) toast(typeof ok === "function" ? ok(r) : ok); return r; }
+  catch(e){ toast(e.message); }
+  finally { if(btn){ btn.innerHTML = html; btn.disabled = false; } }
+}
+
+/* ---------- navigation ---------- */
+function go(v){
+  if(!VIEWS[v]) v = "home";
+  $$("[data-v]").forEach(b => b.classList.toggle("on", b.dataset.v === v));
+  $$(".view").forEach(s => s.classList.toggle("on", s.id === "v-" + v));
+  $("#pageTitle").textContent = VIEWS[v];
+  window.scrollTo(0, 0);
+  if(location.hash !== "#" + v) history.pushState(null, "", "#" + v);
+  if(v === "home") loadRecent();
+  if(v === "masjids") loadStations();
+  if(v === "speaker"){ loadBt(); loadOutputs(); }
+  if(v === "history") loadHistory();
+  if(v === "settings"){ loadConfig(); loadLogs(); }
+}
+window.addEventListener("hashchange", () => go(location.hash.slice(1)));
+document.addEventListener("click", e => {
+  const n = e.target.closest("[data-v],[data-go]"); if(!n) return;
+  go(n.dataset.v || n.dataset.go);
+});
+
+/* ---------- live status ---------- */
+function connect(){
+  if(es) es.close();
+  es = new EventSource("/api/events");
+  es.addEventListener("status", e => { S = JSON.parse(e.data); setConn(true); render(); });
+  es.onerror = () => { setConn(false); es.close(); setTimeout(async () => { try { await api("state"); } catch {} connect(); }, 2500); };
+}
+function setConn(ok){
+  $("#connDot").className = "dot " + (ok ? "ok" : "err");
+  $("#connTxt").textContent = ok ? "Connected" : "Offline";
+  $("#offline").hidden = ok;
+}
+const PHASE = {idle:"No masjid selected", waiting:"Waiting for broadcast", connecting:"Connecting", playing:"Live", reconnecting:"Reconnecting", stopped:"Stopped"};
+function setStat(k, txt, cls){ $("#h" + k).textContent = txt; $("#h" + k + "Dot").className = "dot " + (cls || ""); }
+function render(){
+  if(!S) return;
+  const p = S.phase, o = S.output, sig = S.signals, bt = S.bt;
+  const active = p === "playing" || p === "connecting" || p === "reconnecting";
+  $("#noSel").hidden = !!S.mount; $("#np").hidden = !S.mount;
+  $("#np").className = "panel st-" + p;
+  $("#phaseTxt").textContent = PHASE[p] || p;
+  $("#stName").textContent = S.station_name || S.mount || "—";
+  $("#stLoc").textContent = S.station_location || "";
+  $("#stLoc").hidden = !S.station_location;
+  $("#stSub").textContent =
+    p === "playing" ? `Playing for ${dur(Date.now() - S.phase_since_ms)} · ${String(S.codec || "").toUpperCase()} · ${o.open ? o.label : "no output"}` :
+    p === "stopped" ? "Resumes automatically at the next broadcast" :
+    p === "connecting" ? "Opening stream…" :
+    "Last heard " + lc(ago(S.last_heard_ms));
+  $("#btnPlay").hidden = active; $("#btnStop").hidden = !active;
+  if(document.activeElement !== $("#vol")) $("#vol").value = S.volume;
+  paintVol();
+  $("#autoplay").checked = S.autoplay; $("#keepAwake").checked = S.keep_awake;
+
+  setStat("Out", o.open ? o.label + (o.kind === "bluetooth" ? " (Bluetooth)" : "") : (o.error ? "Unavailable" : "Idle"), o.open ? "ok" : o.error ? "err" : "");
+  if(p !== "waiting") setStat("Sse", S.mount ? "Standby" : "—", "");
+  else setStat("Sse", sig.sse_connected ? "Listening" : "Reconnecting", sig.sse_connected ? "ok" : "warn");
+  setStat("Poll", sig.poll_ok ? "OK, " + lc(ago(sig.poll_last_ms)) : "Failing", sig.poll_ok ? "ok" : "err");
+  setStat("Live", String(S.live_count) + (S.mount && sig.poll_live ? " · yours is live" : ""), sig.poll_live ? "ok" : "");
+
+  $("#btName").textContent = bt.name || bt.device || "No Bluetooth speaker";
+  $("#btState").textContent = !bt.device ? "Choose a speaker below"
+    : bt.connected ? "Connected" + (bt.battery != null ? ` · Battery ${bt.battery}%` : "") + (o.kind === "bluetooth" ? " · Playing here" : "")
+    : "Not connected · Reconnecting automatically";
+  const errMsg = bt.error || (o.error && !o.open ? o.error : "");
+  $("#btErr").hidden = !errMsg; $("#btErr").textContent = errMsg;
+  $("#btnScan").innerHTML = bt.scanning ? '<span class="spin"></span>Scanning' : '<svg><use href="#i-refresh"/></svg>Scan';
+  $("#btnScan").disabled = bt.scanning;
+
+  $("#pwInfo").textContent = S.password_set ? "This page is password protected" : "Anyone on your network can open this page";
+  $("#btnPw").textContent = S.password_set ? "Change password" : "Set password";
+  $("#logoutRow").hidden = !S.password_set;
+  $("#sysInfo").innerHTML = `<dt>Version</dt><dd>${esc(S.version)}</dd><dt>Running since</dt><dd>${esc(ago(S.started_ms))}</dd><dt>Output device</dt><dd>${esc(o.device || "—")}</dd>` +
+    (S.stream_url ? `<dt>Stream</dt><dd>${esc(S.stream_url)}</dd>` : "");
+  $("#sideFoot").textContent = "Version " + S.version;
+  document.title = p === "playing" ? "● " + (S.station_name || "Live Masjid") : "Live Masjid";
+}
+setInterval(render, 15000);
+
+/* ---------- now playing ---------- */
+$("#btnPlay").onclick = e => act(e.currentTarget, () => api("player/play", {}), "Starting");
+$("#btnStop").onclick = e => act(e.currentTarget, () => api("player/stop", {}), "Stopped until the next broadcast");
+$("#autoplay").onchange = e => act(null, () => api("settings", {autoplay: e.target.checked}), e.target.checked ? "Auto-play on" : "Auto-play off");
+$("#keepAwake").onchange = e => act(null, () => api("settings", {keep_awake: e.target.checked}), "Saved");
+let volT;
+function paintVol(){ const v = $("#vol").value; $("#vol").style.setProperty("--p", v + "%"); $("#volTxt").textContent = v; }
+$("#vol").oninput = () => { paintVol(); clearTimeout(volT); volT = setTimeout(() => api("settings", {volume: +$("#vol").value}).catch(e => toast(e.message)), 120); };
+function histRow(s){
+  const live = !s.reason;
+  return `<div class="item">
+    <div class="grow"><div class="name trunc">${esc(s.name)}</div>
+      <div class="meta">${tm(s.start_ms)} – ${live ? "now" : tm(s.end_ms)} · ${dur(s.end_ms - s.start_ms)}${s.reconnects ? ` · ${s.reconnects} reconnect${s.reconnects > 1 ? "s" : ""}` : ""}</div></div>
+    ${live ? '<span class="live-tag">LIVE</span>' : `<span class="xs t3" style="flex:none">${esc(new Date(s.start_ms).toLocaleDateString([], {day:"numeric", month:"short"}))}</span>`}
+  </div>`;
+}
+async function loadRecent(){
+  try {
+    const h = await api("history?limit=5");
+    $("#recent").innerHTML = h.sessions.length ? h.sessions.map(histRow).join("") : '<div class="empty">No broadcasts recorded yet. They appear here automatically.</div>';
+  } catch {}
+}
+
+/* ---------- masjids ---------- */
+async function loadStations(){
+  try {
+    const r = await api("stations"); stations = r.stations;
+    renderStations();
+  } catch(e){ $("#stations").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+function renderStations(){
+  const words = $("#q").value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const list = stations.filter(s => {
+    if(filter === "live" && !s.live) return false;
+    if(filter === "heard" && !s.last_heard_ms) return false;
+    if(["Masjid","Institution","Aalim"].includes(filter) && s.genre !== filter) return false;
+    const hay = (s.name + " " + s.location + " " + s.mount).toLowerCase();
+    return words.every(w => hay.includes(w));
+  }).sort((a, b) => (b.selected - a.selected) || (filter === "heard" ? (b.last_heard_ms || 0) - (a.last_heard_ms || 0) : 0) || (b.live - a.live) || a.name.localeCompare(b.name));
+  $("#count").textContent = `${list.length} of ${stations.length} · ${stations.filter(s => s.live).length} live now`;
+  $("#stations").innerHTML = list.length ? list.map(s => `
+    <div class="item click" data-m="${esc(s.mount)}">
+      <div class="grow"><div class="name trunc">${esc(s.name)}</div>
+        <div class="meta trunc">${s.selected ? "Selected · " : ""}${esc(s.location || s.genre)}${s.last_heard_ms ? ` · heard ${esc(lc(ago(s.last_heard_ms)))}` : ""}</div></div>
+      ${s.live ? '<span class="live-tag">LIVE</span>' : ""}
+      ${s.selected ? '<svg class="check"><use href="#i-check"/></svg>' : ""}
+    </div>`).join("") : '<div class="empty">No masjids match your search.</div>';
+}
+let qT; $("#q").oninput = () => { clearTimeout(qT); qT = setTimeout(renderStations, 80); };
+$("#filters").onclick = e => { const b = e.target.closest("button"); if(!b) return; filter = b.dataset.f; $$("#filters button").forEach(c => c.classList.toggle("on", c === b)); renderStations(); };
+$("#stations").onclick = async e => {
+  const it = e.target.closest(".item"); if(!it) return;
+  const s = stations.find(x => x.mount === it.dataset.m); if(!s) return;
+  if(s.selected){ go("home"); return; }
+  try {
+    await api("select", {mount: s.mount});
+    stations.forEach(x => x.selected = x.mount === s.mount);
+    toast(`Following ${s.name}` + (s.live ? " (live now)" : ""));
+    go("home");
+  } catch(err){ toast(err.message); }
+};
+
+/* ---------- speaker ---------- */
+async function loadBt(){
+  try {
+    const r = await api("bt/devices");
+    const devs = r.devices.filter(d => d.name || d.paired);
+    const unnamed = r.devices.length - devs.length;
+    $("#btList").innerHTML = (devs.length ? devs.map(d => `
+      <div class="item bt">
+        <div class="grow"><div class="name trunc">${esc(d.name || "Unnamed device")}</div>
+          <div class="meta trunc">${d.preferred ? "Your speaker · " : ""}${d.connected ? "Connected" : d.paired ? "Paired" : "Available"} · ${esc(d.mac)}</div></div>
+        <div class="item-actions">
+          ${d.preferred ? `<button class="btn sm" data-a="stop" data-m="${d.mac}">Stop using</button>`
+            : `<button class="btn sm primary" data-a="use" data-m="${d.mac}">${d.paired ? "Use" : "Pair"}</button>`}
+          ${d.paired ? `<button class="btn sm ghost" data-a="forget" data-m="${d.mac}">Forget</button>` : ""}
+        </div>
+      </div>`).join("") : '<div class="empty">No speakers found yet. Put your speaker in pairing mode and tap Scan.</div>')
+      + (unnamed ? `<div class="item"><div class="meta">${unnamed} unnamed nearby device${unnamed > 1 ? "s" : ""} hidden</div></div>` : "");
+  } catch(e){ $("#btList").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+$("#btList").onclick = e => {
+  const b = e.target.closest("button[data-a]"); if(!b) return;
+  const a = b.dataset.a, mac = b.dataset.m;
+  if(a === "forget" && !confirm("Forget this device? You'll need to pair it again.")) return;
+  act(b, () => api("bt/" + a, {mac}), r => a === "use" ? (r.message || "Connected") : a === "stop" ? "Speaker released" : "Device forgotten").then(loadBt);
+};
+$("#btnScan").onclick = async () => {
+  try {
+    await api("bt/scan", {}); toast("Scanning for 20 seconds");
+    clearInterval(btTimer); let n = 0;
+    btTimer = setInterval(() => { loadBt(); if(++n >= 11) clearInterval(btTimer); }, 2000);
+  } catch(e){ toast(e.message); }
+};
+$("#btnTest").onclick = e => act(e.currentTarget, () => api("player/test", {}), "Playing test sound");
+async function loadOutputs(){
+  try {
+    const [r, c] = await Promise.all([api("outputs"), api("config")]);
+    const opts = [["auto", "Automatic"], ["none", "None"], ...r.cards.map(x => [x.device, x.label])];
+    if(!opts.some(o => o[0] === c.fallback_output)) opts.push([c.fallback_output, c.fallback_output]);
+    const sel = $("#fallback");
+    sel.innerHTML = opts.map(([v, l]) => `<option value="${esc(v)}">${esc(l)}</option>`).join("");
+    sel.value = c.fallback_output;
+  } catch {}
+}
+$("#fallback").onchange = e => act(null, () => api("settings", {fallback_output: e.target.value}), "Saved");
+
+/* ---------- history ---------- */
+async function loadHistory(){
+  try {
+    const m = histMode === "sel" && S && S.mount ? "&mount=" + encodeURIComponent(S.mount) : "";
+    const h = await api("history?limit=300" + m), ss = h.sessions;
+    const wk = ss.filter(s => s.start_ms > Date.now() - 7*864e5);
+    $("#sLast").textContent = ss.length ? (ss[0].reason ? ago(ss[0].end_ms) : "Live now") : "Never";
+    $("#sCount").textContent = wk.length;
+    $("#sTime").textContent = dur(wk.reduce((a, s) => a + (s.end_ms - s.start_ms), 0));
+    let html = "", day = "";
+    for(const s of ss){
+      const d = new Date(s.start_ms).toLocaleDateString([], {weekday:"long", day:"numeric", month:"long"});
+      if(d !== day){ day = d; html += `<div class="group-label">${esc(d)}</div>`; }
+      html += histRow(s);
+    }
+    $("#hist").innerHTML = html || '<div class="empty">No broadcasts recorded yet.</div>';
+  } catch(e){ $("#hist").innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+}
+$("#histFilter").onclick = e => { const b = e.target.closest("button"); if(!b) return; histMode = b.dataset.h; $$("#histFilter button").forEach(c => c.classList.toggle("on", c === b)); loadHistory(); };
+
+/* ---------- settings ---------- */
+async function loadConfig(){
+  try { const c = await api("config"); $("#codec").value = c.codec; $("#poll").value = String(c.poll_secs); } catch {}
+  try { const s = await api("stations"); $("#dirInfo").textContent = s.fetched_ms ? `${s.stations.length} streams · updated ${lc(ago(s.fetched_ms))}` : `${s.stations.length} streams · built-in list (livemasjid.com not reachable yet)`; } catch {}
+}
+async function loadLogs(){
+  try {
+    const r = await api("logs");
+    $("#logs").innerHTML = r.logs.map(l => `<div class="${l.level}"><span class="t3">${new Date(l.t).toLocaleString([], {month:"short", day:"numeric", hour:"2-digit", minute:"2-digit", second:"2-digit"})}</span>  ${esc(l.msg)}</div>`).join("") || '<div class="t3">No activity yet.</div>';
+  } catch {}
+}
+$("#btnLogs").onclick = loadLogs;
+$("#codec").onchange = e => act(null, () => api("settings", {codec: e.target.value}), "Saved");
+$("#poll").onchange = e => act(null, () => api("settings", {poll_secs: +e.target.value}), "Saved");
+$("#btnDir").onclick = e => act(e.currentTarget, () => api("stations/refresh", {}), r => `Directory updated · ${r.count} streams`).then(loadConfig);
+$("#btnPw").onclick = () => { $("#pwNew").value = ""; $("#pwModal").classList.add("on"); setTimeout(() => $("#pwNew").focus(), 30); };
+$("#pwCancel").onclick = () => $("#pwModal").classList.remove("on");
+$("#pwForm").onsubmit = async e => {
+  e.preventDefault(); const v = $("#pwNew").value;
+  try { await api("password", {new_password: v}); $("#pwModal").classList.remove("on"); toast(v ? "Password saved" : "Password removed"); } catch(err){ toast(err.message); }
+};
+$("#btnLogout").onclick = async () => { await api("logout", {}).catch(() => {}); location.reload(); };
+$("#btnUpdate").onclick = e => act(e.currentTarget, () => api("system/update", {}), "Checking for updates");
+$("#btnRestart").onclick = e => { if(confirm("Restart the player service?")) act(e.currentTarget, () => api("system/restart", {}), "Restarting"); };
+$$(".modal").forEach(m => m.addEventListener("click", e => { if(e.target === m && m.id !== "login") m.classList.remove("on"); }));
+
+/* ---------- auth & boot ---------- */
+function showLogin(){ $("#login").classList.add("on"); setTimeout(() => $("#loginPw").focus(), 30); }
+$("#loginForm").onsubmit = async e => {
+  e.preventDefault(); $("#loginErr").textContent = "";
+  try { await api("login", {password: $("#loginPw").value}); $("#login").classList.remove("on"); boot(); }
+  catch(err){ $("#loginErr").textContent = err.message; }
+};
+async function boot(){
+  try { S = await api("state"); setConn(true); render(); } catch { return; }
+  connect();
+  go(location.hash.slice(1));
+}
+boot();
+</script>
+</body>
+</html>

@@ -1,0 +1,71 @@
+name: release
+
+# Every push to main builds, tests and publishes a GitHub release.
+# Pis running livemasjid-update.timer pick it up within the hour (or instantly via the UI).
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  TARGET: aarch64-unknown-linux-musl
+  CARGO_TERM_COLOR: always
+  CC_aarch64_unknown_linux_musl: musl-gcc
+
+jobs:
+  release:
+    # Native ARM64 runner: builds and runs the tests on the same architecture as the Pi.
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-musl
+
+      - name: Install musl toolchain (C compiler for ring/TLS)
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Version
+        id: v
+        run: |
+          base=$(grep -m1 '^version' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          echo "tag=v${base}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Test
+        run: cargo test --locked --target $TARGET
+
+      - name: Build
+        env:
+          LIVEMASJID_BUILD: ${{ steps.v.outputs.tag }}
+        run: cargo build --release --locked --features tls --target $TARGET
+
+      - name: Package
+        run: |
+          mkdir -p dist/livemasjid/deploy
+          cp target/$TARGET/release/livemasjid dist/livemasjid/
+          cp deploy/* dist/livemasjid/deploy/
+          ./dist/livemasjid/livemasjid --version
+          tar -C dist -czf livemasjid-aarch64-linux.tar.gz livemasjid
+          sha256sum livemasjid-aarch64-linux.tar.gz > livemasjid-aarch64-linux.tar.gz.sha256
+          ls -la livemasjid-aarch64-linux.tar.gz*
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+        run: |
+          gh release create "$TAG" \
+            livemasjid-aarch64-linux.tar.gz livemasjid-aarch64-linux.tar.gz.sha256 \
+            --target "$GITHUB_SHA" --title "$TAG" --latest \
+            --notes "Automated build of ${GITHUB_SHA::7}: $(git log -1 --pretty=%s)"

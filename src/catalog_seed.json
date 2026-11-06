@@ -1,0 +1,2823 @@
+[
+  {
+    "mount": "activestream",
+    "name": "Quraan Recitation",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "makkah",
+    "name": "Masjid al-Haram, Makkah Mukarama, Saudi Arabia",
+    "location": "Mecca 24231, Saudi Arabia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "medina",
+    "name": "Masjidun Nabawi, Medina, Saudi Arabia",
+    "location": "Al Haram, Medina 42311, Saudi Arabia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "annoor-relay",
+    "name": "Sautun Noor - 24 Hour Bayaans of our Akaabireen",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "activetakbeer",
+    "name": "Takbeer Audio",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "baitulaman",
+    "name": "Baitul Aman Masjid, Scarborough, Canada, North America",
+    "location": "3114 Danforth Ave, Scarborough, ON M1L 1B1, Canada",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "eshowe",
+    "name": "Eshowe Masjid, KZN",
+    "location": "32 Osborne Rd, Eshowe, 3815, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "activemanzil",
+    "name": "Manzil Audio",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "allatief",
+    "name": "Masjid Al-Latief, Langford, Perth, Australia",
+    "location": "214 Nicholson Rd, Langford WA 6147, Australia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "jaamiaazaadville",
+    "name": "Jaamia Masjid Azaadville",
+    "location": "Azaad Ave, Azaadville, Johannesburg, 1750",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "jusa",
+    "name": "Jamiatul Ulama South Africa - Dawah Wal Irshaad",
+    "location": "32 Dolly Rathebe Rd, Fordsburg, Johannesburg, 2033, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "khuddaamulquraan",
+    "name": "Khuddaamul Quraan - Remote Broadcast",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "aqsa",
+    "name": "Masjid al-Aqsa - Jerusalem, Palestine",
+    "location": "1 1, Jerusalem",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mlzaahid",
+    "name": "Ml Zaahid Khan",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mrh",
+    "name": "Moulana Muhammed R Hathurani, Jhb, RSA",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "sautunnoor2",
+    "name": "Sautun Noor - Spare Channel",
+    "location": "4 Ayr Road, Athol, Sandton, Johannesburg, Gauteng, South Africa, 2196",
+    "genre": "Institution"
+  },
+  {
+    "mount": "armaitsounds",
+    "name": "ARM SSS 1 AND AIT SOUNDS, Mozambique",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "armaitsounds2",
+    "name": "ARM SSS 2 AND AIT SOUNDS, Mozambique",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "kelvin",
+    "name": "Abdullah Bin Salaam Masjid - Kelvin",
+    "location": "21 Fairway St, Kelvin, Sandton, 2090",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "accaciavile",
+    "name": "Accaciavile Musjid, Ladysmith, KZN, RSA",
+    "location": "2 Aster Crescent, uMnambithi, 3370, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "alqadr",
+    "name": "Al Qadr Masjid, Northcliff, Jhb, Gauteng, RSA",
+    "location": "49 Mountainview Drive, Northcliff, Johannesburg, 2115, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "alarqam",
+    "name": "Al-Arqam Islamic Centre, Oshawa, Canada, North America",
+    "location": "1709 Durham Regional Rd 33, Oshawa, ON L1H 7K5, Canada",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "alislamia",
+    "name": "Al-Islamia Maderasa, Ladysmith",
+    "location": "40 Marula Drive, uMnambithi, 3370, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "almiftaah",
+    "name": "Al-Miftaah, Kenwyn, Cape Town, WC, RSA",
+    "location": "12 Ladbrook St, Kenwyn, Cape Town, 7779, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "portshepstone",
+    "name": "Albersville Masjid, Port Shepstone, Kzn, RSA",
+    "location": "Robin Road, Albersville, Port Shepstone, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "alberton",
+    "name": "Alberton Jumma Masjid - JHB",
+    "location": "4 Middel St, Alberton, 1450, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bethlehem",
+    "name": "An Noor Jaame Musjid, Bethlehem",
+    "location": "16 De Leeuw St, Bethlehem, 9701, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "tongaat",
+    "name": "Anjuman Islam - Tongaat",
+    "location": "16 Railway St, Gandhinagar, Tongaat, 4399",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "maltonmasjid",
+    "name": "Anjuman-E-Anwarul Islam of Malton",
+    "location": "7097 Airport Rd, Mississauga, ON L4T 2G7, Canada",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "anwarulislam",
+    "name": "Anwarul Islam Mussala, Rondebosch East, Cape Town",
+    "location": "123 2nd Ave, Rondebosch East, Cape Town, 7780, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "arconpark",
+    "name": "Arcon Park Musallah, Vereeniging, JHB",
+    "location": "6 Johannesburg E Rd, Arcon Park, Vereeniging, 1937, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bloemfontein",
+    "name": "As Siddique Jumu'ah Masjid, Bloemfontein, Free State, RSA",
+    "location": "Henry Street, Bloemfontein, Free State, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "asharahmubasharah",
+    "name": "Asharah Mubasharah Masjid & Islamic Centre",
+    "location": "112 Cuckoo Ave, Cashan, Rustenburg, 2999, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "aucklandpark",
+    "name": "Auckland Park Masjid, Jhb, Gauteng, RSA",
+    "location": "Richmond Avenue, Auckland Park, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "auwal",
+    "name": "Auwal Masjid, CPT",
+    "location": "43 Dorp St, Cape Town City Centre, Cape Town, 8001, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "babussalaam",
+    "name": "Babus Salaam Masjid, Mayfair West, JHB",
+    "location": "119 Proserpine Rd, Mayfair West, Johannesburg, 2092, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "albertville",
+    "name": "Bait-ur-Rahmah Masjid, Albertville, Jhb, Gauteng, RSA",
+    "location": "21 Main St, Albertville, Randburg, 2195, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "baitulhamd",
+    "name": "Baitul Hamd Masjid, Lenasia, Johannesburg, Gauteng, RSA",
+    "location": "5 Pigeon Ave, Lenasia, 1821, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ballito",
+    "name": "Ballito Musallah",
+    "location": "3 Douglas Crowe Dr, Ballito, 4420, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "barberton",
+    "name": "Barberton Anjuman Masjid, Mpumalanga, RSA",
+    "location": "Barberton Mosque, 8 Froger St, Barberton, 1300, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bassonia",
+    "name": "Bassonia Musalla",
+    "location": "4 Meerkat Ave, Bassonia, Johannesburg South, 2061, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bedfordview",
+    "name": "Bedfordview Musallah, Jhb, Gauteng, RSA",
+    "location": "25 Arterial Road East, Oriel, Germiston, 2007, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bendor",
+    "name": "Bendor Jamaat Khana",
+    "location": "53A Van Nispen St, Polokwane Ext 4, Polokwane, 0700, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "beyerspark",
+    "name": "Beyerspark Jaami Masjid, Boksburg, Jhb, Gauteng, RSA",
+    "location": "1 Griessel Road, Beyers Park, Boksburg, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "birkenhead",
+    "name": "Birkenhead Islamic Centre, Auckland, New Zealand",
+    "location": "20 Birkenhead Avenue, Birkenhead, Auckland 0626, New Zealand",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "gaboroneblock8",
+    "name": "Block 8 Musallah, Gaborone, Botswana",
+    "location": "9WM7+X3W, 37500 Khiding Cres, Gaborone, Botswana",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "eastlondon",
+    "name": "Braelyn Jaami' Masjid, East London, Eastern Cape, RSA",
+    "location": "57 Maple Leaf Avenue, Braelyn, East London, Eastern Cape, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "britsjamia",
+    "name": "Brits Jamia Masjid, North West, RSA",
+    "location": "Central Street, Primindia, Brits, North West, South Africa, 0250",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "broadstreet",
+    "name": "Broad Street Mussallah, Durban, Kzn, RSA",
+    "location": "60 Dr Yusuf Dadoo St, Durban Central, Durban, 4001, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "cambridge",
+    "name": "Cambridge Muslim Society, Ontario, Canada, North America",
+    "location": "282 Elgin St N, Cambridge, ON N1R 7H9, Canada",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "camperdown",
+    "name": "Camperdown Jami Masjid, Kzn, RSA",
+    "location": "32 Bishop St, Camperdown, 3720, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "carolina",
+    "name": "Carolina Town Masjid -MP",
+    "location": "37A Voortrekker St, Carolina, 1185, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "cascades",
+    "name": "Cascades Foundation Musallah, Pietermaritzburg, Kzn, RSA",
+    "location": "63 Linscott Rd, Northern Park, Pietermaritzburg, 3201, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "center",
+    "name": "Central Masjid, Pietermaritzburg, Kzn, RSA",
+    "location": "489 Church St, Pietermaritzburg, 3201, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ladysmithcentral",
+    "name": "Central Musjid - Ladysmith",
+    "location": "338 Murchison St, uMnambithi, 3370, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "chakaskraal",
+    "name": "Chakaskraal Madressa Anjuman Islam, Kzn, RSA",
+    "location": "95 Main Road, Shakaskraal, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "chipata",
+    "name": "Chipata Jummah Masjid, Zambia",
+    "location": "9J8R+4FF, Chipata, Zambia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "dadhal",
+    "name": "Dadhal Jumah Masjid, Ankleshwar, Gujarat India",
+    "location": "J3M7+29W, Dadhal, Ankleshwar, Gujarat 393001, India",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "darulihsan",
+    "name": "Darul Ihsan, Durban, Kzn, RSA",
+    "location": "53 Joyce Road, Sea Cow Lake, Durban, Kwazulu Natal, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "darulislaah",
+    "name": "Darul Islaah Spiritual Reformation And Wellness Centre, Lenasia",
+    "location": "134 Nirvana Dr E, Lenasia, 1821, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "dqm",
+    "name": "Darul Quraan Masjid - Ladysmith",
+    "location": "Darul Quraan Masjid, 29 Daisy Ave, Ladysmith, uMnambithi, 3370, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "dua",
+    "name": "Darul Uloom Azaadville, Krugersdorp, Gauteng, RSA",
+    "location": "1 Azaad Avenue, Azaadville, Krugersdorp, Johannesburg, Gauteng, South Africa, 1754",
+    "genre": "Institution"
+  },
+  {
+    "mount": "inaamiyyah",
+    "name": "Darul Uloom Camperdown, Kzn, RSA",
+    "location": "R103, Camperdown, Kwazulu Natal, South Africa, 3720",
+    "genre": "Institution"
+  },
+  {
+    "mount": "duh",
+    "name": "Darul Uloom Heidelberg, Gauteng, RSA",
+    "location": "114 Kismet St, Shalimar Ridge, Heidelberg - GP, 1441, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "saadiqeen",
+    "name": "Darul Uloom Madrasatus Saadiqeen, Jhb, RSA",
+    "location": "33 Kindon Road, Robertsham, Johannesburg, Gauteng, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "dumf",
+    "name": "Darul Uloom Miftahul Falaah, Port Shepstone, Kzn, RSA",
+    "location": "2 Boundary Rd, Oslo Beach, Port Shepstone, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "dun",
+    "name": "Darul Uloom Newcastle",
+    "location": "26 St Thomas St, Lennoxton, Newcastle, 2958, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "duzak",
+    "name": "Darul Uloom Zakariyya, Lenasia, Johannesburg, Gauteng, RSA",
+    "location": "8-10 Golden Highway, Zakariyyah Park, Johannesburg, Gauteng, South Africa, 1821",
+    "genre": "Institution"
+  },
+  {
+    "mount": "dundee",
+    "name": "Dundee Jaami Masjid, KZN",
+    "location": "Shop 1, Old Cinema, 56 Gladstone St, Dundee, 3000, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "eikenhof",
+    "name": "Eikenhof Masjid, Johannesburg, Gauteng, RSA",
+    "location": "155 Kliprivier Rd, Olifantsvlei 327-Iq, Johannesburg South, 2091, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "eldoraigne",
+    "name": "Eldoraigne Musallah, Centurion, Pretoria, Gauteng, RSA",
+    "location": "1252 Willem Botha Drive, Weirdapark, Centurion, Pretoria, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "empangeni",
+    "name": "Empangeni Jumuah Masjid, Kzn, RSA",
+    "location": "6 North Road, Empangeni, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ermelojummah",
+    "name": "Ermelo Jummah Masjid, Mpumalanga, RSA",
+    "location": "93 Jassat St, Cassim Park, Ermelo, 2351, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "estcourttown",
+    "name": "Estcourt Town Mosque, Kzn, RSA",
+    "location": "134 Albert St, Estcourt, 3310, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "farrarmere",
+    "name": "Farrarmere Masjid, Benoni, Gauteng, RSA",
+    "location": "93 Main Rd, Farrarmere, Benoni, 1501, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "fernwood",
+    "name": "Fernwood Masjid, NEWCASTLE, KZN, RSA",
+    "location": "56 Davalia Ave, Fernwood, Newcastle, 2941, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "galtislamic",
+    "name": "Galt Islamic Centre, Cambridge, Canada",
+    "location": "431 Dundas St N, Cambridge, ON N1R 5R5, Canada",
+    "genre": "Institution"
+  },
+  {
+    "mount": "glencoe",
+    "name": "Glencoe Masjid, KZN",
+    "location": "9 Waschbank Rd, Glencoe, 2930, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "greytown",
+    "name": "Greytown Masjid - KZN",
+    "location": "64 Bell St, Greytown, 3250, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "riverside",
+    "name": "Habibia Soofie Saheb Masjid, Riverside, KZN",
+    "location": "50 Soofie Saheb Dr, Prospect Hall, Durban North, 4051, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mlshabiersaloojee",
+    "name": "Hadhrat Maulana Shabier Saloojee",
+    "location": "8-10 Golden Hwy, Zakariyya Park, 1821",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "hafizqaasim",
+    "name": "Hafiz Qaasim Paruk, Pietermaritzburg, Kzn, RSA",
+    "location": "5 Wallace Road, Manor, Pietermaritzburg, Kwazulu Natal, South Africa",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "hamidiya",
+    "name": "Hamidiya Musalla, Leicester, UK",
+    "location": "11 Abbotsford Rd, Rowlatts Hill, Leicester LE5 4DA, UK",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "harding",
+    "name": "Harding Jummah Musjid, KZN, RSA",
+    "location": "4 Musgrave St, Harding, 4680, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "caropark",
+    "name": "Hashimie Musjid, Carolina",
+    "location": "11 Hoof St, Carolina, 1185, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozhh",
+    "name": "Hassan and Husain Masjid, Maputo, Mozambique",
+    "location": "2HFF+GGQ, Maputo, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mljunaidhassim",
+    "name": "Hazrat Maulana Junaid Hassim, Mayfair, Jhb, RSA",
+    "location": "13 St Just Ave, Mayfair West, Johannesburg, 2092, South Africa",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "hazratbhaijan",
+    "name": "Hazrat Shaykh Abdul Mu'eed Saheb",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "hazyview",
+    "name": "Hazyview Masjid, Mpumalanga, RSA",
+    "location": "62 Korhaan Way, Hazyview, 1242, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "helderkruin",
+    "name": "Helderkruin Masjid, Rooderpoort, Jhb, RSA",
+    "location": "17 Newart Street, Helderkruin, Roodepoort, Johannesburg, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "highbury",
+    "name": "Highbury Musallah, Killarney, Johannesburg, Gauteng, RSA",
+    "location": "6 9th St, Killarney, Johannesburg, 2193, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "hillcrest",
+    "name": "Hillcrest Masjid, KZN",
+    "location": "2 Fraser Rd, Assagay, Outer West Durban, 3624, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "hilldrop",
+    "name": "Hilldrop Musallah, Newcastle, KZN, RSA",
+    "location": "11 Hilldrop Rd, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "rmsc",
+    "name": "Himayatul Islam Masjid, Lenasia, Jhb, RSA",
+    "location": "24 & 26 Lark Street, Lenasia, Johannesburg, Gauteng, South Africa, 1821",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "jmhp",
+    "name": "Homestead Park Jummah Musjid, JHB",
+    "location": "95 Winston Rd, Homestead Park, Johannesburg, 2092, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "hmjamaat",
+    "name": "Houghton Muslim Jamaat, Jhb, RSA",
+    "location": "47 West Street, Houghton, Johannesburg, Gauteng, South Africa, 2198",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "howick",
+    "name": "Howick West Masjid",
+    "location": "9 Masjid Road, Howick West, Howick, 3290, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ijtima",
+    "name": "Ijtima Broadcasts",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "isipingobeachmasjid",
+    "name": "Isipingo Beach Top Masjid - Durban",
+    "location": "3rd Ave, Isipingo Beach, Durban, Kwazulu Natal, South Africa, 4115",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "isipingohills",
+    "name": "Isipingo Hills Masjid, Durban, Kzn, RSA",
+    "location": "27 James Ave, Isipingo Hills, Isipingo, 4133, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ipci",
+    "name": "Islamic Propagation Centre International (IPCI)",
+    "location": "4th Floor, 124 Denis Hurley St, Durban Central, Durban, 4001, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "ixopojummah",
+    "name": "Ixopo Jummah Musjid - KZN",
+    "location": "103 Chapel St, Ixopo, 3276",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "actonville",
+    "name": "Jaame Masjid, Actonville, Benoni, Gauteng, RSA",
+    "location": "Rawat Street, Actonville, Benoni, Johannesburg, Gauteng, South Africa, 1501",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "jaamiaheidelberg",
+    "name": "Jaamia Masjid - Heidelberg Town",
+    "location": "61 Van Der Westhuizen St, Heidelberg, Heidelberg - GP, 1441, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "jaamiaazaadvilleathaan",
+    "name": "Jaamia Masjid Azaadville Athaan",
+    "location": "73 Kohinoor St, Azaadville, Krugersdorp, 1754, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "springs",
+    "name": "Jameah Mahmoodiyah Masjid, Springs, Gauteng, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "jamisprings",
+    "name": "Jami Masjid, Springs, Gauteng, RSA",
+    "location": "Cnr 3rd and 2nd Avenue, Bakerton, Springs, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "jai",
+    "name": "Jamia Arabiah Islamiah Darul Uloom, Stanger, KZN, RSA",
+    "location": "11 5th Ave, KwaDukuza Ext 5, KwaDukuza, 4449, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "gaboronejamia",
+    "name": "Jamia Masjid Gaborone, Botswana",
+    "location": "Notwane Road, Gaborone, Botswana",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "kinross",
+    "name": "Jamia Masjid Kinross, Mpumalanga, RSA",
+    "location": "5 Magnolia St, Evander, 2270, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "francistown",
+    "name": "Jamia Masjid, Francistown, Botswana",
+    "location": "337 Khama St, Francistown, Botswana",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "giyani",
+    "name": "Jamiah Masjid Giyani, Limpopo, RSA",
+    "location": "10 First Rd, Giyani-BA, Giyani, 0826, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "leslie",
+    "name": "Jamiah Masjid Leslie, Mpumalanga, RSA",
+    "location": "49 Norda St, Leslie, Thuli Fakude, 2265, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "jamiah",
+    "name": "Jamiah al ulum al Islamiyyah",
+    "location": "32 Dolly Rathebe Rd, Fordsburg, Johannesburg, 2092, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "jamiatkzn",
+    "name": "Jamiat ul Ulema, Kwazulu Natal, RSA",
+    "location": "223 Alpine Road, Springfield, Durban, Kwazulu Natal, South Africa, 4091",
+    "genre": "Institution"
+  },
+  {
+    "mount": "jh1430",
+    "name": "Jamiatul Hufaaz, Azaadville, Jhb, RSA",
+    "location": "Azaadville, Krugersdorp, Johannesburg, Gauteng, South Africa, 1754",
+    "genre": "Institution"
+  },
+  {
+    "mount": "mozjummah",
+    "name": "Jumah Masjid, Maputo, Mozambique",
+    "location": "2HH9+876, Rua da Gávea, Maputo, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "lusakajaamemasjid",
+    "name": "Jumma Masjid, Burma Road, Kamwala, Lusaka",
+    "location": "H7GV+HQG, Lusaka, Zambia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "polokwane",
+    "name": "Jumu'ah Masjid, Polokwane, Limpopo, RSA",
+    "location": "Polokwane, Limpopo, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "thohoyandou",
+    "name": "Jumuah Masjid Thohoyandou, Limpopo, RSA",
+    "location": "318 Mathomo St, Thohoyandou-P, Thohoyandou, 0950, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "belabela",
+    "name": "Jumuah Masjid, Jinnah Park, Bela Bela, Limpopo, RSA",
+    "location": "13 Bulbulia St, Jinnah Park, Bela-Bela, 0480, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "kathu",
+    "name": "Kathu Masjid, Northern Cape. RSA",
+    "location": "35 Pendoring St, Kathu, 8446, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "nigel",
+    "name": "Khalid bin Waleed, Nigel, Gauteng, RSA",
+    "location": "18 Dadoo Ave, Mackenzieville, Nigel, 1491, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "kah",
+    "name": "Khanqah Akhtari Hamidi, Durban, Kzn, RSA",
+    "location": "Overport, Durban, Kwazulu Natal, South Africa, 4091",
+    "genre": "Institution"
+  },
+  {
+    "mount": "kai",
+    "name": "Khanqah Akhtari, Azaadville, Jhb, RSA",
+    "location": "1 Azaad Avenue, Azaadville, Krugersdorp, Johannesburg, Gauteng, South Africa, 1754",
+    "genre": "Institution"
+  },
+  {
+    "mount": "kia",
+    "name": "Khanqah Imdadia Ashrafia, Karachi, Pakistan",
+    "location": "ST-1/A, Block 2, Gulshan-e-Iqbal, Karachi, Pakistan",
+    "genre": "Institution"
+  },
+  {
+    "mount": "kkm",
+    "name": "Khanqah Khaliliyah Makkiyah, Mayfair, Jhb, RSA",
+    "location": "13 St Just Avenue, Mayfair West, Johannesburg, Gauteng, South Africa, 2092",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "kszt",
+    "name": "Khanqah Sheikh Zakariyya Tswane, Pta, RSA",
+    "location": "529 Barbara Coetzer St, Erasmia, Pretoria, Gauteng, South Africa, 0183",
+    "genre": "Institution"
+  },
+  {
+    "mount": "kmszislaahitalks",
+    "name": "Khanqah Sheikh Zakariyyah Islaahi Talks, RSA",
+    "location": "40 Nirvana Service Road, Ext 1, Lenasia, Johannesburg, Gauteng, South Africa, 1827",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "kmsz",
+    "name": "Khanqah Sheikh Zakariyyah, Lenasia, Jhb, RSA",
+    "location": "40 Nirvana Service Road, Ext 1, Lenasia, Johannesburg, Gauteng, South Africa, 1827",
+    "genre": "Institution"
+  },
+  {
+    "mount": "klerksdorp",
+    "name": "Klerksdorp Town Masjid, Northern Province, RSA",
+    "location": "Bishop Desmond Tutu St, Klerksdorp Central, Klerksdorp, Northern Cape, South Africa, 2571",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "kloof",
+    "name": "Kloof Musallah, Ronalskloof, KZN",
+    "location": "43 Buckingham Rd, Ronaldskloof Ext, Kloof, 3640, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "kokstad",
+    "name": "Kokstad Masjid - KZN",
+    "location": "24 Barker St, Kokstad, 4700, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "lakefieldext21",
+    "name": "Lakefield Ext21 Musallah",
+    "location": "23 Mentz St, Lakefield, Benoni, 1501, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "lakewood",
+    "name": "Lakewood Estate Masjid, Ormonde, Jhb, RSA",
+    "location": "Lakewood Estate, Ormonnde Ext 37 B, Ormonde, Johannesburg, Gauteng, South Africa, 2091",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "lichtenburg",
+    "name": "Lichtenburg Jaamiah Masjid",
+    "location": "38 Buchanan St, Lichtenburg, 2740, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "lobatse",
+    "name": "Lobatse Masjid - Botswana",
+    "location": "QM87+GVG, Lobatse, Botswana",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "lotusville",
+    "name": "Lotusville Masjid, Verulam, Durban, Kzn, RSA",
+    "location": "78A Trevenen Road, Lotusville, Verulam, Durban, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "luqmaanrustenburg",
+    "name": "Luqmaan-al-Hakeem, Rustenburg, North West, RSA",
+    "location": "37 Beneden St, Rustenburg Oos-Einde, Rustenburg, 2999, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "lydenburg",
+    "name": "Lydenburg Jamia Masjid, Mpumalanga, RSA",
+    "location": "13 Voortrekker St, Mashishing, 1120, South Africa",
+    "genre": "Masjid"
+  },
+  { "mount": "macs", "name": "Macs", "location": "", "genre": "Institution" },
+  {
+    "mount": "madaniec",
+    "name": "Madani Education Centre, UK",
+    "location": "60 Malabar Rd, Leicester LE1 2PD, UK",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ibrahimiyah",
+    "name": "Madrasa Ibrahimia, Illinois, Chicago, USA",
+    "location": "3929 Oakton Street, Skokie, Illinois, Chicago, United States of America",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mid",
+    "name": "Madrasah Ihyaa id Deen, Lenasia, Jhb, RSA",
+    "location": "Plot 301, Rietfontein 301-Iq, Lenasia, Johannesburg, Gauteng, South Africa, 1821",
+    "genre": "Institution"
+  },
+  {
+    "mount": "jibalussalaam",
+    "name": "Madrasah Jibalus Salaam",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "mahmoodiyah",
+    "name": "Madrasah Mahmoodiyah, Esenembe, Kzn, RSA",
+    "location": "Esenembe, KwaDukuza, Kwazulu Natal, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "mmk",
+    "name": "Madrasah Miftaahul Khair, Umzinto, KZN",
+    "location": "186 Ridge Road, eMuziwezinto, 4200",
+    "genre": "Institution"
+  },
+  {
+    "mount": "mqipalmridge",
+    "name": "Madrasah Quwwatul Islam - Palmridge",
+    "location": "62 Celtis Street, Palm Ridge, Katlehong, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "taleemuddeen",
+    "name": "Madrasah Taleemuddeen - Isipingo",
+    "location": "4 3rd Ave, Isipingo Beach, Isipingo, 4115",
+    "genre": "Institution"
+  },
+  {
+    "mount": "mus",
+    "name": "Madrasah Uloom Shariyyah - Benoni",
+    "location": "2 Moth Road, Benoni 77-Ir, Benoni, 1501, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "mubz",
+    "name": "Madrasah Urwah Bin Az Zubayr",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "uthmaniya",
+    "name": "Madrasah Uthmaniya - Stanmore Phoenix - KZN",
+    "location": "2 Cleargrove Rd, Grove End, Phoenix, 4068, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "rosedale",
+    "name": "Madrasatush Shaahid, Rosedale, Uitenhage",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "rylands",
+    "name": "Madrassa Al Rahmaniya, Rylands, Cape Town, WC, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ibrahimiyahvryheid",
+    "name": "Madrassah Islamia Ibrahimiya - Vryheid",
+    "location": "Melmoth Road, Vryheid, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "miftahululoom",
+    "name": "Madrassah Miftahul Uloom, De Deur",
+    "location": "324 Van Der Merwe Rd, The De Deur Estates, De Deur, 1884, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "altarteel",
+    "name": "Madrassah Tarteel ul Quraan, Pmb, Kzn, RSA",
+    "location": "71 Royston Road, Mountain Rise, Pietermaritzburg, Kwazulu Natal, South Africa, 3201",
+    "genre": "Institution"
+  },
+  {
+    "mount": "vaaloewer",
+    "name": "Madrassah Yunus, Vaaloewer, Vanderbijlpark, Gauteng, RSA",
+    "location": "7H9W+J9 Vaal Oewer, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "mafikengjummah",
+    "name": "Mafikeng Jumuah Masjid, Mahikeng",
+    "location": "418 Molopo Rd, Mahikeng, 2745, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mfmoosagie",
+    "name": "Mahad Al-Suffah, Port Elizabeth",
+    "location": "25 Alyssum Cres, Malabar, Gqeberha, 6020, South Africa",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "malawianulema",
+    "name": "Malawian Ulema - South Africa",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "manzilparkmasjid",
+    "name": "Manzilpark Masjid, Klerksdorp, RSA",
+    "location": "Jassat Street, Manzilpark, Klerksdorp, North West, South Africa, 2574",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "maraisburg",
+    "name": "Maraisburg Jumuah Masjid, Jhb, Rsa",
+    "location": "30 7th Street, Maraisburg, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "marlboromasjid",
+    "name": "Marlboro Masjid, Sandton, Jhb, RSA",
+    "location": "2 Islamabad Drive, Marlboro Gardens, Sandton, Johannesburg, Gauteng, South Africa, 2063",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "qarimaroof",
+    "name": "Maroof Abdulazeez, Kyami Abuja, Nigeria",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "masgidhawwa",
+    "name": "Masgid Hawwa - Matola - Mozambique",
+    "location": "3HG2+39, Maputo, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "marquard",
+    "name": "Masjid AL Noor, Marquard, Free State, RSA",
+    "location": "1 Maree St, Marquard, 9610, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "saadiqeenerasmia",
+    "name": "Masjid Aaisha, Erasmia, Pretoria, Gauteng, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "parlock2",
+    "name": "Masjid Abdur Rahmaan Ibn Auf",
+    "location": "73 Amlock Dr, Parlock, Newlands West, 4037, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "abraarrustenburg",
+    "name": "Masjid Abraar, Zinniaville, Rustenburg, North West, RSA",
+    "location": "3 Petunia St, Zinniaville, Rustenburg, North West Province, South Africa, 0302",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "abubakrmackenzie",
+    "name": "Masjid Abu Bakr Siddiq, Mackenzie Park, Benoni, Gauteng, RSA",
+    "location": "31 Heron Street, Mackenzie Park, Benoni, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "elsburgmasjid",
+    "name": "Masjid Abu Bakr Siddique - Elsburg",
+    "location": "1 Joubert St, Elsburg, Germiston, 1428, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "siddiquewitbank",
+    "name": "Masjid Abu Bakr Siddique - Witbank",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "zimabubakr",
+    "name": "Masjid Abu Bakr, Harare, Zimbabwe",
+    "location": "52RG+MQH, Stidolph Cresent, Harare, Zimbabwe",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "abubakrnigel",
+    "name": "Masjid Abu Bakr, Nigel, Gauteng, RSA",
+    "location": "71 Northern Rd, Nigel, 1490, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "abubakrpe",
+    "name": "Masjid Abu Bakr, Port Elizabeth",
+    "location": "17 Poppy Pl, Malabar, Gqeberha, 6020, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "abubakrthohoyandou",
+    "name": "Masjid Abu Bakr, Thohoyandou, Limpopo, RSA",
+    "location": "2FHG+6P, Thohoyandou-F, Thohoyandou, 0950, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "vryheid",
+    "name": "Masjid Abu Huraira, Vryheid, KZN, Rsa",
+    "location": "242 Boeren St, Vryheid, 3100, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "abubakr",
+    "name": "Masjid Abubakr Siddique, Ladysmith, Kzn, RSA",
+    "location": "48 Poona Rd, Ladysmith, 3370, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "meyersdal",
+    "name": "Masjid Aisha R.A - Meyersdal",
+    "location": "8 Philip Engelbrecht Ave, Meyersdal, Alberton, 1448, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "abedeenmasjid",
+    "name": "Masjid Al Abedeen, Islamic Research Center of Canada",
+    "location": "1 Stamford Square N, Scarborough, ON M1L 1X4, Canada",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "alansaarharrismith",
+    "name": "Masjid Al Ansaar, Harrismith, Kzn, RSA",
+    "location": "69 Percy St, Harrismith, 9880, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "barakah",
+    "name": "Masjid Al Barakah, Kalingalinga, Lusaka, Zambia",
+    "location": "H8RW+F47, Lusaka, Zambia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "robertsham",
+    "name": "Masjid Al Huda, Robertsham, Jhb, RSA",
+    "location": "140 Kimberley Road, Robertsham, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "stegman",
+    "name": "Masjid Al Jamia, Claremont , CPT",
+    "location": "ERF55564 Stegmann Rd, Newlands, Cape Town, 7700, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "kawther",
+    "name": "Masjid Al Kawther",
+    "location": "Masjid Ul Kawthar, 52 Dubai St, Nirvana X2, Polokwane, 0699, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "buccleuch",
+    "name": "Masjid Al Khaleel, Buccleuch, Jhb, Gauteng, RSA",
+    "location": "Parkville Place, Buccleuch, Sandton, Johannesburg, Gauteng, South Africa, 2206",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "noorlaudium",
+    "name": "Masjid Al Noor, Laudium, Pretoria, RSA",
+    "location": "330 Turquoise Street, Laudium, Pretoria, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "tuba",
+    "name": "Masjid Al Tuba - CPT",
+    "location": "1 Wendy Way, Panorama, Cape Town, 7500, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "zimalabbas",
+    "name": "Masjid Al-Abbas, Harare, Zimbabwe",
+    "location": "5278+XMM, Boeing Rd, Harare, Zimbabwe",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "scottburgh",
+    "name": "Masjid Al-Ikraam, Scottburgh, Kzn, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "alrahman",
+    "name": "Masjid Al-Rahman, Gosnells Perth, Australia",
+    "location": "52 Mills Rd W, Martin WA 6110, Australia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "uhud",
+    "name": "Masjid Al-Uhud - Ficksburg",
+    "location": "57 Brand St, Ficksburg, 9730, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozali",
+    "name": "Masjid Ali RA, Maputo, Mozambique",
+    "location": "3F43+JCG, Matola, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "anwaarulabraar",
+    "name": "Masjid Anwaarul Abraar, PMB",
+    "location": "5 Wallace Rd, Manor, Pietermaritzburg, 3201, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "northbeachdbn",
+    "name": "Masjid As Siddique, North Beach, Durban, Kzn, RSA",
+    "location": "11/15 John Mc Intyre Road, North Beach, Durban, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ashrafsprings",
+    "name": "Masjid Ashraf, Springs, Gauteng, RSA",
+    "location": "29 Francolin Drive, Springs, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ayshaormonde",
+    "name": "Masjid Aysha, Ormonde, Jhb, Gauteng, RSA",
+    "location": "Sandalwood Estate, Lakewood Terrace, Ormonde",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozayshah",
+    "name": "Masjid Ayshah (R.T.A), Chimoio Soalpo, Mozambique",
+    "location": "VF9W+R49, Chimoio, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozbabussalaam",
+    "name": "Masjid Babus Salam, Maputo, Mozambique",
+    "location": "2HM9+M4X, Av. Josina Machel, Maputo, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bilaallenasia",
+    "name": "Masjid Bilaal, Lenasia, Johannesburg, Gauteng, RSA",
+    "location": "58-60 Sirkon Ave, Lenasia, 1821, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bilal",
+    "name": "Masjid Bilal - Al Tawheed Islamic Centre",
+    "location": "66 Volta St, Lenasia, 1821, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bilalazaadville",
+    "name": "Masjid Bilal Ibn Rabaah (R.A) Azaadville, JHB, RSA",
+    "location": "215 Jacaranda Street, Azaadville Gardens, Randfontein, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "berea",
+    "name": "Masjid Bilal Ibn Rabah, Berea, Durban, KZN, RSA",
+    "location": "16 J.B. Marks Rd, Bulwer, Berea, 4083, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozbilal",
+    "name": "Masjid Bilal, Maputo, Mozambique",
+    "location": "2HV8+7RR, Av. Marien Ngouabi, Maputo, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozcentral",
+    "name": "Masjid Central, Beira, Mozambique",
+    "location": "5R7Q+G32, Beira, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "makenidawah",
+    "name": "Masjid Dawah - Makeni Lusaka",
+    "location": "G7W3+866, Makeni Rd, Lusaka, Zambia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "masjidedawood",
+    "name": "Masjid E Dawood, Durban, Kzn, RSA",
+    "location": "78 McArthur St, Durban Central, Durban, 4001, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bluff",
+    "name": "Masjid E Fatima, Bluff, Durban, Kzn, RSA",
+    "location": "208 Tara Rd, Grosvenor, Bluff, 4052, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ebrahimrobertsham",
+    "name": "Masjid Ebrahim, Robertsham, Johannesburg, Gauteng, RSA",
+    "location": "19 Alamein Rd, Robertsham, Johannesburg South, 2091, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozfaizan",
+    "name": "Masjid Faizan-e-Madina, Maputo, Mozambique",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "newmodder",
+    "name": "Masjid Falaah e Daarain, Benoni, Jhb, RSA",
+    "location": "5 Selby Street, New Modder, Benoni, Johannesburg, Gauteng, South Africa, 1501",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "makenifatima",
+    "name": "Masjid Fatima Tuz-Zahra, Makeni, Lusaka",
+    "location": "G6JF+Q8M, Lusaka, Zambia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozfatimah",
+    "name": "Masjid Fatimah, Beira, Mozambique",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "fatimah",
+    "name": "Masjid Fatimah, Springfield, Durban, Kzn, RSA",
+    "location": "32 Londonderry Cres, Springfield, Durban, 4091, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "fuqara",
+    "name": "Masjid Fuqara - PE",
+    "location": "8 Selago Cres, Malabar, Gqeberha, 6020, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "hma",
+    "name": "Masjid Furqaan, Houghton, Jhb, RSA",
+    "location": "52 2nd Avenue, Houghton, Johannesburg, Gauteng, South Africa, 2198",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozfuyudhulislam",
+    "name": "Masjid Fuyudhul Islam, Maputo, Mozambique",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozhafsah",
+    "name": "Masjid Hafsah, Beira, Mozambique",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "masjidhamza",
+    "name": "Masjid Hamza, Erasmia, Pretoria, RSA",
+    "location": "529 Barbara Coetzer St, Erasmia, Pretoria, Gauteng, South Africa, 0183",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "hamzalenasia",
+    "name": "Masjid Hamza, Lenasia, Ext 9, Johannesburg, RSA",
+    "location": "820 Scorpio Dr, Lenasia, 1821, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozhamza",
+    "name": "Masjid Hamza, Maputo, Mozambique",
+    "location": "2FQ3+FVC, Matola, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "crowngardens",
+    "name": "Masjid Hamzah, Crown Gardens, Johannesburg, Gauteng, RSA",
+    "location": "42 Ulster Cres, Crown Gardens, Johannesburg South, 2091, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozhassane",
+    "name": "Masjid Hassan, Beira, Mozambique",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mir",
+    "name": "Masjid Ibaadur Rahmaan, Lenasia, Jhb, RSA",
+    "location": "27 Danube St, Lenasia, 1821, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ibaadurrahmaanuitenhage",
+    "name": "Masjid Ibaadur Rahmaan, Uitenhage, EC, RSA",
+    "location": "13 Chase St, Cannon Hill, Uitenhage, Eastern Cape, South Africa, 6229",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozibrahim",
+    "name": "Masjid Ibrahim A.S, Maputo, Mozambique",
+    "location": "2HQ7+WC3, Av. 24 de Julho, Maputo, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "masjidibrahim",
+    "name": "Masjid Ibrahim, Perth, Australia",
+    "location": "1526 Leslie St, Southern River WA 6110, Australia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "cyrildene",
+    "name": "Masjid Imdaadiya, Cyrildene, Johannesburg, Gauteng, RSA",
+    "location": "13 Tainton Street, Cyrildene, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "spencerrd",
+    "name": "Masjid Izharul Haq, Spencer Rd, Durban, Kzn, RSA",
+    "location": "369 Spencer Road, Palmiet, Durban, Kwazulu Natal, South Africa, 4090",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "scottsville",
+    "name": "Masjid Khadijatul Kubra, Pietermaritzburg, KZN, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mkbw",
+    "name": "Masjid Khalid Bin Waleed - Lenasia",
+    "location": "330 Flamingo St, Lenasia, 1821, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mondeor",
+    "name": "Masjid Khalid bin Walid, Mondeor, JHB",
+    "location": "267 Columbine Ave, Mondeor, Johannesburg South, 2091, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "victorypark",
+    "name": "Masjid Khalilul Rahman - JHB",
+    "location": "1 Andre St, Pierneef Park, Randburg, 2195, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "luqmanmarlboro",
+    "name": "Masjid Luqman, Marlboro, Johannesburg, Gauteng, RSA",
+    "location": "10 Zinnia Dr, Marlboro Gardens, Sandton, 2063, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mansoorpe",
+    "name": "Masjid Mansoor, Port Elizabeth, EC, RSA",
+    "location": "43 Calendula Road, Malabar, Port Elizabeth, Eastern Cape, South Africa, 6020",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "winchesterhills",
+    "name": "Masjid Miftaahul Jannah - Winchester Hills",
+    "location": "62 Vleiroos St, Winchester Hills, Johannesburg South, 2091, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "rockdale",
+    "name": "Masjid Mu'aadh ibn Jabal (R.A)",
+    "location": "56 Rockdale Ave, Berea West, Westville, 3629, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "crosby",
+    "name": "Masjid Muaaz bin Jabal, Crosby, Jhb, Gauteng, RSA",
+    "location": "Jamestown Avenue, Crosby, Johannesburg, Gauteng, South Africa, 2092",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "muawiyah",
+    "name": "Masjid Muawiyah, Lenasia, JHB",
+    "location": "8 Calcutta St, Lenasia, 1821, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozmuhammad",
+    "name": "Masjid Muhammad, Maputo, Mozambique",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bertrams",
+    "name": "Masjid Muqeemus Salaah, Bertrams, Jhb, Gauteng, RSA",
+    "location": "84 Kimberley Rd, Judith's Paarl, Johannesburg, 2094, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "musabbinumair",
+    "name": "Masjid Musab Bin Umair, Crosby, Jhb, RSA",
+    "location": "57 Moira Avenue, Crosby, Johannesburg, Gauteng, South Africa, 2092",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "muttaqeen",
+    "name": "Masjid Muttaqeen",
+    "location": "630 Clare Rd, Palmiet, Durban, 4090, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "noorbenoni",
+    "name": "Masjid Noor, Benoni, Gauteng, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "noorroshnee",
+    "name": "Masjid Noor, Roshnee, Vereeniging, Gauteng, RSA",
+    "location": "1 Bilal Drive, Roshnee, Vereeniging, Gauteng, South Africa, 1939",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "noorstanger",
+    "name": "Masjid Noor, Stanger, Kzn, RSA",
+    "location": "Lavoipierre Drive, Stanger Ext 25, KwaDukuza, Kwazulu Natal, South Africa, 4450",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "noorulislam",
+    "name": "Masjid Noorul Islam - Durban",
+    "location": "142 Spencer Rd, Palmiet, Durban, 4090, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "nurulhuda",
+    "name": "Masjid Nurul Huda, Durban, KZN, RSA",
+    "location": "266 Randles Road, Sydenham, Berea, Durban, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "umarfarouklenasia",
+    "name": "Masjid Omar Farouk, Ext 8, Lenasia, Jhb, RSA",
+    "location": "Cnr Garrick & Protea Avenue, Lenasia Ext 8, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozqubachimoio",
+    "name": "Masjid Quba, Chimoio, Mozambique",
+    "location": "VFCH+WQ8, Chimoio, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozquba",
+    "name": "Masjid Quba, Maputo, Mozambique",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "quba",
+    "name": "Masjid Quba, Ridgeway, JHB",
+    "location": "130 Riverside Dr, Ridgeway, Johannesburg, 2191, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "rabia",
+    "name": "Masjid Rabia - Estcourt",
+    "location": "11 Brokensha Road, Estcourt, 3310, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "emmarentia",
+    "name": "Masjid Safiyyah, Emmarentia, Johannesburg, Gauteng, RSA",
+    "location": "26 Kei Rd, Emmarentia, Randburg, 2195, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozsalam",
+    "name": "Masjid Salam, Beira, Mozambique",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "sawliheenpmb",
+    "name": "Masjid Sawliheen, Pietermaritzburg, Kzn, RSA",
+    "location": "480 Prince Alfred Street, Pietermaritzburg, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bilaalbenoni",
+    "name": "Masjid Sayyidina Bilaal, Benoni, Jhb, Gauteng, RSA",
+    "location": "1669 Drakensberg Street, Actonville, Benoni, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "isipingo",
+    "name": "Masjid Sayyidina Muadh bin Jabal, Isipingo, KZN, RSA",
+    "location": "5 Klippers Way, Isipingo Beach, 4133, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "evanspark",
+    "name": "Masjid Siraatul Jannah, Ormonde, Johannesburg, Gauteng, RSA",
+    "location": "253 Kimberley Road, Evans Park, Johannesburg, Gauteng, South Africa, 2091",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "taqwaazaadville",
+    "name": "Masjid Taqwa - Azaadville - JHB",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "homesteadpark",
+    "name": "Masjid Taqwa - Homestead Park",
+    "location": "Masjid al Taqwa, 41 Ashley Rd, Homestead Park, Johannesburg, 2092, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "taqwabrits",
+    "name": "Masjid Taqwa, Brits, NW, RSA",
+    "location": "4 Protea Crescent, Primindia, Brits, North West Province, South Africa, 0250",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "gaboronetaqwa",
+    "name": "Masjid Taqwa, Gaborone, Botswana",
+    "location": "Just off Masabasi Road, Gaborone, Botswana",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "taqwape",
+    "name": "Masjid Taqwa, Gelvan Park, Port Elizabeth, EC, RSA",
+    "location": "Habelgaarn Road, Gelvan Park, Port Elizabeth, Eastern Cape, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "moztaqwa",
+    "name": "Masjid Taqwa, Maputo, Mozambique",
+    "location": "2HJM+J96, Avenida Eduardo Mondlane, Maputo, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "linbropark",
+    "name": "Masjid Tariq Bin Ziyad, Linbro Park, Jhb, RSA",
+    "location": "69 1st Road, Linbro Park, Sandton, Johannesburg, Gauteng, South Africa, 2065",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "delmas",
+    "name": "Masjid Tauheed, Delmas, Mpumalanga, RSA",
+    "location": "7 4th St, Delmas, Mpumalanga, 2210, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "umarzambia",
+    "name": "Masjid Umar Al Farooq - Lusaka, Zambia",
+    "location": "Plot 16837 Chakwala Road Kamwala Lusaka",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozumar",
+    "name": "Masjid Umar Coop, Maputo, Mozambique",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mackenzie",
+    "name": "Masjid Umar Farooq, Benoni, Jhb, RSA",
+    "location": "Coucal Street, Mackenzie Park, Benoni, Johannesburg, Gauteng, South Africa, 1501",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bonela",
+    "name": "Masjid Umar Farooq, Bonela, KZN",
+    "location": "17 Jubilee Cres, Bonela, Durban, 4091, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "sibasa",
+    "name": "Masjid Umar Farooq, Sibasa, Limpopo, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "noorlenasia",
+    "name": "Masjid Un Noor, Lenasia, Jhb, RSA",
+    "location": "16 Petrea Street, Ext 3, Lenasia, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "greensidemasjid",
+    "name": "Masjid Ur Rahmah, Greenside, Jhb, RSA",
+    "location": "23 Ingalele Road, Emmarentia, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "siddiqnewcastle",
+    "name": "Masjid Us Siddiq, Newcastle, Kzn, RSA",
+    "location": "42 St Dominic St, Paradise, Newcastle, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "lsma",
+    "name": "Masjid Uthmaan Ghani, Lenasia South, Jhb, RSA",
+    "location": "Masjid Uthman, 28 Flamingo Cres, Lenasia South, Lenasia, 1835, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "kitkat",
+    "name": "Masjid Uthmaan, Pretoria West, RSA",
+    "location": "327 WF Nkomo Street, Pretoria West, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "uthman",
+    "name": "Masjid Uthman R.A, Trichardt, MP",
+    "location": "Cnr Bekker St and Louis Botha St, Trichardt, 2302, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozyussuf",
+    "name": "Masjid Yussuf, Maputo Mozambique",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "daarululoombrits",
+    "name": "Masjid Yusuf - Darul Uloom Brits",
+    "location": "9Q29+74, Brits, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "fourways",
+    "name": "Masjid al Kawthar, Fourways, Jhb, RSA",
+    "location": "1 Osprey Avenue, Fourways, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "muhajireen",
+    "name": "Masjid al Muhajireen wal Ansar",
+    "location": "10 Concord Pl, Lenasia, 1821, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "reigerpark",
+    "name": "Masjid al Noor - Boksburg",
+    "location": "1 Goedehoop Ave, Reiger Park, Boksburg, 1459, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "alfalahmasjidcardiff",
+    "name": "Masjid al falah, Cardiff, United Kingdom",
+    "location": "58 Caerau Lane Cardiff CF5 5HW, United Kingdom",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "khair",
+    "name": "Masjid e Khair, Mayfair West, Johannesburg, Gauteng, RSA",
+    "location": "49 St Gothard Street, Mayfair West, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mahmood",
+    "name": "Masjid e Mahmood, Clare Estate, Durban, KZN, RSA",
+    "location": "351 Clare Rd, Clare Hills, Durban, 4091, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ladysmith",
+    "name": "Masjid e Museehullah, Ladysmith, Kzn, RSA",
+    "location": "5 Tagore Street, Rose Park, Ladysmith, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "noor",
+    "name": "Masjid e Noor, Overport, Durban, Kzn, RSA",
+    "location": "123 Mallinson Road, Asherville, Durban, Kwazulu Natal, 4091",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "thabanchu",
+    "name": "Masjid e Noor, Thaba Nchu, Free State, RSA",
+    "location": "101 Brand St, Thaba Nchu, 9780, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "emmasdalequba",
+    "name": "Masjid e Quba - Emmasdale Luskaka",
+    "location": "J77F+633, Vubu Rd, Lusaka, Zambia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "shallcross",
+    "name": "Masjid e Quwwatul Islam, Durban, Kzn, RSA",
+    "location": "108 Granada Streest, Shallcross, Durban, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "rynsoord",
+    "name": "Masjid e Tauheed, Rynsoord, Benoni, Jhb, RSA",
+    "location": "7 Netania Street, Rynsoord, Benoni, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "lusakatawheed",
+    "name": "Masjid e Tawheed - Lusaka",
+    "location": "H8R4+FVG, Addis Ababa Dr, Lusaka, Zambia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "komatipoort",
+    "name": "Masjid e Uthmaan RA, Komatipoort, Mpumalanga, RSA",
+    "location": "11 Bontebok St, Komatiepoort, Komatipoort, 1340, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "abaas",
+    "name": "Masjid ibne Abaas",
+    "location": "103 Kismet Ave, Shukran, Lichtenburg, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ansaarazaadville",
+    "name": "Masjid ul Ansaar, Azaadville, Krugersdorp, Gauteng, RSA",
+    "location": "868 Abdul Hassan Cres, Azaadville, Krugersdorp, 1754, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "lakefield",
+    "name": "Masjid ul Ansaar, Lakefield, Benoni, Jhb, RSA",
+    "location": "Vernon Street, Lakefield, Benoni, Johannesburg, Gauteng, South Africa, 1501",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "lalucia",
+    "name": "Masjid ul Fatah, La Lucia, Durban, KZN, RSA",
+    "location": "86 William Campbell Dr, La Lucia, uMhlanga, 4051, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "nirvanapolokwane",
+    "name": "Masjid ul Firdaus, Polokwane, Limpopo, RSA",
+    "location": "266 Orient Drive, Nirvana X1, Polokwane, Limpopo, 0699",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "letlhkane",
+    "name": "Masjid ul Firdous, Letlhkane, Botswana",
+    "location": "JH3J+Q97, Letlhakane, Botswana",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "atholl",
+    "name": "Masjid ul Mahmood, Athol Sandton, Jhb, Gauteng, RSA",
+    "location": "69 Dennis Rd, Atholl, Sandton, 2196",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "gaboronenoor",
+    "name": "Masjid un Noor, Gaborone, Botswana",
+    "location": "Gaborone, Botswana",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ermelocp",
+    "name": "Masjid ur Rahmaan, Ermelo, Mpumalanga, RSA",
+    "location": "33 Naude St, Ermelo, 2351, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "richardsbay",
+    "name": "Masjid ur Rahmah, Richardsbay, Kzn, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "rahman",
+    "name": "Masjid ur Rahman - Heidelberg",
+    "location": "20 Roshini St, Shalimar Ridge, Heidelberg - GP, 1441, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "salaamlaudium",
+    "name": "Masjid us Salaam, Laudium, Pretoria, RSA",
+    "location": "415 Corundum Street, Laudium, Pretoria, Gauteng, South Africa. 0157",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "saliheendbn",
+    "name": "Masjid us Saliheen, Sherwood, Durban, Kzn, RSA",
+    "location": "92 Harris Cres, Sherwood, Durban, 4091, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "tzaneen",
+    "name": "Masjid us salaam, Tzaneen",
+    "location": "7 Fees St, Arbor Park, Tzaneen, 0850, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "taqwadbn",
+    "name": "Masjid ut Taqwa, Sea Cow Lake, Durban, Kzn, RSA",
+    "location": "55 Joyce Road, Sea Cow Lake, Durban, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "taqwasprings",
+    "name": "Masjid ut Taqwa, Springs, Gauteng, RSA",
+    "location": "Lavender Road, Bakerton, Springs, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "kroonstad",
+    "name": "Masjid-E-Bilal, Kroonstad",
+    "location": "Masjid-e-Bilal, 37 Reitz St, Central, Kroonstad, 9500, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "emmasdale",
+    "name": "Masjid-E-Noor, Lusaka, Zambia",
+    "location": "J75H+64P, Conakry Rd, Lusaka, Zambia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bethal",
+    "name": "Masjid-e-Bilaal",
+    "location": "5A Clerq St, Bethal, 2309, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "rahmahrustenburg",
+    "name": "Masjid-ur-Rahmah - Rustenburg",
+    "location": "82 Sachville St, Karlienpark, Rustenburg, 2999",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "burgersfort",
+    "name": "Masjid-us-Shaakireen, Burgersfort Masjid, Limpopo, RSA",
+    "location": "116 Marone St, Burgersfort, 1150, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "taqwarustenburg",
+    "name": "Masjid-ut-Taqwa (Town Masjid) - Rustenburg",
+    "location": "54 Loop St, Rustenburg, 2999",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "taqwaroshnee",
+    "name": "Masjid-ut-Taqwa, Roshnee",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "lilayi",
+    "name": "Masjide Khadeejatul Kubra, Lusaka, Zambia",
+    "location": "G767+PX, Lusaka, Zambia",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "kibriya",
+    "name": "Masjidul Kibriya, Ladysmith, Kzn, RSA",
+    "location": "67 Van Der Stel, Ladysmith, 3370, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "bergville",
+    "name": "Masjidul Manaazir, Bergville, Kzn, RSA",
+    "location": "Sharp Street, Bergville, Kwazulu Natal, South Africa, 3350",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "northcliffext",
+    "name": "Masjidullah, Northcliff EXT, Jhb,RSA",
+    "location": "35 Maluti Avenue, Northcliff Ext, Johannesburg, Gauteng, South Africa, 1709",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "sunford",
+    "name": "Masjidus Salaam, Phoenix, Durban, RSA",
+    "location": "105 Sunford Drive, Sunford, Phoenix, Durban, Kwazulu Natal, South Africa, 4068",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "matatiele",
+    "name": "Matatiele Masjid - KZN",
+    "location": "83 Main St, Matatiele, 4730, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mueenuddeen",
+    "name": "Maulana Abdul Haq Makada, Durban, Kzn, RSA",
+    "location": "64 Glenearn Rd, Sydenham, Berea, Durban, Kwazulu Natal, South Africa, 4091",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "abdullahosman",
+    "name": "Maulana Abdullah Osman, Venezuela, South America",
+    "location": "0286, Ciudad Guayana 8050, Bolívar, Venezuela",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "arilambat",
+    "name": "Maulana Abdur Rahman Lambat, Jhb, Gauteng, RSA",
+    "location": "Palmridge, Kathlehong, Johannesburg, Gauteng, South Africa, 1488",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "bandha",
+    "name": "Maulana Akbar Ali, Azaadville, Jhb, Gauteng, RSA",
+    "location": "215 Jacaranda St, Azaadville Gardens, Randfontein, 1759, South Africa",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "rahmaniyyah",
+    "name": "Maulana Fazlur Rahman, Azaadville, Jhb, RSA",
+    "location": "215 Jacaranda Street, Azaadville Gardens, Randfontein, Johannesburg, Gauteng, South Africa",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mlhravat",
+    "name": "Maulana Hasan Ravat, Mackenzie Park, Benoni, RSA",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mlilyas",
+    "name": "Maulana Ilyas Patel, Durban, Kzn, RSA",
+    "location": "4 3rd Ave, Isipingo Beach, Isipingo, Durban, Kwazulu Natal, South Africa, 4115",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mlmuaz",
+    "name": "Maulana Muaz Bhyat, Lenasia, Johannesburg, RSA",
+    "location": "Protea St, Jim Fouchepark, Welkom, 9459",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mii",
+    "name": "Maulana Muhammed Jeena, Kimberley, Nw, RSA",
+    "location": "Kimberley, North West, South Africa",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "imaamshaakir",
+    "name": "Maulana Muhammed Shaakir, Auckland, NZ",
+    "location": "Tait St, Blockhouse Bay, Auckland 1022, New Zealand",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "idauk",
+    "name": "Maulana Saleem Dhorat, Leicester, UK",
+    "location": "120 Melbourne Road, Leicester, LE2 0UT, United Kingdom",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mlyusufbhikhoo",
+    "name": "Maulana Yusuf Bhikhoo, Lenasia, Jhb, RSA",
+    "location": "Lenasia, Johannesburg, Gauteng, South Africa, 1821",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "may",
+    "name": "May Street Masjid, Durban, Kzn, RSA",
+    "location": "Cnr May and Fynn Street, Greyville, Durban, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mayfairjummah",
+    "name": "Mayfair Jummah Masjid, JHB, RSA",
+    "location": "21 Hanover St, Mayfair, Johannesburg, 2108, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "isipingorail",
+    "name": "Mehboobia Masjid, Isipingo Rail, Durban, Kzn, RSA",
+    "location": "23 Old South Coast Rd, Isipingo Rail, Isipingo, 4133, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozcentralchimoio",
+    "name": "Mesquita Central, Chimoio Manica, Mozambique",
+    "location": "VFPJ+9Q8, Rua dos Agricultores, Chimoio, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "middelburg",
+    "name": "Middelburg Masjid, Mpumalanga, RSA",
+    "location": "Koets St, Eastdene, Middelburg, Mpumalanga, South Africa, 1055",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mkondeni",
+    "name": "Mkondeni Mussallah",
+    "location": "21 Portland Rd, Mkondeni, Pietermaritzburg, 3212, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mlabdurrahmaansaloojee",
+    "name": "Ml Abdurrahmaan Saloojee - Kelvin",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mlebrahimpandor",
+    "name": "Ml Ebrahim Pandor - Germiston",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mlmoosakajee",
+    "name": "Ml Moosa Kajee",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mlobeidullah",
+    "name": "Ml Obeidullah - Laudium",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mlzakmotala",
+    "name": "Ml Zakariyya Motala Saheb, Isipingo Beach",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mlmsa",
+    "name": "Ml. Mohammed Shoaib Adam - CPT",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mohadin",
+    "name": "Mohadin Masjid, Potchefstroom, North West, RSA",
+    "location": "39 Sooliman Street, Mohadin, Potchefstroom, North West, South Africa, 2531",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mohammedia",
+    "name": "Mohammedia Madressa And Mosque - Piet Retief",
+    "location": "Piet Retief Mosque, 25 Jacaranda Ln, Kempville, Mkhondo, 2380, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mokopane",
+    "name": "Mokopane Masjid - Akasia",
+    "location": "23 Nymania Ave, Akasia, Mokopane, 0601, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mlbasheer",
+    "name": "Moulana Basheer Ahmed Moosagie, Port Elizabeth",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "mountainrise",
+    "name": "Mountainrise Masjid, Pmb, Kzn, RSA",
+    "location": "104 Royston Road, Mountain Rise, Pietermaritzburg, Kwazulu Natal, South Africa, 3201",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mtuba",
+    "name": "Mtubatuba Jami Musjid - KZN",
+    "location": "373 Essenwood Dr, Mtubatuba, 3935, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "muftiak",
+    "name": "Mufti Abdul Kader Hoosen, Lenasia, Jhb, RSA",
+    "location": "Lenasia, Johannesburg, Gauteng, South Africa, 1821",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "learndeen",
+    "name": "Mufti Muhammed Saeed Motara, Jhb, RSA",
+    "location": "362 Kohinoor Street, Azaadville, Krigersdorp, Gauteng, South Africa, 1754",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "safwah",
+    "name": "Mufti Shabir - Safwah Online, Perth , Australia",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "muftispatel",
+    "name": "Mufti Shuayb Patel, Shallcross, Durban, KZN, RSA",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "muftiyacoobvally",
+    "name": "Mufti Yacoob Vally",
+    "location": "2 boundary road, oslo beach, port shepstone, south africa, rsa",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "myd",
+    "name": "Mufti Yusuf Desai, Durban, Kzn, RSA",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "muftizubair",
+    "name": "Mufti Zubair Bhayat, Durban, Kzn, RSA",
+    "location": "Joyce Rd, Parlock, Durban, Kwazulu Natal, South Africa, 4001",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "yunus",
+    "name": "Musalah Yunus, Panorama, CPT",
+    "location": "72 Panorama Rd, Panorama, Cape Town, 7500, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "redberry",
+    "name": "Musalla Mus'ab bin Umayr",
+    "location": "168 Redberry Road, Phoenix, Durban",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "westwoodabs",
+    "name": "Musallah Abu Bakr Siddique, Westville, Dbn, RSA",
+    "location": "2 Grace Avenue, Westwood, Westville, Durban, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "fatah",
+    "name": "Musallah Al Fatah, CPT",
+    "location": "9 College Rd, Surrey Estate, Cape Town, 7764, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "westdene",
+    "name": "Musallah Al Muhaajireen - Benoni",
+    "location": "13 Edward St, Westdene, Benoni, 1501, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "fatahlenasia",
+    "name": "Musallah Fatah - Lenasia",
+    "location": "116 Nirvana Dr, Lenasia, 1821, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ikhlaas",
+    "name": "Musallah Ikhlaas - Morningside",
+    "location": "77 Hendry Rd, Springfield, Durban, 4091",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "westvillenorth",
+    "name": "Musallah Mahmoodiyya Westville North",
+    "location": "148 Rodger Sishi Rd, Chiltern Hills, Westville, 3629, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "amanzimtoti",
+    "name": "Musallah Nurul Islam, Amanzimtoti, KZN, RSA",
+    "location": "653 Kingsway, Athlone Park, Amanzimtoti, Durban, Kwazulu Natal, South Africa, 4126",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "blairgowrie",
+    "name": "Musallah Ubay bin Ka'b (RA), Blairgowrie, Jhb, Gauteng, RSA",
+    "location": "70 Conrad Dr, Blairgowrie, Randburg, 2194, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "musallahumar",
+    "name": "Musallah Umar - PMB",
+    "location": "43 Dykes Rd, Montrose, Pietermaritzburg, 3201, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "farouqglenwood",
+    "name": "Musallah Umar Al Farouq, Glenwood, Durbnn, Kzn, RSA",
+    "location": "1 Wadley Road, Glenwood, Berea, Durban, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "muf",
+    "name": "Musallah Umar Farouk, Centurion, JHB",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "umaribnkhattaab",
+    "name": "Musallah Umar ibn Khattaab, Jhb",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "victoriapmb",
+    "name": "Musallah on Victoria - PMB",
+    "location": "328 Victoria Rd, Pietermaritzburg, 3201, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "musina",
+    "name": "Musina Town Masjid, Limpopo, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "marburg",
+    "name": "Musjid Aisha Marburg - KZN",
+    "location": "8 Pluto Rd, Grosvenor, Port Shepstone, 4252, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ihilal",
+    "name": "Musjid Al Hilal - Overport",
+    "location": "139 Crescent Street, Overport, Durban, 4091",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "queenstown",
+    "name": "Musjid Al Muhajireen - Queenstown",
+    "location": "11 Komani St, Komani, 5320, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "newlandswest",
+    "name": "Musjid Ebrahim, Newlands West, Durban, KZN, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ibaadurrahman",
+    "name": "Musjid Ibaadur Rahman, Overport, Durban, Kzn, RSA",
+    "location": "366 Felix Dlamini Rd, Sydenham, Berea, 4091, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "linbrokhalid",
+    "name": "Musjid Khalid Ibn Al Walid - Jhb",
+    "location": "137 1st Rd, Linbro Park AH, Sandton, 2090, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mulbarton",
+    "name": "Musjid Nusaybah - Mulbarton - JHB",
+    "location": "47 True North Road, Mulbarton, Johannesburg South, 2059, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "merebank",
+    "name": "Musjid e Tazkiyah - Oil Refinery - KZN",
+    "location": "115 Badulla Dr, Merewent Bluff, 4052, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "amersfoort",
+    "name": "Musjid e nur Amersfoort",
+    "location": "786 Sybrand van Niekerk St, Amersfoort, 2490, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "parlock",
+    "name": "Musjid el Yusuf - KZN",
+    "location": "311 Amlock Dr, Parlock, 4037, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "coleraine",
+    "name": "Musjid ud Duha, Sandton, Jhb, Gauteng, RSA",
+    "location": "94 Coleraine Drive, Duxberry, Sandton, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "musgrave",
+    "name": "Musjid us Salaam - Musgrave, KZN",
+    "location": "220 St Thomas Rd, Musgrave, Berea, 4001, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "taqwa",
+    "name": "Musjid-ut-Taqwa, PMB, KZN, RSA",
+    "location": "7 Brixam Road, Allandale, Pietermaritzburg, Kwazulu Natal, South Africa, 3201",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "pietretief",
+    "name": "Musjid-ut-Tauheed - Piet Retief",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "glenwood",
+    "name": "Musjidul Misbaah, Glenwood, Durban, Kzn, RSA",
+    "location": "298 Che Guevara Road, Glenwood, Berea, Durban, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "musjidurrahman",
+    "name": "Musjidur Rahman - Durban North",
+    "location": "131 Kenneth Kaunda Rd, Durban North, 4051, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mozabuayub",
+    "name": "Mussallah Abu Ayub Ansari, Somerchild 2, Maputo, Mozambique",
+    "location": "3J32+3G2, Maputo, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mahdulilm",
+    "name": "Mussallah Mahdul Ilm, Maputo, Mozambique",
+    "location": "1442 Av. Amilcar Cabral, Maputo, Mozambique",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "mutareislamicsociety",
+    "name": "Mutare Islamic Society - Zimbabwe",
+    "location": "3 Third St, Mutare, Zimbabwe",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "nmcc",
+    "name": "NMCC Musallah, Newcastle, KZN, RSA",
+    "location": "77 Murchison St, Newcastle Central, Newcastle, 2940, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "nelspruit",
+    "name": "Nelspruit Masjid, Valencia, Mpumalanga, RSA",
+    "location": "5 Petunia St, Nelindia, Mbombela, 1201, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "newparks",
+    "name": "New Parks Academy, UK",
+    "location": "22 Dillon Rd, New Parks, Leicester LE3 9PF, UK",
+    "genre": "Institution"
+  },
+  {
+    "mount": "newcastle",
+    "name": "Newcastle Jaamia Masjid, Kzn, RSA",
+    "location": "28 Murchison St, Newcastle CBD, Newcastle, Kwazulu Natal, South Africa, 2940",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "newtown",
+    "name": "Newtown Masjid, Newtown, Jhb",
+    "location": "6 Jennings St, Newtown, Johannesburg, 2113, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "nui",
+    "name": "Noor Ul Islam - United Kingdom",
+    "location": "713 High Rd Leyton, London E10 5AB, UK",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "fxbnoor",
+    "name": "Noor-e-Taibah Masjid - Ficksburg",
+    "location": "60 Bosch St, Ficksburg, 9730, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "northcliff",
+    "name": "Northcliff Masjid, Jhb, RSA",
+    "location": "3 Salerno Road, Randburg , Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "nurulislam",
+    "name": "Nur Ul Islam Masjid, Lenasia, Gauteng, RSA",
+    "location": "2 Nyala Ave, Lenasia, 1821, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "standerton",
+    "name": "Nurul Islam Musjid, Standerton, Mpumalanga, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ogies",
+    "name": "Ogies Masjid, Mpumalanga, RSA",
+    "location": "W3P4+6C Ogies, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "parkrynie",
+    "name": "Park Rynie Masjid, KZN",
+    "location": "Park Rynie Masjid, 25 School Cir, Scottburgh, Park Rynie, 4182, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "pearls",
+    "name": "Pearls Musallah, Umhlanga, KZN, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "pinelands",
+    "name": "Pinelands Islamic Centre, CPT",
+    "location": "7 Nursery Way, Pinelands, Cape Town, 7405, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "portshepstonetown",
+    "name": "Port Shepstone Juma Masjid - KZN",
+    "location": "41 Reynolds St, Port Shepstone, 4240, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "portstjohns",
+    "name": "Port St Johns Masjid",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "potchefstroom",
+    "name": "Potchefstroom Town Masjid, North West, RSA",
+    "location": "Owen Avenue, Potchefstroom, North West, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "qaasimululoom",
+    "name": "Qaasimul Uloom, CPT, RSA",
+    "location": "23 Fuller Road, Weltevreden Valley, Cape Town, 7798, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "dawatulhaq",
+    "name": "Qari Ismaeel Desai, Umzinto, Kzn, RSA",
+    "location": "9 4th Street, Umzinto, Park Rynie, Kwazulu Natal, South Africa, 4182",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "qrad",
+    "name": "Qari Rashid Ahmed Dabhelia, Lenasia, Johannesburg, Gauteng, RSA",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "qmm",
+    "name": "Quloobul Moemieneen Masjied, Goodwood, CPT",
+    "location": "127-133 Goodwood St, Goodwood Estate, Cape Town, 7460, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "qia",
+    "name": "Qurtuba Islamic Academy - Jhb",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "qijm",
+    "name": "Quwwatul Islam Jaame Musjid, Verulam, Durban",
+    "location": "150 Wick Street, Verulam, Durban, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "randpark",
+    "name": "RANDPARK RIDGE MUSALLAH - JHB",
+    "location": "10 Randpark Dr, Randpark Ridge, Randburg, 2169, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "raisethorpe",
+    "name": "Raisethorpe Masjid, Pietermaritzburg, KZN, Rsa",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "rsvltmasjid",
+    "name": "Raudhatul Islam Masjid, Roosevelt Park, Jhb, RSA",
+    "location": "4 Beyers Naude Service Dr, Franklin Roosevelt Park, Randburg, Johannesburg, Gauteng, South Africa, 2195",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "raudhatulquraan",
+    "name": "Raudhatul Quraan, Sandton, JHB",
+    "location": "97 Bowling Ave, Morningside Manor, Sandton, 2057, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "reshills",
+    "name": "Reservoir Hills Musjid - KZN",
+    "location": "47 Mountbatten Dr, Reservoir Hills, Durban, 4091, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "risaalatulhaq",
+    "name": "Risaalatul Haq, Lenasia, Jhb, RSA",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "ritakop",
+    "name": "Ritakop Musallah",
+    "location": "27FQ+QM Ritakop, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "rdpt",
+    "name": "Roodepoort Masjid",
+    "location": "6 Katrina St, Roodepoort, 1724, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "rustenburg",
+    "name": "Rustenburg Jaame Masjid, Zinniaville, NW, RSA",
+    "location": "Cnr Karlien & Sonneblom Street, Zinniaville, Rustenburg, North West Province, South Africa, 2999",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "rynfield",
+    "name": "Rynfield Musallah, Benoni, Jhb, RSA",
+    "location": "180 Pretoria Road, Rynfield, Benoni, Johannesburg, Gauteng, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "saberie",
+    "name": "Saberie Jumuah Masjid, Lenasia, Gauteng, RSA",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "linden",
+    "name": "Saeed bin Zaid Musallah and Madrassah, Linden, JHB",
+    "location": "43 5th St, Linden, Johannesburg, 2104, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "sautulquraan",
+    "name": "Sautul Quraan, Jhb, RSA",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "selebiphikwe",
+    "name": "Selebi Phikwe Masjid - Botswana",
+    "location": "Plot 5165 Independence Rd, Selebi Phikwe, Botswana",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "shanulislam",
+    "name": "Shanul Islam Masjid, JHB",
+    "location": "2 Neon Ave, Lenasia, 1821, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "shellybeach",
+    "name": "Shelly Beach Musallah - KZN",
+    "location": "53 Marine Dr, Windsor on Sea, Margate, 4265, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "siraatulhaq",
+    "name": "Siraatul Haq Musjid Estcourt",
+    "location": "7 10th Avenue, Estcourt, 3310, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "soofie",
+    "name": "Soofie Masjid, Ladysmith, KZN, RSA",
+    "location": "45 Mosque Road, Ladysmith, 3370, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "saqu",
+    "name": "South African Quraan Union",
+    "location": "3 Paulsberg Road, Heideveld, Cape Town, Western Cape, South Africa, 7764",
+    "genre": "Institution"
+  },
+  {
+    "mount": "spirituallight",
+    "name": "Spiritual Light - Maulana Ridwan Kajee, Jhb, RSA",
+    "location": "Madrasah Raudatul Islah, 59 Iberis Rd, Eikenhof, 1872, South Africa",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "stangermasjid",
+    "name": "Stanger Jaamia Masjid, Kzn, RSA",
+    "location": "Mahatma Ghandi Street, Stanger, Kwazulu Natal, South Africa, 4450",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "suffa",
+    "name": "Suffa Musalla and Madrasah, Fordsburg, JHB",
+    "location": "41 Central Rd, Fordsburg, Johannesburg, 2092, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "summerglade",
+    "name": "Summerglade Musallah - KZN",
+    "location": "Flat 108 Summerglades, 17 Avondale Rd, Essenwood, Berea, 4001, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "sunninghill",
+    "name": "Sunninghill Masjid - Sandton - JHB",
+    "location": "Sunninghill Village Shopping Centre, Upper Ground, Corner of Maxwell Drive & Edison Crescent, 97 Edison Cres, Sunninghill, Sandton, 2157, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "taqwaboys",
+    "name": "Taqwa Boys School, Durban, Kzn, RSA",
+    "location": "11 View St, Sydenham, Berea, Durban, Kwazulu Natal, South Africa, 4091",
+    "genre": "Institution"
+  },
+  {
+    "mount": "poplartaraweeh",
+    "name": "Taraweeh 6 Poplar Street, Grey Town",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "bergvilletlc",
+    "name": "Tarbiyat Learning Centre, Bergville, Kzn, RSA",
+    "location": "2 Retief St, Bergville, 3350, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "tqinigeria",
+    "name": "Tarteelul Quraan Institute, Abuja, Nigeria",
+    "location": "12 Cape Town Street, Wuse Zone, 4 Abuja, Nigeria",
+    "genre": "Institution"
+  },
+  {
+    "mount": "thejamiat",
+    "name": "The Jamiatul Ulama, De Deur, Jhb, RSA",
+    "location": "4 R82, The De Deur Estates, De Deur, Gauteng, South Africa, 1884",
+    "genre": "Institution"
+  },
+  {
+    "mount": "townlinemuslimcentre",
+    "name": "Townline Muslim Centre",
+    "location": "1170 Townline Rd, Cambridge, ON N1T 2E7, Canada",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "trichardt",
+    "name": "Trichardt Jami Masjid, MP",
+    "location": "11 Ebrahim Daya St, Trichardt, 2302, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "turffontein",
+    "name": "Turffontein Musallah, Johannesburg, Gauteng, RSA",
+    "location": "6 Jackson Rd, West Turffontein, Johannesburg South, 2190, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ulamapublications",
+    "name": "Ulama Publications",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "umhlanga",
+    "name": "Umhlanga Masjid, Durban, KZN, RSA",
+    "location": "2 Bruton Cl, Somerset Park, uMhlanga, 4319, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "umzinto",
+    "name": "Umzinto Jaame Masjid, Kzn, RSA",
+    "location": "Nelson Mandela Road, Umzinto, Kwazulu Natal, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "ustaadhaffejee",
+    "name": "Ustaad Hafiz Shafeeq Haffejee",
+    "location": "",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "uswatulmuslimah",
+    "name": "Uswatul Muslimah - South Africa",
+    "location": "",
+    "genre": "Institution"
+  },
+  {
+    "mount": "victoriaroad",
+    "name": "Victoria Road Jamaat Khana, Newcastle, KZN, RSA",
+    "location": "75 Victoria Rd, Pioneer Park, Newcastle, 2940, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "voicingourakaabireen",
+    "name": "Voicing Our Akaabireen - Durban",
+    "location": "",
+    "genre": "Aalim"
+  },
+  {
+    "mount": "volksrust",
+    "name": "Volksrust Mosque",
+    "location": "27 Dr Nelson Mandela Dr, Volksrust, 2470, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "warrenton",
+    "name": "Warrenton Masjid, Warrenton, North West, RSA",
+    "location": "2 Warrent Cres, Warrenton, 8530, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "kenwyn",
+    "name": "Waterloo Road Masjid, Kenwyn, Cpt, RSA",
+    "location": "42 Waterloo Road, Kenwyn, Cape Town, Western Cape, South Africa, 7779",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "welkom",
+    "name": "Welkom Masjid, Free State, RSA",
+    "location": "73 Tempest Rd, Jim Fouchepark, Welkom, 9459, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "weltevredenpark",
+    "name": "Weltevredenpark Musallah, JHB",
+    "location": "96 Kastaiing St, Weltevredenpark, Roodepoort, 1709, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "wendywood",
+    "name": "Wendywood Musallah, Sandton, Jhb, RSA",
+    "location": "93 Bowling Ave, Morningside Manor, Sandton, Johannesburg, Gauteng, South Africa,2057",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "westcliff",
+    "name": "Westcliff Musallah - JHB, RSA",
+    "location": "1 Lawrence Rd, Westcliff, Johannesburg, 2193, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "westville",
+    "name": "Westville Masjid, Durban, Kzn, RSA",
+    "location": "46 Meerut Road, Westville, Durban, Kwazulu Natal, South Africa, 3630",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "wifaq",
+    "name": "Wifaqul Ulama SA",
+    "location": "101 Conner Street, Estcourt, South Africa",
+    "genre": "Institution"
+  },
+  {
+    "mount": "wimbledon",
+    "name": "Wimbledon Mosque, London, UK",
+    "location": "262-270 Durnsford Rd, London SW19 8DS, UK",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "witbanktown",
+    "name": "Witbank Jummuah Masjid, Mpumalanga, RSA",
+    "location": "Cnr Nicol & Dahlia Street, Witbank, Emalahleni, Mpumalanga, South Africa, 1035",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "kensington",
+    "name": "Zeenatul Islam Masjid, Kensington, Jhb, RSA",
+    "location": "26 Minerva St, Kensington, Johannesburg, 2101, South Africa",
+    "genre": "Masjid"
+  },
+  {
+    "mount": "zeerust",
+    "name": "Zeerust Jaami'ah Masjid, North West, RSA",
+    "location": "3 Queen St, Zeerust, 2865, South Africa",
+    "genre": "Masjid"
+  }
+]

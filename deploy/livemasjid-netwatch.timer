@@ -1,0 +1,10 @@
+[Unit]
+Description=Check network health every 30 s
+
+[Timer]
+OnBootSec=45s
+OnUnitActiveSec=30s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

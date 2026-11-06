@@ -1,0 +1,38 @@
+[Unit]
+Description=Live Masjid auto-player
+After=network.target bluetooth.service bluealsa.service sound.target
+Wants=bluetooth.service bluealsa.service
+# Never give up restarting.
+StartLimitIntervalSec=0
+
+[Service]
+Type=notify
+User=livemasjid
+Group=livemasjid
+SupplementaryGroups=audio bluetooth
+EnvironmentFile=-/etc/default/livemasjid
+Environment=LIVEMASJID_DATA=/var/lib/livemasjid
+StateDirectory=livemasjid
+# Radio may be soft-blocked after boot (Pi OS default); "+" runs this as root.
+ExecStartPre=+-/usr/sbin/rfkill unblock bluetooth
+ExecStart=/opt/livemasjid/bin/livemasjid
+# Bind port 80 without running as root.
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+Restart=always
+RestartSec=1
+# The app pets the watchdog only while its player loop and audio thread are healthy.
+WatchdogSec=45
+TimeoutStartSec=30
+TimeoutStopSec=5
+# Audio gets priority over everything else on the Pi.
+Nice=-10
+CPUWeight=1000
+IOWeight=1000
+OOMScoreAdjust=-800
+MemoryMax=128M
+ProtectSystem=full
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
