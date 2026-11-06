@@ -124,6 +124,7 @@ pub struct Paths {
     pub settings: PathBuf,
     pub catalog: PathBuf,
     pub history: PathBuf,
+    pub site: PathBuf,
 }
 
 impl Paths {
@@ -137,6 +138,7 @@ impl Paths {
             settings: dir.join("settings.json"),
             catalog: dir.join("catalog.json"),
             history: dir.join("history.jsonl"),
+            site: dir.join("site.json"),
         }
     }
 }

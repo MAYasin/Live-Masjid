@@ -1,0 +1,82 @@
+/* Design tokens, reset, typography and small utilities. */
+
+:root {
+  --bg: #fafafa;
+  --surface: #ffffff;
+  --hover: #f4f4f5;
+  --border: #e4e4e7;
+  --border-strong: #d4d4d8;
+  --text: #18181b;
+  --text-2: #52525b;
+  --text-3: #a1a1aa;
+  --primary: #18181b;
+  --on-primary: #ffffff;
+  --live: #16a34a;
+  --warn: #d97706;
+  --danger: #dc2626;
+
+  --radius: 6px;
+  --sidebar: 232px;
+  --topbar: 56px;
+  --font: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0a0a0a;
+    --surface: #121212;
+    --hover: #1a1a1a;
+    --border: #232323;
+    --border-strong: #2e2e2e;
+    --text: #ededed;
+    --text-2: #a1a1a1;
+    --text-3: #6b6b6b;
+    --primary: #ededed;
+    --on-primary: #0a0a0a;
+    --live: #22c55e;
+    --warn: #f59e0b;
+    --danger: #f87171;
+    color-scheme: dark;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  scrollbar-gutter: stable;
+}
+
+html, body { margin: 0; max-width: 100%; overflow-x: hidden; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 var(--font);
+  -webkit-font-smoothing: antialiased;
+}
+
+button, input, select { font: inherit; color: inherit; margin: 0; }
+button { cursor: pointer; }
+svg { flex: none; }
+[hidden] { display: none !important; }
+
+h1 { font-size: 22px; line-height: 1.25; font-weight: 600; letter-spacing: -0.02em; margin: 0; }
+
+:focus-visible { outline: 2px solid var(--text-2); outline-offset: 2px; }
+
+/* utilities */
+.text-2 { color: var(--text-2); }
+.text-3 { color: var(--text-3); }
+.small { font-size: 13px; }
+.xsmall { font-size: 12px; }
+.truncate { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.grow { flex: 1; min-width: 0; }
+.tabular { font-variant-numeric: tabular-nums; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
