@@ -15,6 +15,7 @@ struct Active {
     hist_id: Option<u64>,
     reconnects: u32,
     stop_reason: Option<&'static str>,
+    buffer_ms: Arc<std::sync::atomic::AtomicU64>,
 }
 
 pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx: UnboundedReceiver<Signal>) {
@@ -135,6 +136,7 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                         app.status.send_modify(|st| {
                             st.codec = None;
                             st.stream_url = None;
+                            st.buffer_ms = 0;
                             if let Some(m) = &st.mount { st.last_heard_ms = app.history.lock().unwrap().last_heard(m); }
                         });
                         let mount = app.settings().mount;
@@ -150,6 +152,8 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
             },
             _ = tick.tick() => {
                 if let Some(a) = &active {
+                    let b = a.buffer_ms.load(Ordering::Relaxed);
+                    app.status.send_if_modified(|st| { let changed = st.buffer_ms / 1000 != b / 1000; st.buffer_ms = b; changed });
                     if let Some(id) = a.hist_id {
                         app.history.lock().unwrap().touch(id, a.reconnects);
                         app.status.send_modify(|st| st.last_heard_ms = Some(now_ms()));
@@ -179,6 +183,7 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
             next_token += 1;
             let token = next_token;
             let stop = Arc::new(AtomicBool::new(false));
+            let buffer_ms = Arc::new(std::sync::atomic::AtomicU64::new(0));
             let epoch = app.sink.new_epoch();
             let (tx, mut rx) = unbounded_channel();
             let fwd = ev_tx.clone();
@@ -197,12 +202,13 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                 stop: stop.clone(),
                 events: tx,
                 start_grace: if trigger == "probe" { Duration::ZERO } else { crate::stream::START_GRACE },
+                buffer_ms: buffer_ms.clone(),
             };
             std::thread::Builder::new()
                 .name("stream".into())
                 .spawn(move || crate::stream::run_session(params))
                 .expect("spawn stream thread");
-            active = Some(Active { token, stop, mount, trigger, hist_id: None, reconnects: 0, stop_reason: None });
+            active = Some(Active { token, stop, mount, trigger, hist_id: None, reconnects: 0, stop_reason: None, buffer_ms });
             if trigger != "probe" {
                 app.set_phase(Phase::Connecting);
             }

@@ -69,7 +69,7 @@ usermod -aG audio,bluetooth livemasjid
 
 echo "==> Files"
 install -d -m 755 "$D" "$D/bin" /etc/livemasjid
-install -m 755 "$HERE/update.sh" "$HERE/install-bin.sh" "$HERE/netwatch.sh" "$D/"
+install -m 755 "$HERE/update.sh" "$HERE/install-bin.sh" "$HERE/netwatch.sh" "$HERE/bt-recover.sh" "$D/"
 install -m 644 "$HERE"/livemasjid*.service "$HERE"/livemasjid*.timer /etc/systemd/system/
 [ -f /etc/default/livemasjid ] || echo 'LIVEMASJID_PORT=80' > /etc/default/livemasjid
 if [ -n "$REPO" ]; then
@@ -82,6 +82,7 @@ cat > /etc/sudoers.d/livemasjid <<EOF
 $DEPLOY_USER ALL=(root) NOPASSWD: $D/install-bin.sh
 livemasjid ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block livemasjid-update.service
 livemasjid ALL=(root) NOPASSWD: /usr/sbin/rfkill unblock bluetooth
+livemasjid ALL=(root) NOPASSWD: /opt/livemasjid/bt-recover.sh
 EOF
 chmod 440 /etc/sudoers.d/livemasjid
 visudo -cf /etc/sudoers.d/livemasjid >/dev/null

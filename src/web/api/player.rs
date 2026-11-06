@@ -1,0 +1,59 @@
+//! Playback controls and settings.
+
+use crate::state::{App, PlayerCmd, Signal};
+use crate::web::{ApiError, ApiResult, ok};
+use axum::Json;
+use axum::extract::{Path, State};
+use serde::Deserialize;
+use serde_json::json;
+
+pub async fn action(State(app): State<App>, Path(action): Path<String>) -> ApiResult {
+    let cmd = match action.as_str() {
+        "play" => PlayerCmd::PlayNow,
+        "stop" => PlayerCmd::Stop,
+        "test" => PlayerCmd::TestTone,
+        _ => return Err(ApiError::bad("unknown action")),
+    };
+    let _ = app.player_tx.send(cmd);
+    ok()
+}
+
+/// Settings that aren't already part of the live status.
+pub async fn config(State(app): State<App>) -> ApiResult {
+    let s = app.settings();
+    Ok(Json(json!({ "codec": s.codec, "poll_secs": s.poll_secs, "fallback_output": s.fallback_output })))
+}
+
+#[derive(Deserialize)]
+pub struct SettingsPatch {
+    autoplay: Option<bool>,
+    volume: Option<u8>,
+    keep_awake: Option<bool>,
+    codec: Option<String>,
+    poll_secs: Option<u64>,
+    fallback_output: Option<String>,
+}
+
+pub async fn settings(State(app): State<App>, Json(p): Json<SettingsPatch>) -> ApiResult {
+    let autoplay_on = p.autoplay == Some(true);
+    let output_changed = p.fallback_output.is_some();
+    app.update_settings(|s| {
+        if let Some(v) = p.autoplay { s.autoplay = v; }
+        if let Some(v) = p.volume { s.volume = v; }
+        if let Some(v) = p.keep_awake { s.keep_awake = v; }
+        if let Some(v) = p.codec { s.codec = v; }
+        if let Some(v) = p.poll_secs { s.poll_secs = v; }
+        if let Some(v) = p.fallback_output { s.fallback_output = v; }
+    })?;
+    if output_changed {
+        app.sink.retarget(crate::bluetooth::compute_targets(&app));
+    }
+    // Auto-play just switched on and the masjid is already live: start now.
+    if autoplay_on {
+        let live = app.settings().mount.as_deref().is_some_and(|m| crate::monitor::is_live(&app.live.read().unwrap(), m));
+        if live {
+            let _ = app.signal_tx.send(Signal::PollOnline);
+        }
+    }
+    ok()
+}

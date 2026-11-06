@@ -40,13 +40,29 @@ pub fn load_cache(app: &App) {
     }
 }
 
+/// The directory changes rarely; one fetch a month is plenty (the page is ~480 KB).
+/// New masjids can be pulled in any time with the Refresh button.
+const MAX_AGE_MS: u64 = 30 * 24 * 3600 * 1000;
+/// After a failed refresh: wait 6 h, doubling up to a week.
+const RETRY_FIRST_S: u64 = 6 * 3600;
+const RETRY_MAX_S: u64 = 7 * 24 * 3600;
+
 /// Refresh now. Returns number of stations.
 pub async fn refresh(app: &App) -> anyhow::Result<usize> {
+    if let Some(until) = app.site.blocked_until() {
+        let hours = until.saturating_sub(now_ms()).div_ceil(3_600_000);
+        anyhow::bail!("livemasjid.com is refusing this network; not contacting it for another {hours} h");
+    }
     let mut last_err = None;
     for base in crate::net::www_bases() {
         let url = format!("{base}/index.php");
         match fetch_text(app, &url).await {
+            Err(e) if crate::site::is_refusal(&e) => {
+                app.site.refused();
+                return Err(e);
+            }
             Ok(html) => {
+                app.site.ok();
                 let stations = parse(&html);
                 if stations.len() < 10 {
                     anyhow::bail!("catalog page parsed to only {} stations", stations.len());
@@ -76,29 +92,32 @@ async fn fetch_text(app: &App, url: &str) -> anyhow::Result<String> {
     Ok(resp.text().await?)
 }
 
-/// Background task: refresh when the cache is older than 12 h, retrying on failure.
+/// Background task: refresh monthly; on failure retry after 6 h, 12 h, … up to a week.
 pub async fn run(app: App) {
-    let mut delay = 0u64;
-    let mut fail_delay = 60u64;
+    let mut delay = 30u64; // let the network settle after boot
+    let mut fail_delay = RETRY_FIRST_S;
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
         let age = now_ms().saturating_sub(app.catalog_fetched_ms.load(Ordering::Relaxed));
-        if age < 12 * 3600 * 1000 {
-            delay = (12 * 3600 - age / 1000).max(60);
+        if age < MAX_AGE_MS {
+            delay = ((MAX_AGE_MS - age) / 1000).max(60);
+            continue;
+        }
+        if let Some(until) = app.site.blocked_until() {
+            delay = until.saturating_sub(now_ms()) / 1000 + 60;
             continue;
         }
         match refresh(&app).await {
             Ok(n) => {
                 app.log("info", format!("Masjid directory updated ({n} streams)"));
-                // Station location may now be known.
-                let _ = app.update_settings(|_| {});
-                delay = 12 * 3600;
-                fail_delay = 60;
+                let _ = app.update_settings(|_| {}); // station location may now be known
+                fail_delay = RETRY_FIRST_S;
+                delay = MAX_AGE_MS / 1000;
             }
             Err(e) => {
                 app.log("warn", format!("Masjid directory refresh failed: {e}"));
-                fail_delay = (fail_delay * 2).clamp(120, 3600);
                 delay = fail_delay;
+                fail_delay = (fail_delay * 2).min(RETRY_MAX_S);
             }
         }
     }

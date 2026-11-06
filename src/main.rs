@@ -8,6 +8,7 @@ mod monitor;
 mod net;
 mod player;
 mod sink;
+mod site;
 mod state;
 mod stream;
 mod web;
@@ -57,6 +58,7 @@ fn main() -> anyhow::Result<()> {
 
 async fn run() -> anyhow::Result<()> {
     let paths = config::Paths::from_env();
+    let paths_site = paths.site.clone();
     let settings = config::Settings::load(&paths.settings);
     settings.save(&paths.settings)?; // persist generated secret / migrated defaults
     tracing::info!("livemasjid {VERSION} starting; data in {:?}", paths.settings.parent());
@@ -87,6 +89,8 @@ async fn run() -> anyhow::Result<()> {
         password_set: settings.password_hash.is_some(),
         started_ms: now_ms(),
         live_count: 0,
+        site_blocked_until_ms: None,
+        buffer_ms: 0,
     };
 
     let app = Arc::new(AppState {
@@ -105,6 +109,7 @@ async fn run() -> anyhow::Result<()> {
         http: net::build_client(),
         sink,
         hb_player: AtomicU64::new(now_ms()),
+        site: site::SiteGuard::load(paths_site),
     });
 
     {
@@ -127,8 +132,8 @@ async fn run() -> anyhow::Result<()> {
     app.log("info", format!("Live Masjid {VERSION} started"));
 
     tokio::spawn(player::run(app.clone(), player_rx, signal_rx));
-    tokio::spawn(monitor::run_sse(app.clone()));
-    tokio::spawn(monitor::run_poll(app.clone()));
+    tokio::spawn(monitor::sse::run(app.clone()));
+    tokio::spawn(monitor::poll::run(app.clone()));
     tokio::spawn(catalog::run(app.clone()));
     tokio::spawn(bluetooth::run(app.clone()));
     tokio::spawn(watchdog(app.clone()));
@@ -172,6 +177,8 @@ async fn watchdog(app: state::App) {
         let now = now_ms();
         let p = now.saturating_sub(app.hb_player.load(Ordering::Relaxed));
         let s = now.saturating_sub(app.sink.heartbeat.load(Ordering::Relaxed));
+        let blocked = app.site.blocked_until();
+        app.status.send_if_modified(|st| std::mem::replace(&mut st.site_blocked_until_ms, blocked) != blocked);
         if p < 30_000 && s < 30_000 {
             sd_notify("WATCHDOG=1");
         } else {

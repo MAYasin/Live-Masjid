@@ -1,0 +1,42 @@
+/* View-specific styles. */
+
+/* Now playing */
+.status-line { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; font-size: 12.5px; font-weight: 500; color: var(--text-2); }
+.status-line .dot { width: 8px; height: 8px; }
+.phase-playing .status-line { color: var(--live); }
+.phase-playing .status-line .dot { background: var(--live); animation: pulse 1.8s ease-out infinite; }
+.phase-connecting .status-line,
+.phase-reconnecting .status-line { color: var(--warn); }
+.phase-connecting .status-line .dot,
+.phase-reconnecting .status-line .dot { background: var(--warn); }
+@keyframes pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 55%, transparent); }
+  100% { box-shadow: 0 0 0 7px transparent; }
+}
+.now-actions { margin-top: 18px; }
+.volume { display: flex; align-items: center; gap: 14px; padding: 14px 20px; border-top: 1px solid var(--border); }
+.volume svg { width: 16px; height: 16px; color: var(--text-2); }
+.volume output { flex: none; width: 30px; text-align: right; font-size: 13px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+@media (max-width: 480px) { .volume { padding: 12px 16px; } }
+.empty-state { padding: 40px 20px; text-align: center; }
+.empty-state p { max-width: 380px; margin: 8px auto 20px; color: var(--text-2); }
+
+/* Masjids */
+.toolbar { position: sticky; top: calc(var(--topbar) + env(safe-area-inset-top)); z-index: 10; margin-top: -4px; padding: 4px 0 12px; background: var(--bg); }
+.toolbar input {
+  width: 100%;
+  height: 38px;
+  padding-left: 34px;
+  background: var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23a1a1aa' stroke-width='1.6' stroke-linecap='round' viewBox='0 0 24 24'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat 11px center;
+}
+.toolbar .tabs { margin-top: 10px; }
+.result-count { margin: 0 0 8px; font-size: 12px; color: var(--text-3); }
+
+/* History */
+.history-filter { margin: 20px 0 12px; }
+
+/* Settings: activity log */
+.log { max-height: 340px; overflow: auto; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); font: 12px/1.6 var(--mono); }
+.log div { white-space: pre-wrap; overflow-wrap: anywhere; }
+.log .warn { color: var(--warn); }
+.log .error { color: var(--danger); }
