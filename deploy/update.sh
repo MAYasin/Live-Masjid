@@ -42,7 +42,7 @@ tar -xzf "$TMP/$ASSET" -C "$TMP"
 
 # Refresh helper scripts and units shipped with the release.
 if [ -d "$TMP/livemasjid/deploy" ]; then
-  install -m 755 "$TMP/livemasjid/deploy/update.sh" "$TMP/livemasjid/deploy/install-bin.sh" "$TMP/livemasjid/deploy/netwatch.sh" "$D/"
+  install -m 755 "$TMP/livemasjid/deploy/update.sh" "$TMP/livemasjid/deploy/install-bin.sh" "$TMP/livemasjid/deploy/netwatch.sh" "$TMP/livemasjid/deploy/bt-recover.sh" "$D/"
   changed=0
   for u in livemasjid.service livemasjid-update.service livemasjid-update.timer livemasjid-netwatch.service livemasjid-netwatch.timer; do
     if ! cmp -s "$TMP/livemasjid/deploy/$u" "/etc/systemd/system/$u"; then
@@ -50,6 +50,12 @@ if [ -d "$TMP/livemasjid/deploy" ]; then
       changed=1
     fi
   done
+  # Sudo rules added in later versions (narrow, root-owned helpers only).
+  SUDOERS=/etc/sudoers.d/livemasjid
+  if [ -f "$SUDOERS" ] && ! grep -q bt-recover "$SUDOERS"; then
+    echo "livemasjid ALL=(root) NOPASSWD: $D/bt-recover.sh" >> "$SUDOERS"
+    visudo -cf "$SUDOERS" >/dev/null || sed -i "/bt-recover/d" "$SUDOERS"
+  fi
   if [ "$changed" = 1 ]; then
     systemctl daemon-reload
     systemctl enable --now livemasjid-netwatch.timer >/dev/null 2>&1 || true

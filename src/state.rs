@@ -5,7 +5,7 @@ use crate::catalog::Station;
 use crate::config::{Paths, Settings};
 use crate::history::History;
 use serde::Serialize;
-use std::collections::{HashMap, VecDeque};
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::{mpsc, watch};
@@ -62,6 +62,8 @@ pub struct BtStatus {
     pub connected: bool,
     pub battery: Option<u8>,
     pub scanning: bool,
+    /// Controller reset in progress.
+    pub recovering: bool,
     pub bluealsa: bool,
     pub error: Option<String>,
 }
@@ -87,6 +89,10 @@ pub struct Status {
     pub password_set: bool,
     pub started_ms: u64,
     pub live_count: usize,
+    /// Audio waiting in the jitter buffer while playing (ms).
+    pub buffer_ms: u64,
+    /// Set while livemasjid.com is refusing us and we are staying away.
+    pub site_blocked_until_ms: Option<u64>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -129,7 +135,7 @@ pub struct AppState {
     pub catalog: RwLock<Vec<Station>>,
     pub catalog_fetched_ms: AtomicU64,
     /// mount (without extension) -> info for each extension variant
-    pub live: RwLock<HashMap<String, Vec<(String, LiveInfo)>>>,
+    pub live: RwLock<crate::monitor::LiveMap>,
     pub history: Mutex<History>,
     pub logs: Mutex<VecDeque<LogLine>>,
     pub player_tx: mpsc::UnboundedSender<PlayerCmd>,
@@ -141,6 +147,8 @@ pub struct AppState {
     pub sink: crate::sink::SinkHandle,
     /// Heartbeats for the systemd watchdog (ms timestamps).
     pub hb_player: AtomicU64,
+    /// Back-off state for www.livemasjid.com.
+    pub site: crate::site::SiteGuard,
 }
 
 pub type App = Arc<AppState>;

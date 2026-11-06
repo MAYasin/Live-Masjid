@@ -76,7 +76,8 @@ pub fn open_stream(host: &str, port: u16, path: &str) -> Result<StreamConn, Open
         let sock = sock.ok_or(last)?;
         let io = |e: std::io::Error| OpenError::Other(format!("{h}: {e}"));
         sock.set_nodelay(true).map_err(io)?;
-        sock.set_read_timeout(Some(Duration::from_secs(8))).map_err(io)?;
+        // Pages arrive about once a second; 6 s of silence means the connection stalled.
+        sock.set_read_timeout(Some(Duration::from_secs(6))).map_err(io)?;
         sock.set_write_timeout(Some(Duration::from_secs(4))).map_err(io)?;
         // One write: Icecast resets connections whose request line arrives fragmented.
         let req = format!(
