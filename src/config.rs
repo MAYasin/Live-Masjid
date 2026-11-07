@@ -25,6 +25,9 @@ pub struct Settings {
     pub keep_awake: bool,
     /// "auto" (Opus first – it goes live ~6 s before the MP3 mirror), "opus" or "mp3".
     pub codec: String,
+    /// Seconds behind the live edge to play (3 = near live, 8 = balanced, 20 = extra steady).
+    /// Icecast's connect burst is ~17–28 s of audio; we keep only this much of it.
+    pub live_delay_s: u32,
     /// Bluetooth SBC encoder quality: "high" (default) or "medium" (shown as "Low").
     pub bt_quality: String,
     /// Let people who open the UI play the stream / recordings on their own device (off by default).
@@ -51,6 +54,7 @@ impl Default for Settings {
             fallback_output: "auto".into(),
             keep_awake: true,
             codec: "auto".into(),
+            live_delay_s: 3,
             bt_quality: "high".into(),
             browser_listening: false,
             poll_secs: 20,
@@ -92,6 +96,7 @@ impl Settings {
     pub fn sanitize(&mut self) {
         self.volume = self.volume.min(100);
         self.poll_secs = self.poll_secs.clamp(10, 300);
+        self.live_delay_s = self.live_delay_s.clamp(2, 30);
         // "low" was removed: on some speakers its SBC bitpool cannot sustain real time (choppy audio).
         if !matches!(self.bt_quality.as_str(), "medium" | "high") {
             self.bt_quality = "high".into();

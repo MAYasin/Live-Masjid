@@ -21,7 +21,7 @@ pub async fn action(State(app): State<App>, Path(action): Path<String>) -> ApiRe
 /// Settings that aren't already part of the live status.
 pub async fn config(State(app): State<App>) -> ApiResult {
     let s = app.settings();
-    Ok(Json(json!({ "codec": s.codec, "poll_secs": s.poll_secs, "fallback_output": s.fallback_output, "bt_quality": s.bt_quality, "browser_listening": s.browser_listening })))
+    Ok(Json(json!({ "codec": s.codec, "live_delay_s": s.live_delay_s, "poll_secs": s.poll_secs, "fallback_output": s.fallback_output, "bt_quality": s.bt_quality, "browser_listening": s.browser_listening })))
 }
 
 #[derive(Deserialize)]
@@ -30,6 +30,7 @@ pub struct SettingsPatch {
     volume: Option<u8>,
     keep_awake: Option<bool>,
     codec: Option<String>,
+    live_delay_s: Option<u32>,
     poll_secs: Option<u64>,
     fallback_output: Option<String>,
     bt_quality: Option<String>,
@@ -48,11 +49,14 @@ pub async fn settings(State(app): State<App>, Json(p): Json<SettingsPatch>) -> A
         if let Some(v) = p.volume { s.volume = v; }
         if let Some(v) = p.keep_awake { s.keep_awake = v; }
         if let Some(v) = p.codec { s.codec = v; }
+        if let Some(v) = p.live_delay_s { s.live_delay_s = v.clamp(2, 30); }
         if let Some(v) = p.poll_secs { s.poll_secs = v; }
         if let Some(v) = p.fallback_output { s.fallback_output = v; }
         if let Some(v) = quality.clone() { s.bt_quality = v; }
         if let Some(v) = p.browser_listening { s.browser_listening = v; }
     })?;
+    // Applies immediately: a buffer that is now too long is trimmed on the next packet.
+    crate::stream::LIVE_DELAY_MS.store(u64::from(app.settings().live_delay_s) * 1000, std::sync::atomic::Ordering::Relaxed);
     if output_changed {
         app.sink.retarget(crate::bluetooth::compute_targets(&app));
     }

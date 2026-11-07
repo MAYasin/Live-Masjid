@@ -82,8 +82,22 @@
             </div>
           </div>
           <div class="local-bar" id="local-bar" hidden>
-            <span class="grow truncate small" id="local-title"></span>
-            <button class="btn small" id="local-stop"><svg><use href="#i-stop"/></svg>Stop here</button>
+            <div class="local-row">
+              <span class="grow truncate small" id="local-title"></span>
+              <button class="btn small" id="local-stop"><svg><use href="#i-stop"/></svg>Stop here</button>
+            </div>
+            <div class="local-row" id="local-controls">
+              <div class="seg" role="group" aria-label="Listening mode" id="local-mode">
+                <button data-mode="sync" title="Hear exactly what the speaker plays, at the same moment">In sync with speaker</button>
+                <button data-mode="direct" title="Straight from livemasjid's server, independent of the speaker (not in sync), about 1.5 s behind live">Direct from livemasjid</button>
+              </div>
+              <div class="sync-adjust" id="sync-adjust">
+                <span class="xsmall text-3">Timing</span>
+                <button class="btn small ghost" data-nudge="-0.1" title="Play earlier (this device is behind the speaker)" aria-label="Play earlier">−</button>
+                <output class="xsmall tabular" id="sync-offset">0.0 s</output>
+                <button class="btn small ghost" data-nudge="0.1" title="Play later (this device is ahead of the speaker)" aria-label="Play later">+</button>
+              </div>
+            </div>
           </div>
           <div class="volume">
             <svg><use href="#i-volume"/></svg>
@@ -193,6 +207,12 @@
           <div class="field">
             <div class="field-label"><b>Stream format</b><span>Auto prefers Opus, which goes live a few seconds before MP3</span></div>
             <select id="codec" aria-label="Stream format"><option value="auto">Auto</option><option value="opus">Opus</option><option value="mp3">MP3</option></select>
+          </div>
+          <div class="field">
+            <div class="field-label"><b>Delay behind live</b><span>How far behind the broadcast the speaker plays. A longer delay rides out Wi-Fi drop-outs without a gap.</span></div>
+            <select id="live-delay" aria-label="Delay behind live">
+              <option value="3">Near live (3 s)</option><option value="8">Balanced (8 s)</option><option value="20">Extra steady (20 s)</option>
+            </select>
           </div>
           <div class="field">
             <div class="field-label"><b>Status check interval</b><span>Backup to the live signal. Keep it gentle on livemasjid's servers.</span></div>

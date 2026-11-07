@@ -52,6 +52,13 @@ pub struct SinkHandle {
     /// Copy of exactly what goes to the device (mono, MIRROR_RATE, s16le), for browsers that
     /// "listen on this device" in sync with the speaker. Only produced while someone listens.
     pub mirror: tokio::sync::broadcast::Sender<Arc<[u8]>>,
+    /// Audio queued for the sink thread but not yet handed to the device, in µs.
+    queued_us: Arc<AtomicU64>,
+}
+
+/// Duration of an interleaved stereo chunk, in µs.
+fn chunk_us(rate: u32, stereo: &[i16]) -> u64 {
+    (stereo.len() / 2) as u64 * 1_000_000 / u64::from(rate.max(1))
 }
 
 /// Sample rate of the browser mirror (mono). 24 kHz is plenty for speech and adhan.
@@ -70,6 +77,7 @@ impl SinkHandle {
             epoch: Arc::new(AtomicU64::new(0)),
             targets: Arc::new(Mutex::new(Vec::new())),
             mirror: tokio::sync::broadcast::channel(64).0,
+            queued_us: Arc::new(AtomicU64::new(0)),
         };
         let h2 = h.clone();
         std::thread::Builder::new()
@@ -89,7 +97,18 @@ impl SinkHandle {
 
     /// Blocking send of PCM (applies back-pressure to the decoder). Returns false if the sink is gone.
     pub fn send_pcm(&self, epoch: u64, rate: u32, data: Vec<i16>) -> bool {
+        self.queued_us.fetch_add(chunk_us(rate, &data), Ordering::Relaxed);
         self.tx.send(SinkMsg::Pcm { epoch, rate, data }).is_ok()
+    }
+
+    fn dequeued(&self, rate: u32, data: &[i16]) {
+        let us = chunk_us(rate, data);
+        let _ = self.queued_us.try_update(Ordering::Relaxed, Ordering::Relaxed, |q| Some(q.saturating_sub(us)));
+    }
+
+    /// Decoded audio waiting for the sink thread, in ms.
+    pub fn queued_ms(&self) -> u64 {
+        self.queued_us.load(Ordering::Relaxed) / 1000
     }
 
     /// Start a new epoch: anything queued from before is dropped. Returns the new epoch.
@@ -203,8 +222,11 @@ impl Sink {
                     || self.last_pcm.is_some_and(|t| t.elapsed() < Duration::from_secs(3)));
             let wait = if feeding { Duration::from_millis(1) } else { Duration::from_millis(25) };
             match rx.recv_timeout(wait) {
-                Ok(SinkMsg::Pcm { epoch, .. }) if epoch != self.h.epoch.load(Ordering::SeqCst) => {}
+                Ok(SinkMsg::Pcm { epoch, rate, data }) if epoch != self.h.epoch.load(Ordering::SeqCst) => {
+                    self.h.dequeued(rate, &data);
+                }
                 Ok(SinkMsg::Pcm { rate, data, .. }) => {
+                    self.h.dequeued(rate, &data);
                     self.last_pcm = Some(Instant::now());
                     self.h.audible.store(true, Ordering::Relaxed);
                     cur_rate = rate;

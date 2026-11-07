@@ -7,6 +7,7 @@ import { subscribe } from "../store.js";
 
 export function init() {
   $("#codec").addEventListener("change", (e) => runAction(null, () => api("settings", { codec: e.target.value }), "Saved"));
+  $("#live-delay").addEventListener("change", (e) => runAction(null, () => api("settings", { live_delay_s: Number(e.target.value) }), "Saved"));
   $("#browser-listening").addEventListener("change", (e) =>
     runAction(null, () => api("settings", { browser_listening: e.target.checked }), e.target.checked ? "Visitors can now listen on their devices" : "Listening in the browser turned off"));
   $("#poll").addEventListener("change", (e) => runAction(null, () => api("settings", { poll_secs: Number(e.target.value) }), "Saved"));
@@ -40,6 +41,10 @@ async function loadConfig() {
     const c = await api("config");
     $("#codec").value = c.codec;
     $("#poll").value = String(c.poll_secs);
+    const delay = String(c.live_delay_s ?? 3);
+    // A custom value (set via the API) still shows up.
+    if (![...$("#live-delay").options].some((o) => o.value === delay)) $("#live-delay").add(new Option(`${delay} s`, delay));
+    $("#live-delay").value = delay;
     $("#browser-listening").checked = Boolean(c.browser_listening);
   } catch { /* keep previous values */ }
 }

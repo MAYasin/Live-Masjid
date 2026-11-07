@@ -77,6 +77,14 @@
 .rec-progress .meter i { background: var(--text); }
 
 /* Now playing: listening on this device */
-.local-bar { display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-top: 1px solid var(--border); background: var(--hover); }
+.local-bar { display: flex; flex-direction: column; gap: 8px; padding: 10px 20px; border-top: 1px solid var(--border); background: var(--hover); }
+.local-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; min-width: 0; }
+.seg { display: inline-flex; max-width: 100%; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.seg button { height: 28px; padding: 0 10px; border: 0; background: var(--surface); color: var(--text-2); font-size: 12px; font-weight: 500; white-space: nowrap; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button:hover { color: var(--text); }
+.seg button.active { background: var(--primary); color: var(--on-primary); }
+.sync-adjust { display: flex; align-items: center; gap: 2px; }
+.sync-adjust output { min-width: 44px; text-align: center; color: var(--text-2); }
 .local-bar b { font-weight: 600; color: var(--text); }
 @media (max-width: 480px) { .local-bar { padding: 10px 16px; } }
