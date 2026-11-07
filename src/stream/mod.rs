@@ -77,6 +77,8 @@ fn live_delay_ms() -> u64 {
 
 /// How long a dropped broadcast may stay unreachable before we call it finished.
 const DROP_GRACE: Duration = Duration::from_secs(30);
+/// While no stream server answers at all (our own network is down), keep retrying this long.
+const NETWORK_GRACE: Duration = Duration::from_secs(10 * 60);
 
 pub fn candidates(mount: &str, codec: &str) -> Vec<(&'static str, u16, String)> {
     let base = mount.trim_start_matches('/');
@@ -317,8 +319,9 @@ fn read_burst(conn: &mut StreamConn, p: &SessionParams) -> Result<Vec<u8>, Pumpe
 
 /// Hold latency near the live-delay target: after a drop-out the buffer refills with the
 /// audio we missed, putting us further behind; past target + slack, skip ahead to target.
-fn catch_up(pipe: &Pipeline, p: &SessionParams) {
-    // The buffer estimate needs a few seconds of decoded audio to settle.
+fn catch_up(pipe: &mut Pipeline, p: &SessionParams) {
+    // The buffer estimate needs a few seconds of decoded audio to settle (after joining, and
+    // after a skip: acting on the stale figure skipped twice in a row, 16 s then 17 s).
     if pipe.started.elapsed() < Duration::from_secs(8) {
         return;
     }
@@ -330,8 +333,9 @@ fn catch_up(pipe: &Pipeline, p: &SessionParams) {
     // Only the compressed part can be trimmed; the decoded part is already queued for the sink.
     let decoded = p.sink.queued_ms().min(ms);
     let keep = (pipe.queue.buffered() as u64 * target.saturating_sub(decoded) / (ms - decoded).max(1)) as usize;
-    tracing::debug!("catch-up: buffer {ms} ms (decoded {decoded} ms, {} bytes queued), keeping {keep} bytes", pipe.queue.buffered());
+    tracing::info!("catch-up: buffer {ms} ms (decoded {decoded} ms, {} bytes queued), keeping {keep} bytes", pipe.queue.buffered());
     if pipe.queue.trim_front(keep) > 0 {
+        pipe.started = Instant::now();
         p.buffer_ms.store(target, Ordering::Relaxed);
         let _ = p.events.send(StreamEvent::CaughtUp((ms - target) / 1000));
     }
@@ -350,23 +354,38 @@ fn connect(
     }
     let started = Instant::now();
     let mut attempt = 0u32;
+    let mut told_offline = false;
     loop {
         let mut last_err = None;
+        // Did any server answer "not live"? If none answered at all, the broadcast may well
+        // still be on: it is our network (Wi-Fi, DNS) that is down.
+        let mut answered = false;
         for (host, port, path) in &order {
             if p.stop.load(Ordering::Relaxed) {
                 return Err(EndReason::Stopped);
             }
             match open_stream(host, *port, path) {
                 Ok(c) => return Ok(c),
-                Err(OpenError::NotFound) => {}
+                Err(OpenError::NotFound) => answered = true,
                 Err(e) => last_err = Some(e.to_string()),
             }
         }
         if started.elapsed() >= grace {
-            if let Some(e) = last_err {
-                tracing::warn!("stream connect failed: {e}");
+            // Mid-broadcast and no server reachable: keep retrying (quickly) until the network
+            // is back, instead of calling the broadcast over and waiting for a status check.
+            let offline = prefer.is_some() && !answered && started.elapsed() < NETWORK_GRACE;
+            if offline {
+                if !told_offline {
+                    told_offline = true;
+                    let e = last_err.as_deref().unwrap_or("no response");
+                    tracing::warn!("network unreachable ({e}); still retrying the stream");
+                }
+            } else {
+                if let Some(e) = last_err {
+                    tracing::warn!("stream connect failed: {e}");
+                }
+                return Err(EndReason::NotLive);
             }
-            return Err(EndReason::NotLive);
         }
         attempt += 1;
         // Quick first retries (a fresh mount appears within seconds), then ease off:
