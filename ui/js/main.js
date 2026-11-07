@@ -2,6 +2,7 @@
 
 import { api, setUnauthorizedHandler } from "./api.js";
 import { $, $$, closeModal, initModals, openModal } from "./dom.js";
+import * as local from "./local.js";
 import * as store from "./store.js";
 import * as historyView from "./views/history.js";
 import * as masjids from "./views/masjids.js";
@@ -82,6 +83,7 @@ async function boot() {
 }
 
 initModals();
+local.init();
 initNavigation();
 initConnectionIndicator();
 initLogin();

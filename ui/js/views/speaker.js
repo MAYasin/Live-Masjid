@@ -114,6 +114,6 @@ async function loadOutputs() {
     const select = $("#fallback");
     select.innerHTML = options.map(([v, label]) => `<option value="${escapeHtml(v)}">${escapeHtml(label)}</option>`).join("");
     select.value = config.fallback_output;
-    $("#bt-quality").value = config.bt_quality ?? "medium";
+    $("#bt-quality").value = config.bt_quality ?? "high";
   } catch { /* leave previous options */ }
 }

@@ -120,6 +120,8 @@ pub struct Status {
     pub site_blocked_until_ms: Option<u64>,
     /// Set while a past recording is playing.
     pub recording: Option<RecordingStatus>,
+    /// Visitors may listen on their own device.
+    pub browser_listening: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -222,6 +224,7 @@ impl AppState {
             st.volume = snapshot.volume;
             st.keep_awake = snapshot.keep_awake;
             st.password_set = snapshot.password_hash.is_some();
+            st.browser_listening = snapshot.browser_listening;
             st.mount = snapshot.mount.clone();
             st.station_name = snapshot.station_name.clone();
             st.station_location = loc;

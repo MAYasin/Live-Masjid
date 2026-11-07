@@ -28,6 +28,7 @@
       <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.8v14.4a.8.8 0 0 0 1.2.7l11.4-7.2a.8.8 0 0 0 0-1.4L8.2 4.1A.8.8 0 0 0 7 4.8z"/></symbol>
       <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
       <symbol id="i-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9.5 9.5 0 0 1 0 13"/></symbol>
+      <symbol id="i-headphones" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="3" y="15" width="4" height="6" rx="1.5"/><rect x="17" y="15" width="4" height="6" rx="1.5"/></symbol>
       <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
       <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/></symbol>
     </defs>
@@ -76,8 +77,13 @@
               <button class="btn primary" id="stop" hidden><svg><use href="#i-stop"/></svg>Stop</button>
               <button class="btn primary" id="rec-pause" hidden>Pause</button>
               <button class="btn" id="rec-stop" hidden><svg><use href="#i-stop"/></svg>Back to live radio</button>
+              <button class="btn" id="listen-here" hidden><svg><use href="#i-headphones"/></svg>Listen on this device</button>
               <button class="btn" data-go="masjids">Change masjid</button>
             </div>
+          </div>
+          <div class="local-bar" id="local-bar" hidden>
+            <span class="grow truncate small" id="local-title"></span>
+            <button class="btn small" id="local-stop"><svg><use href="#i-stop"/></svg>Stop here</button>
           </div>
           <div class="volume">
             <svg><use href="#i-volume"/></svg>
@@ -154,10 +160,10 @@
             <select id="fallback" aria-label="Fallback output"></select>
           </div>
           <div class="field">
-            <div class="field-label"><b>Bluetooth audio quality</b><span>Balanced suits speech and adhan and is the most reliable. High uses more Bluetooth bandwidth.</span></div>
+            <div class="field-label"><b>Bluetooth audio quality</b><span>High is the default. Low uses less Bluetooth bandwidth, which can help if the speaker is far away or Wi-Fi is busy.</span></div>
             <select id="bt-quality" aria-label="Bluetooth audio quality">
-              <option value="medium">Balanced</option>
-              <option value="high">High quality</option>
+              <option value="high">High (default)</option>
+              <option value="medium">Low</option>
             </select>
           </div>
           <div class="field">
@@ -194,6 +200,10 @@
               <option value="10">10 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option>
               <option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option>
             </select>
+          </div>
+          <div class="field">
+            <div class="field-label"><b>Listen in the browser</b><span>Lets anyone who opens this page play the stream or recordings on their own phone or computer. The Pi's speaker keeps playing as normal.</span></div>
+            <label class="switch"><input type="checkbox" id="browser-listening" aria-label="Listen in the browser"><span></span></label>
           </div>
           <div class="field">
             <div class="field-label"><b>Masjid directory</b><span id="directory-info">—</span></div>
@@ -253,6 +263,7 @@
     <button data-view="settings"><svg><use href="#i-sliders"/></svg>Settings</button>
   </nav>
 
+  <audio id="local-audio" preload="none" hidden></audio>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <div class="modal" id="login-modal">

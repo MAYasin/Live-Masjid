@@ -5,6 +5,7 @@ import { $, runAction, setStat } from "../dom.js";
 import { clockTime, duration, lowerFirst, timeAgo } from "../format.js";
 import { getStatus, subscribe } from "../store.js";
 import { historyRow } from "./history.js";
+import * as local from "../local.js";
 import * as recordings from "./recordings.js";
 import * as salah from "./salah.js";
 
@@ -41,6 +42,11 @@ export function init() {
   $("#rec-stop").addEventListener("click", (e) => runAction(e.currentTarget, () => api("recordings/stop", {}), "Back to live radio"));
   $("#recordings-all").addEventListener("click", () => { location.hash = `recordings/${getStatus()?.mount ?? ""}`; });
   $("#recordings-latest").addEventListener("click", recordings.onPlayClick);
+  $("#listen-here").addEventListener("click", (e) => {
+    const s = getStatus();
+    runAction(e.currentTarget, () => local.playLive(s?.mount, s?.station_name));
+  });
+  local.onChange(() => { const s = getStatus(); if (s) render(s); });
   subscribe(render);
   // Countdown to the next salah, and a periodic refresh (the Pi serves it from cache).
   setInterval(salah.tick, 30 * 1000);
@@ -108,6 +114,8 @@ function render(s) {
   $("#rec-pause").hidden = !rec;
   $("#rec-stop").hidden = !rec;
   $("#rec-progress").hidden = !rec;
+  const onAir = s.signals.poll_live || ["playing", "reconnecting"].includes(s.phase);
+  $("#listen-here").hidden = !s.browser_listening || !onAir || local.isPlaying();
   if (rec) {
     $("#rec-pause").textContent = rec.paused ? "Resume" : "Pause";
     const total = rec.duration_s;

@@ -188,7 +188,14 @@ impl Sink {
         let mut cur_rate = RATE;
         loop {
             self.h.heartbeat.store(crate::state::now_ms(), Ordering::Relaxed);
-            match rx.recv_timeout(Duration::from_millis(25)) {
+            // While feeding silence, don't wait: write it back-to-back and let the device pace
+            // us (play() blocks while the device buffer is full). Waiting 25 ms before each
+            // 20 ms chunk delivered only ~80% of real time, so idle speakers kept under-running.
+            let feeding = self.open.is_some()
+                && (self.h.keep_awake.load(Ordering::Relaxed)
+                    || self.last_pcm.is_some_and(|t| t.elapsed() < Duration::from_secs(3)));
+            let wait = if feeding { Duration::from_millis(1) } else { Duration::from_millis(25) };
+            match rx.recv_timeout(wait) {
                 Ok(SinkMsg::Pcm { epoch, .. }) if epoch != self.h.epoch.load(Ordering::SeqCst) => {}
                 Ok(SinkMsg::Pcm { rate, data, .. }) => {
                     self.last_pcm = Some(Instant::now());

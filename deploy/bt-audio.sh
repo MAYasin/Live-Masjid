@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SAVED=/etc/livemasjid/bt-quality
-QUALITY="${1:-$(cat "$SAVED" 2>/dev/null || echo medium)}"
+QUALITY="${1:-$(cat "$SAVED" 2>/dev/null || echo high)}"
 [ "$QUALITY" = low ] && QUALITY=medium   # "low" was removed: it can't sustain real time on some speakers
 case "$QUALITY" in medium|high|xq) ;; *) echo "invalid quality: $QUALITY" >&2; exit 2 ;; esac
 
