@@ -81,13 +81,16 @@ pub async fn listen(State(app): State<App>, Query(q): Query<MountQuery>) -> ApiR
     let mount = mount_or_selected(&app, q)?;
     let base = mount.strip_suffix(".mp3").unwrap_or(&mount).to_string();
     let live = crate::monitor::is_live(&app.live.read().unwrap(), &base);
-    let mut sources = Vec::new();
+    // First: the Pi's own output, in sync with the speaker (and plays recordings too).
+    // Fallback: livemasjid's streams directly (not in sync).
+    let mut sources = vec![json!({ "url": "/api/listen/live.wav", "type": "audio/wav", "synced": true })];
     for (path, kind) in [(format!("{base}.mp3"), "audio/mpeg"), (base.clone(), "audio/ogg")] {
         for (host, port) in crate::net::STREAM_HOSTS.iter().rev() {
             sources.push(json!({ "url": format!("http://{host}:{port}/{path}"), "type": kind }));
         }
     }
-    Ok(Json(json!({ "mount": base, "live": live, "sources": sources })))
+    let playing = matches!(app.status.borrow().phase, crate::state::Phase::Playing | crate::state::Phase::Reconnecting | crate::state::Phase::Recording);
+    Ok(Json(json!({ "mount": base, "live": live || playing, "sources": sources })))
 }
 
 #[derive(Deserialize)]
@@ -104,4 +107,74 @@ pub async fn recording_url(State(app): State<App>, Query(r): Query<RecordingRef>
     }
     let rec = recordings::find(&app, &r.mount, &r.id).await.ok_or_else(|| ApiError::bad("recording not found; refresh the list"))?;
     Ok(Json(json!({ "url": rec.url, "title": rec.title })))
+}
+
+/// Most simultaneous browser listeners (each costs ~48 KB/s of the Pi's Wi-Fi).
+const MAX_MIRROR_LISTENERS: usize = 6;
+
+/// WAV header for an endless mono 16-bit stream (sizes set to the maximum).
+fn wav_header(rate: u32) -> Vec<u8> {
+    let mut h = Vec::with_capacity(44);
+    h.extend_from_slice(b"RIFF");
+    h.extend_from_slice(&u32::MAX.to_le_bytes());
+    h.extend_from_slice(b"WAVEfmt ");
+    h.extend_from_slice(&16u32.to_le_bytes()); // fmt chunk size
+    h.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    h.extend_from_slice(&1u16.to_le_bytes()); // mono
+    h.extend_from_slice(&rate.to_le_bytes());
+    h.extend_from_slice(&(rate * 2).to_le_bytes()); // byte rate
+    h.extend_from_slice(&2u16.to_le_bytes()); // block align
+    h.extend_from_slice(&16u16.to_le_bytes()); // bits per sample
+    h.extend_from_slice(b"data");
+    h.extend_from_slice(&(u32::MAX - 36).to_le_bytes());
+    h
+}
+
+/// Exactly what the Pi's speaker is playing, as an endless WAV stream, paced by the Pi's
+/// audio device — so the visitor hears the same audio at (nearly) the same moment.
+pub async fn listen_live(State(app): State<App>) -> Result<axum::response::Response, ApiError> {
+    use axum::http::header;
+    use axum::response::IntoResponse;
+    use tokio::sync::broadcast::error::RecvError;
+    browser_listening_enabled(&app)?;
+    if app.sink.mirror.receiver_count() >= MAX_MIRROR_LISTENERS {
+        return Err(ApiError::bad("Too many devices are listening right now"));
+    }
+    let rx = app.sink.mirror.subscribe();
+    let header = bytes::Bytes::from(wav_header(crate::sink::MIRROR_RATE));
+    let stream = futures_util::stream::unfold((rx, Some(header)), |(mut rx, header)| async move {
+        if let Some(h) = header {
+            return Some((Ok::<_, std::convert::Infallible>(h), (rx, None)));
+        }
+        loop {
+            match rx.recv().await {
+                Ok(chunk) => return Some((Ok(bytes::Bytes::copy_from_slice(&chunk)), (rx, None))),
+                // A slow listener fell behind: skip ahead rather than drift.
+                Err(RecvError::Lagged(_)) => continue,
+                Err(RecvError::Closed) => return None,
+            }
+        }
+    });
+    Ok((
+        [
+            (header::CONTENT_TYPE, "audio/wav"),
+            (header::CACHE_CONTROL, "no-store"),
+            (header::HeaderName::from_static("x-accel-buffering"), "no"),
+        ],
+        axum::body::Body::from_stream(stream),
+    )
+        .into_response())
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn wav_header_is_well_formed() {
+        let h = super::wav_header(24_000);
+        assert_eq!(h.len(), 44);
+        assert_eq!(&h[0..4], b"RIFF");
+        assert_eq!(&h[8..16], b"WAVEfmt ");
+        assert_eq!(u32::from_le_bytes(h[24..28].try_into().unwrap()), 24_000);
+        assert_eq!(&h[36..40], b"data");
+    }
 }

@@ -44,7 +44,7 @@ export function init() {
   $("#recordings-latest").addEventListener("click", recordings.onPlayClick);
   $("#listen-here").addEventListener("click", (e) => {
     const s = getStatus();
-    runAction(e.currentTarget, () => local.playLive(s?.mount, s?.station_name));
+    runAction(e.currentTarget, () => local.playLive(s?.mount, s?.recording?.title ?? s?.station_name));
   });
   local.onChange(() => { const s = getStatus(); if (s) render(s); });
   subscribe(render);
@@ -114,7 +114,8 @@ function render(s) {
   $("#rec-pause").hidden = !rec;
   $("#rec-stop").hidden = !rec;
   $("#rec-progress").hidden = !rec;
-  const onAir = s.signals.poll_live || ["playing", "reconnecting"].includes(s.phase);
+  // The Pi mirrors whatever it plays (live or a recording) to the browser, in sync.
+  const onAir = s.signals.poll_live || ["playing", "reconnecting", "recording"].includes(s.phase);
   $("#listen-here").hidden = !s.browser_listening || !onAir || local.isPlaying();
   if (rec) {
     $("#rec-pause").textContent = rec.paused ? "Resume" : "Pause";

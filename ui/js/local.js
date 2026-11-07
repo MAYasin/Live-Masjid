@@ -1,6 +1,7 @@
 // Listening on *this* device (phone/laptop), independent of the Pi's speaker.
-// Uses one <audio> element; live streams come with several sources (MP3 first) and the
-// browser falls through to the next one if a source fails.
+// Uses one <audio> element. "Live" plays the Pi's own output (/api/listen/live.wav), paced
+// by the Pi's audio device, so it stays in sync with the speaker; if that fails the browser
+// falls through to livemasjid's streams (not in sync).
 
 import { api } from "./api.js";
 import { $, toast } from "./dom.js";
@@ -8,6 +9,20 @@ import { escapeHtml } from "./format.js";
 
 let current = null; // { kind: "live" | "recording", title }
 const listeners = new Set();
+
+// Sync: the speaker plays ~0.9 s after the Pi hands audio over (queue + aplay + Bluetooth).
+// Browsers buffer 2–3 s of a live stream, so we gently speed up until our buffer matches,
+// then hold it there. Pitch is preserved, so a few % is inaudible on speech.
+const SYNC_TARGET_S = 0.9;
+let syncTimer;
+
+function keepInSync() {
+  const el = audio();
+  if (!current || el.paused || !el.currentSrc.includes("/api/listen/live.wav") || !el.buffered.length) return;
+  const ahead = el.buffered.end(el.buffered.length - 1) - el.currentTime;
+  const off = ahead - SYNC_TARGET_S;
+  el.playbackRate = off > 1 ? 1.1 : off > 0.12 ? 1.04 : off < -0.3 ? 0.97 : 1;
+}
 
 const audio = () => $("#local-audio");
 
@@ -20,7 +35,11 @@ function changed() {
   for (const fn of listeners) fn(current);
   const bar = $("#local-bar");
   bar.hidden = !current;
-  if (current) $("#local-title").innerHTML = `Listening on this device · <b>${escapeHtml(current.title)}</b>`;
+  if (current) {
+    const synced = audio().currentSrc.includes("/api/listen/live.wav");
+    const how = synced ? "in sync with the speaker" : "direct from livemasjid";
+    $("#local-title").innerHTML = `Listening on this device (${how}) · <b>${escapeHtml(current.title)}</b>`;
+  }
 }
 
 export const isPlaying = () => current !== null;
@@ -28,6 +47,10 @@ export const isPlaying = () => current !== null;
 function start(title, kind) {
   current = { kind, title };
   const el = audio();
+  el.preservesPitch = true;
+  el.playbackRate = 1;
+  clearInterval(syncTimer);
+  syncTimer = setInterval(keepInSync, 500);
   el.load();
   el.play().then(changed).catch((err) => {
     current = null;
@@ -62,6 +85,8 @@ export async function playRecording(mount, id) {
 
 export function stop() {
   const el = audio();
+  clearInterval(syncTimer);
+  el.playbackRate = 1;
   el.pause();
   el.removeAttribute("src");
   el.innerHTML = "";
