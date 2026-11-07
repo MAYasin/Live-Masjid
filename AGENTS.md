@@ -194,7 +194,13 @@ that aren't obvious from the code.
 - **`buffer_ms`** = the jitter buffer plus decoded PCM queued for the sink (`SinkHandle::queued_ms`, up to ~1.3 s in the 64-chunk channel).
   With a 3 s delay it reads about 1.3–2.2 s; the rest is in the pipe, aplay and Bluetooth. A drop-out longer than the delay plays silence,
   then resumes where it stopped (Ogg). Latency grows by the gap until the cap trims it.
-- **Stall detection:** 6 s socket read timeout (pages normally arrive about once per second).
+- **Stall detection:** 6 s socket read timeout (pages normally arrive about once per second). relay2 routinely pauses 2–3 s
+  between pages (seen from both the PC and the Pi), which is harmless.
+- **Network outage ≠ broadcast over** (2026-11-07). If no server answers at all (DNS failure, unreachable, refused), a reconnect keeps
+  retrying every ≤4 s for up to 10 min (`NETWORK_GRACE`); it ends only when a server answers 404. Before this, a 69 s Wi-Fi outage
+  logged "Broadcast ended", split the history session, and resumed only on the next status check (+25 s).
+- **Origin `livemasjid.com:8000` refuses connections from everywhere** we tested (PC and Pi, 2026-11-07), while `www` works, so it is
+  not a block on us. Streams come from relay2.
 - **On reconnect, `OggFilter` skips** the replayed headers and every page whose granule is ≤ the last forwarded one. Playback resumes
   exactly where it stopped: no gap if the buffer lasted, never a repeat. A new serial means the encoder restarted upstream, so a fresh decoder is used.
   MP3 has no granules, so an MP3 reconnect may repeat up to the burst length.
@@ -207,6 +213,9 @@ that aren't obvious from the code.
   including `--upgrade` and reboot detection) was verified from Git Bash on Windows.
 - **The 32-bit CI build** is verified: release `v0.1.0-3` (2026-11-07) has aarch64, armv7 and armv6 assets, and the Pi updated to it through the timer path.
 - **The livemasjid IP ban** was lifted (verified 2026-11-07). Keep the request budget to stay that way.
+- **Stream "reconnects" on 2026-11-07 were the Pi's Wi-Fi.** In an 8-minute test, ping to the router (192.168.1.1) lost ~2% of
+  packets plus one 69 s outage, while the PC on the same LAN streamed with no stall. That day: 67 interruptions and 22 netwatch
+  "network unreachable" checks at -55 dBm. The fix is the Pi's placement, a USB Wi-Fi adapter or Ethernet, not code.
 - **Wi-Fi was marginal** (-64 dBm; -50 dBm by 2026-11-07, after the setup changed). It is 2.4 GHz and shared with Bluetooth. Large uploads to the Pi saturated it and coincided with stalls and the
   Bluetooth chip hang. Keep dev uploads small, and move the Pi or the access point closer if stalls recur.
 - **Possible additions:** password-protected remote access (Tailscale), and multiple masjids with a priority order.
