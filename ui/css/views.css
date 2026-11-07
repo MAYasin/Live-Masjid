@@ -44,3 +44,9 @@
 /* Speaker: re-pair prompt */
 .notice.repair { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .notice.repair > div { flex: 1 1 260px; }
+
+/* System: usage meters under the stat values */
+.meter { height: 3px; margin-top: 8px; border-radius: 2px; background: var(--border); overflow: hidden; }
+.meter i { display: block; height: 100%; width: 0; background: var(--text-2); transition: width .3s; }
+.meter i.high { background: var(--warn); }
+.meter i.critical { background: var(--danger); }

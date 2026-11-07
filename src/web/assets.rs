@@ -29,6 +29,7 @@ static FILES: &[(&str, &str, &str)] = embed![
     "js/views/speaker.js",
     "js/views/history.js",
     "js/views/settings.js",
+    "js/views/system.js",
 ];
 
 const INDEX: &str = include_str!("../../ui/index.html");

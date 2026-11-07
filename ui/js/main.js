@@ -8,6 +8,7 @@ import * as masjids from "./views/masjids.js";
 import * as now from "./views/now.js";
 import * as settings from "./views/settings.js";
 import * as speaker from "./views/speaker.js";
+import * as system from "./views/system.js";
 
 const VIEWS = {
   now: { title: "Now playing", module: now },
@@ -15,6 +16,7 @@ const VIEWS = {
   speaker: { title: "Speaker", module: speaker },
   history: { title: "History", module: historyView },
   settings: { title: "Settings", module: settings },
+  system: { title: "System", module: system },
 };
 
 function go(name) {

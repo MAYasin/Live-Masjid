@@ -2,7 +2,10 @@
 # Live Masjid installer — idempotent; safe to re-run. Normally driven by setup.ps1, but works
 # standalone on any Debian-based single-board computer (Raspberry Pi OS, Armbian, DietPi, Ubuntu).
 #
-#   sudo bash install.sh [--repo owner/name] [--wifi-file FILE] [--country CC] [--hostname NAME] [--skip-binary]
+#   sudo bash install.sh [--repo owner/name] [--wifi-file FILE] [--country CC] [--hostname NAME] [--skip-binary] [--upgrade]
+#
+# --upgrade: bring the OS, kernel, drivers and firmware fully up to date first (recommended on
+#            a new device). Prints "REBOOT REQUIRED" when a new kernel needs a reboot.
 #
 # --wifi-file: a file with lines  SSID=<name>  PSK=<password>  (deleted after use)
 # The binary is taken from ./livemasjid if present, otherwise the latest GitHub release.
@@ -14,6 +17,7 @@ WIFI_FILE=""
 COUNTRY=""
 NEW_HOSTNAME=""
 SKIP_BINARY=0
+UPGRADE=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo) REPO="$2"; shift 2 ;;
@@ -21,6 +25,7 @@ while [ $# -gt 0 ]; do
     --country) COUNTRY="$2"; shift 2 ;;
     --hostname) NEW_HOSTNAME="$2"; shift 2 ;;
     --skip-binary) SKIP_BINARY=1; shift ;;
+    --upgrade) UPGRADE=1; shift ;;
     *) echo "unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -67,6 +72,15 @@ apt-get install -y -qq --no-install-recommends bluez >/dev/null || { warn "bluez
 if [ $BT_AUDIO = 1 ]; then
   apt-get install -y -qq --no-install-recommends bluez-alsa-utils >/dev/null \
     || { warn "bluez-alsa-utils not available on this OS: Bluetooth audio disabled, wired output still works"; BT_AUDIO=0; }
+fi
+
+# ---------------------------------------------------------------------------- system update
+if [ "$UPGRADE" = 1 ]; then
+  step "Updating the system: kernel, drivers, firmware (this can take 10+ minutes on a Pi Zero)"
+  apt-get -y -qq -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold full-upgrade >/dev/null
+  apt-get -y -qq autoremove --purge >/dev/null || true
+  if command -v rpi-eeprom-update >/dev/null; then rpi-eeprom-update -a >/dev/null 2>&1 || true; fi  # Pi 4/5 bootloader
+  info "system up to date (running kernel $(uname -r))"
 fi
 
 # ---------------------------------------------------------------------------- hostname
@@ -198,8 +212,16 @@ else
   systemctl restart livemasjid.service
 fi
 
+# A kernel installed since boot (e.g. by --upgrade) only takes effect after a reboot.
+REBOOT=0
+[ -f /var/run/reboot-required ] && REBOOT=1
+for m in /lib/modules/*; do
+  [ "$(basename "$m")" != "$(uname -r)" ] && [ "$m" -nt /proc/1 ] && REBOOT=1
+done
+
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 PORT="$(. /etc/default/livemasjid; echo "${LIVEMASJID_PORT:-80}")"
 SUFFIX="$([ "$PORT" = 80 ] || echo ":$PORT")"
 echo
 echo "Done. Open http://${IP}${SUFFIX}/ or http://$(hostname).local${SUFFIX}/"
+if [ "$REBOOT" = 1 ]; then echo "REBOOT REQUIRED: a new kernel/firmware was installed. Run: sudo reboot"; fi

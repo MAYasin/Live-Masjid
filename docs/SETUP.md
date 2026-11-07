@@ -1,7 +1,7 @@
 # Setting up a Live Masjid radio
 
 This guide takes a brand-new board to a working, self-updating masjid radio in about 20 minutes.
-Every step after flashing is automated by **`setup.ps1`** (Windows). Re-running the wizard is always safe.
+Every step after flashing is automated by **`setup.sh`**, which runs on macOS, Linux and Windows (Git Bash or WSL). Re-running it is always safe.
 
 ## What you need
 
@@ -11,7 +11,7 @@ Every step after flashing is automated by **`setup.ps1`** (Windows). Re-running 
 | microSD card | 8 GB or larger, good quality (A1/A2) |
 | Power supply | A proper 5 V supply. Weak phone chargers cause random reboots |
 | Speaker | A Bluetooth speaker, **or** a USB audio adapter with a powered speaker (most reliable, no pairing) |
-| A Windows PC | On the same network, with **Raspberry Pi Imager** installed ([raspberrypi.com/software](https://www.raspberrypi.com/software/)) |
+| A computer | macOS, Linux or Windows on the same network, with **Raspberry Pi Imager**. On Windows, run the scripts in **Git Bash** (comes with [Git for Windows](https://git-scm.com/download/win)) or WSL installed ([raspberrypi.com/software](https://www.raspberrypi.com/software/)) |
 
 > The Pi Zero 2 W has no headphone jack. For a set-and-forget installation, a ~$5 USB audio adapter
 > on a micro-USB OTG cable is the most dependable output. Bluetooth works well too; the app
@@ -19,7 +19,7 @@ Every step after flashing is automated by **`setup.ps1`** (Windows). Re-running 
 
 ## 1. Flash the SD card
 
-1. Run `./setup.ps1` once and stop at step 2 (Ctrl+C). Step 1 prints your PC's **public SSH key** and copies it to the clipboard.
+1. Run `./setup.sh` once and stop at step 2 (Ctrl+C). Step 1 prints your computer's **public SSH key** and copies it to the clipboard.
 2. Open **Raspberry Pi Imager**:
    - **Device:** your board (e.g. *Raspberry Pi Zero 2 W*).
    - **OS:** *Raspberry Pi OS (other) → Raspberry Pi OS Lite (64-bit)*. Use the 32-bit Lite image on a Pi Zero W, Pi 1 or Pi 2.
@@ -38,10 +38,10 @@ with its first-boot tool, or plug in Ethernet for the first run. The wizard can 
 
 ## 2. Run the wizard
 
-In PowerShell, in the repository folder:
+In a terminal (macOS/Linux) or Git Bash (Windows), in the repository folder:
 
 ```powershell
-./setup.ps1
+./setup.sh
 ```
 
 | Step | What happens |
@@ -50,7 +50,7 @@ In PowerShell, in the repository folder:
 | 2. Device | Asks for the hostname or IP (e.g. `masjid-radio.local`) and username, then waits until it answers |
 | 3. Login | Sets up password-less login (asks for the device password once if the key wasn't added in Imager) |
 | 4. Inspect | Shows the board, CPU, OS, IP address, Wi-Fi network and Bluetooth |
-| 5. Configure | Optional: Wi-Fi country, an extra/replacement Wi-Fi network (password typed hidden, never stored on this PC), new hostname |
+| 5. Configure | **System update** (OS, kernel, Wi-Fi/Bluetooth drivers and firmware; recommended, 5–20 min, reboots automatically if needed). Optional: Wi-Fi country, an extra/replacement Wi-Fi network (password typed hidden, never stored on this PC), new hostname |
 | 6. Release check | Confirms the latest GitHub release has a build for this CPU and that CI is green. Without one, it builds locally (needs Rust) |
 | 7. Install | Uploads the installer and runs it (sudo may ask for the device password once). See below |
 | 8. Verify | Service running and enabled at boot, web UI healthy, auto-update configured, Wi-Fi power saving off, Bluetooth on |
@@ -96,9 +96,10 @@ Open the address shown at the end (e.g. `http://masjid-radio.local/` or `http://
 | Wizard can't reach the device | Still booting, wrong name, SSH not enabled | Wait 3 min; use the IP from your router; re-flash with SSH enabled |
 | Speaker page: *"Your speaker has forgotten this Pi"* | The speaker lost the pairing key (e.g. after pairing with a phone). It accepts the link but refuses audio | Put the speaker in pairing mode and tap **Re-pair**. The Pi also re-pairs by itself when it sees the speaker in pairing mode |
 | Speaker connects only sometimes | The speaker is off or sleeping, or out of range | Keep **Keep speaker awake** on, and move the speaker closer. The Pi reconnects automatically |
+| Scan finds no devices, or the speaker keeps dropping | The Bluetooth chip is half-hung: it still says "on" but every command times out | Automatic: the network watchdog spots the timeouts in the kernel log within ~1 min and resets the chip. Keep the system updated (re-run `./setup.sh`) |
 | *"Bluetooth chip is not responding"* | The Pi's Wi-Fi/Bluetooth chip hung (usually under heavy Wi-Fi load) | Automatic: the app resets the chip. Persistent? Improve the Wi-Fi signal |
 | Device drops off the network | Weak Wi-Fi or power saving | The installer disables power saving and the watchdog self-heals. Improve the signal (−65 dBm or better) |
 | *"livemasjid.com is refusing requests from this network"* | The website blocked your IP | Playback still works through the stream servers. Ask the livemasjid team to lift the block. Never use a VPN or proxy to get around it |
 | No sound at all | No output available | Check the Speaker page for the output in use, and try **Play test sound** |
 
-Logs: `ssh pi@<device> journalctl -u livemasjid -f` (or `./deploy.ps1 -Logs`). The **Settings → Activity** panel shows the same events.
+Logs: `ssh pi@<device> journalctl -u livemasjid -f` (or `./deploy.sh --logs`). The **System → Activity** panel shows the same events.
