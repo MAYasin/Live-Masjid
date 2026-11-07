@@ -1,11 +1,11 @@
 name: release
 
-# Every push to main builds, tests and publishes a GitHub release.
-# Pis running livemasjid-update.timer pick it up within the hour (or instantly via the UI).
+# Every push to main builds and tests all architectures, then publishes one GitHub release.
+# Devices running livemasjid-update.timer pick up the asset for their CPU within the hour.
 on:
   push:
     branches: [main]
-    paths-ignore: ["**.md"]
+    paths-ignore: ["**.md", "docs/**"]
   workflow_dispatch:
 
 permissions:
@@ -16,25 +16,45 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  TARGET: aarch64-unknown-linux-musl
   CARGO_TERM_COLOR: always
-  CC_aarch64_unknown_linux_musl: musl-gcc
 
 jobs:
-  release:
-    # Native ARM64 runner: builds and runs the tests on the same architecture as the Pi.
+  build:
+    name: build (${{ matrix.arch }})
     runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          # 64-bit: Pi Zero 2 W / 3 / 4 / 5 and other aarch64 boards. Native tests; HTTPS enabled.
+          - arch: aarch64
+            target: aarch64-unknown-linux-musl
+            features: --features tls
+          # 32-bit ARMv7 (Pi 2, 32-bit images on newer boards). Tests run under QEMU.
+          - arch: armv7
+            target: armv7-unknown-linux-musleabihf
+            features: ""
+            runner: qemu-arm-static
+          # 32-bit ARMv6 (original Pi Zero / Zero W / Pi 1). Tests run under QEMU.
+          - arch: armv6
+            target: arm-unknown-linux-musleabihf
+            features: ""
+            runner: qemu-arm-static
     steps:
       - uses: actions/checkout@v4
 
       - uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-unknown-linux-musl
+          targets: ${{ matrix.target }}
 
-      - name: Install musl toolchain (C compiler for ring/TLS)
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq musl-tools
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq musl-tools qemu-user-static
 
       - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
       - name: Version
         id: v
@@ -43,29 +63,55 @@ jobs:
           echo "tag=v${base}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
       - name: Test
-        run: cargo test --locked --target $TARGET
+        env:
+          CC_aarch64_unknown_linux_musl: musl-gcc
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_RUNNER: ${{ matrix.runner }}
+          CARGO_TARGET_ARM_UNKNOWN_LINUX_MUSLEABIHF_RUNNER: ${{ matrix.runner }}
+        run: cargo test --locked --release --target ${{ matrix.target }}
 
       - name: Build
         env:
+          CC_aarch64_unknown_linux_musl: musl-gcc
           LIVEMASJID_BUILD: ${{ steps.v.outputs.tag }}
-        run: cargo build --release --locked --features tls --target $TARGET
+        run: cargo build --release --locked ${{ matrix.features }} --target ${{ matrix.target }}
 
       - name: Package
         run: |
+          name=livemasjid-${{ matrix.arch }}-linux.tar.gz
           mkdir -p dist/livemasjid/deploy
-          cp target/$TARGET/release/livemasjid dist/livemasjid/
+          cp target/${{ matrix.target }}/release/livemasjid dist/livemasjid/
           cp deploy/* dist/livemasjid/deploy/
-          ./dist/livemasjid/livemasjid --version
-          tar -C dist -czf livemasjid-aarch64-linux.tar.gz livemasjid
-          sha256sum livemasjid-aarch64-linux.tar.gz > livemasjid-aarch64-linux.tar.gz.sha256
-          ls -la livemasjid-aarch64-linux.tar.gz*
+          file dist/livemasjid/livemasjid
+          if [ -n "${{ matrix.runner }}" ]; then ${{ matrix.runner }} dist/livemasjid/livemasjid --version; else dist/livemasjid/livemasjid --version; fi
+          tar -C dist -czf "$name" livemasjid
+          sha256sum "$name" > "$name.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.arch }}
+          path: livemasjid-${{ matrix.arch }}-linux.tar.gz*
+          retention-days: 7
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.v.outputs.tag }}
         run: |
-          gh release create "$TAG" \
-            livemasjid-aarch64-linux.tar.gz livemasjid-aarch64-linux.tar.gz.sha256 \
-            --target "$GITHUB_SHA" --title "$TAG" --latest \
-            --notes "Automated build of ${GITHUB_SHA::7}: $(git log -1 --pretty=%s)"
+          base=$(grep -m1 '^version' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
+          tag="v${base}-${GITHUB_RUN_NUMBER}"
+          ls -la dist
+          gh release create "$tag" dist/* \
+            --target "$GITHUB_SHA" --title "$tag" --latest \
+            --notes "Automated build of ${GITHUB_SHA::7}: $(git log -1 --pretty=%s)
+
+          Assets: aarch64 (64-bit), armv7 and armv6 (32-bit). Devices update automatically."

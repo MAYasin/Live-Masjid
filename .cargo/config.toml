@@ -1,4 +1,16 @@
-# Pure-Rust cross build for the Pi Zero 2 W (aarch64) from any host using rustc's bundled lld.
+# Pure-Rust cross builds for single-board computers, linked with rustc's bundled lld.
+# No C toolchain, zig or Docker needed. (The optional `tls` feature needs a C compiler.)
+
+# 64-bit: Pi Zero 2 W / 3 / 4 / 5 and other aarch64 boards.
 [target.aarch64-unknown-linux-musl]
 linker = "rust-lld"
 rustflags = ["-C", "target-cpu=cortex-a53"]
+
+# 32-bit ARMv7 (Pi 2, many Allwinner/Rockchip boards, 32-bit OS images).
+[target.armv7-unknown-linux-musleabihf]
+linker = "rust-lld"
+
+# 32-bit ARMv6 (original Pi Zero / Zero W / Pi 1).
+[target.arm-unknown-linux-musleabihf]
+linker = "rust-lld"
+rustflags = ["-C", "target-cpu=arm1176jzf-s"]

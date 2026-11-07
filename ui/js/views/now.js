@@ -75,7 +75,8 @@ function render(s) {
 
   const out = s.output;
   const sig = s.signals;
-  setStat("stat-output", out.open ? `${out.label}${out.kind === "bluetooth" ? " (Bluetooth)" : ""}` : out.error ? "Unavailable" : "Idle",
+  const battery = out.kind === "bluetooth" && s.bt.battery != null ? ` · ${s.bt.battery}%` : "";
+  setStat("stat-output", out.open ? `${out.label}${out.kind === "bluetooth" ? " (Bluetooth)" : ""}${battery}` : out.error ? "Unavailable" : "Idle",
     out.open ? "ok" : out.error ? "err" : "");
   if (s.site_blocked_until_ms) setStat("stat-signal", "Paused", "warn");
   else if (s.phase !== "waiting") setStat("stat-signal", s.mount ? "Standby" : "—");

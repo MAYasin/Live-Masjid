@@ -25,6 +25,8 @@ pub struct Settings {
     pub keep_awake: bool,
     /// "auto" (Opus first – it goes live ~6 s before the MP3 mirror), "opus" or "mp3".
     pub codec: String,
+    /// Bluetooth SBC encoder quality: "low" (most robust), "medium" (default) or "high".
+    pub bt_quality: String,
     /// Icecast status poll interval in seconds (backup to the server-sent events).
     /// Kept polite: the livemasjid.com page itself polls every 60 s.
     pub poll_secs: u64,
@@ -46,6 +48,7 @@ impl Default for Settings {
             fallback_output: "auto".into(),
             keep_awake: true,
             codec: "auto".into(),
+            bt_quality: "medium".into(),
             poll_secs: 20,
             password_hash: None,
             secret: random_hex(32),
@@ -85,6 +88,9 @@ impl Settings {
     pub fn sanitize(&mut self) {
         self.volume = self.volume.min(100);
         self.poll_secs = self.poll_secs.clamp(10, 300);
+        if !matches!(self.bt_quality.as_str(), "low" | "medium" | "high") {
+            self.bt_quality = "medium".into();
+        }
         if !matches!(self.codec.as_str(), "auto" | "opus" | "mp3") {
             self.codec = "auto".into();
         }
