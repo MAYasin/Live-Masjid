@@ -6,6 +6,7 @@ import * as store from "./store.js";
 import * as historyView from "./views/history.js";
 import * as masjids from "./views/masjids.js";
 import * as now from "./views/now.js";
+import * as recordings from "./views/recordings.js";
 import * as settings from "./views/settings.js";
 import * as speaker from "./views/speaker.js";
 import * as system from "./views/system.js";
@@ -17,16 +18,20 @@ const VIEWS = {
   history: { title: "History", module: historyView },
   settings: { title: "Settings", module: settings },
   system: { title: "System", module: system },
+  recordings: { title: "Recordings", module: recordings },
 };
 
-function go(name) {
+function go(route) {
+  // Routes look like "masjids" or "recordings/lakewood" (view + optional argument).
+  const [name, arg] = String(route ?? "").split("/");
   const view = VIEWS[name] ? name : "now";
+  const hash = arg ? `${view}/${arg}` : view;
   for (const b of $$("[data-view]")) b.classList.toggle("active", b.dataset.view === view);
   for (const s of $$(".view")) s.classList.toggle("active", s.id === `view-${view}`);
   $("#page-title").textContent = VIEWS[view].title;
   window.scrollTo(0, 0);
-  if (location.hash !== `#${view}`) history.pushState(null, "", `#${view}`);
-  VIEWS[view].module.show();
+  if (location.hash !== `#${hash}`) history.pushState(null, "", `#${hash}`);
+  VIEWS[view].module.show(arg);
 }
 
 function initNavigation() {

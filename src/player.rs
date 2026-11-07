@@ -18,8 +18,44 @@ struct Active {
     buffer_ms: Arc<std::sync::atomic::AtomicU64>,
 }
 
+/// A past recording playing on the speaker.
+struct Rec {
+    token: u64,
+    stop: Arc<AtomicBool>,
+    paused: Arc<AtomicBool>,
+    position_ms: Arc<std::sync::atomic::AtomicU64>,
+    mount: String,
+    title: String,
+    duration_s: Option<u64>,
+    /// Was the selected masjid already live when the recording started? Only a broadcast
+    /// that starts *during* the recording interrupts it.
+    live_at_start: bool,
+}
+
+fn recording_status(r: &Rec) -> crate::state::RecordingStatus {
+    crate::state::RecordingStatus {
+        mount: r.mount.clone(),
+        title: r.title.clone(),
+        position_s: r.position_ms.load(Ordering::Relaxed) / 1000,
+        duration_s: r.duration_s,
+        paused: r.paused.load(Ordering::Relaxed),
+    }
+}
+
+/// Stop a recording (if any) and clear it from the status.
+fn stop_recording(app: &App, rec: &mut Option<Rec>) {
+    if let Some(r) = rec.take() {
+        r.stop.store(true, Ordering::Relaxed);
+        r.paused.store(false, Ordering::Relaxed);
+        app.sink.new_epoch();
+        app.status.send_modify(|st| st.recording = None);
+    }
+}
+
 pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx: UnboundedReceiver<Signal>) {
     let (ev_tx, mut ev_rx) = unbounded_channel::<(u64, StreamEvent)>();
+    let (rec_tx, mut rec_rx) = unbounded_channel::<(u64, crate::stream::recording::RecordingEvent)>();
+    let mut rec: Option<Rec> = None;
     let mut active: Option<Active> = None;
     let mut next_token = 0u64;
     // User pressed stop during this broadcast: don't auto-restart until it goes offline.
@@ -39,7 +75,71 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
             Some(cmd) = cmd_rx.recv() => match cmd {
                 PlayerCmd::PlayNow => {
                     suppressed_at = None;
+                    stop_recording(&app, &mut rec);
                     if active.is_none() { start = Some("manual"); }
+                }
+                PlayerCmd::PlayRecording { mount, title, url, duration_s } => {
+                    stop_recording(&app, &mut rec);
+                    if let Some(a) = active.as_mut() {
+                        a.stop_reason = Some("recording");
+                        a.stop.store(true, Ordering::Relaxed);
+                    }
+                    next_token += 1;
+                    let token = next_token;
+                    let r = Rec {
+                        token,
+                        stop: Arc::new(AtomicBool::new(false)),
+                        paused: Arc::new(AtomicBool::new(false)),
+                        position_ms: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+                        mount,
+                        title: title.clone(),
+                        duration_s,
+                        live_at_start: app.settings().mount.as_deref()
+                            .is_some_and(|m| crate::monitor::is_live(&app.live.read().unwrap(), m)),
+                    };
+                    let (tx, mut rx) = unbounded_channel();
+                    let fwd = rec_tx.clone();
+                    tokio::spawn(async move {
+                        while let Some(ev) = rx.recv().await {
+                            if fwd.send((token, ev)).is_err() { break; }
+                        }
+                    });
+                    let params = crate::stream::recording::RecordingParams {
+                        url,
+                        sink: app.sink.clone(),
+                        epoch: app.sink.new_epoch(),
+                        stop: r.stop.clone(),
+                        paused: r.paused.clone(),
+                        position_ms: r.position_ms.clone(),
+                        events: tx,
+                    };
+                    std::thread::Builder::new()
+                        .name("recording".into())
+                        .spawn(move || crate::stream::recording::run(params))
+                        .expect("spawn recording thread");
+                    app.status.send_modify(|st| st.recording = Some(recording_status(&r)));
+                    app.set_phase(Phase::Recording);
+                    app.log("info", format!("▶ Playing recording: {title}"));
+                    rec = Some(r);
+                }
+                PlayerCmd::PauseRecording(pause) => {
+                    if let Some(r) = &rec {
+                        r.paused.store(pause, Ordering::Relaxed);
+                        app.status.send_modify(|st| st.recording = Some(recording_status(r)));
+                    }
+                }
+                PlayerCmd::StopRecording => {
+                    if rec.is_some() {
+                        stop_recording(&app, &mut rec);
+                        app.log("info", "Recording stopped");
+                        let s = app.settings();
+                        app.set_phase(if s.mount.is_some() { Phase::Waiting } else { Phase::Idle });
+                        // Back to the radio: if the masjid is on air, resume live.
+                        if s.autoplay && suppressed_at.is_none() && active.is_none()
+                            && s.mount.as_deref().is_some_and(|m| crate::monitor::is_live(&app.live.read().unwrap(), m)) {
+                            start = Some("poll");
+                        }
+                    }
                 }
                 PlayerCmd::Stop => {
                     if let Some(a) = active.as_mut() {
@@ -78,13 +178,19 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                 let s = app.settings();
                 match sig {
                     Signal::SseOnline | Signal::PollOnline => {
+                        // A broadcast that starts while a recording plays takes priority.
+                        if rec.as_ref().is_some_and(|r| !r.live_at_start) && s.autoplay && suppressed_at.is_none() {
+                            stop_recording(&app, &mut rec);
+                            app.log("info", "Live broadcast started; stopping the recording");
+                        }
                         let ok = s.mount.is_some() && s.autoplay && suppressed_at.is_none()
-                            && active.is_none() && Instant::now() >= retry_after;
+                            && active.is_none() && rec.is_none() && Instant::now() >= retry_after;
                         if ok {
                             start = Some(if sig == Signal::SseOnline { "sse" } else { "poll" });
                         }
                     }
                     Signal::PollOffline => {
+                        if let Some(r) = rec.as_mut() { r.live_at_start = false; }
                         if suppressed_at.take().is_some() && active.is_none() {
                             app.set_phase(if s.mount.is_some() { Phase::Waiting } else { Phase::Idle });
                         }
@@ -94,6 +200,8 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
             Some((tok, ev)) = ev_rx.recv() => {
                 let Some(a) = active.as_mut().filter(|a| a.token == tok) else { continue };
                 match ev {
+                    // A session we've asked to stop can still report a late start; ignore it.
+                    StreamEvent::Started { .. } | StreamEvent::Reconnecting(_) if a.stop_reason.is_some() => {}
                     StreamEvent::Started { url, codec } => {
                         let name = app.settings().station_name.unwrap_or_else(|| a.mount.clone());
                         if a.hist_id.is_none() {
@@ -110,7 +218,7 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                             st.trigger = Some(a.trigger.to_string());
                             st.last_heard_ms = Some(now_ms());
                         });
-                        if suppressed_at.is_none() {
+                        if suppressed_at.is_none() && rec.is_none() {
                             app.set_phase(Phase::Playing);
                         }
                     }
@@ -143,7 +251,8 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                             if let Some(m) = &st.mount { st.last_heard_ms = app.history.lock().unwrap().last_heard(m); }
                         });
                         let mount = app.settings().mount;
-                        let phase = if suppressed_at.is_some() { Phase::Stopped }
+                        let phase = if rec.is_some() { Phase::Recording }
+                            else if suppressed_at.is_some() { Phase::Stopped }
                             else if mount.is_some() { Phase::Waiting } else { Phase::Idle };
                         app.set_phase(phase);
                         // A switch: start watching/playing the new mount right away if live.
@@ -153,7 +262,33 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                     }
                 }
             },
+            Some((tok, ev)) = rec_rx.recv() => {
+                if rec.as_ref().is_some_and(|r| r.token == tok) {
+                    use crate::stream::recording::RecordingEvent;
+                    match ev {
+                        RecordingEvent::Started => {}
+                        RecordingEvent::Ended(err) => {
+                            match err {
+                                Some(e) => app.log("warn", format!("Recording could not be played: {e}")),
+                                None => app.log("info", "Recording finished"),
+                            }
+                            rec = None;
+                            app.status.send_modify(|st| st.recording = None);
+                            let s = app.settings();
+                            app.set_phase(if s.mount.is_some() { Phase::Waiting } else { Phase::Idle });
+                            if s.autoplay && suppressed_at.is_none() && active.is_none()
+                                && s.mount.as_deref().is_some_and(|m| crate::monitor::is_live(&app.live.read().unwrap(), m)) {
+                                start = Some("poll");
+                            }
+                        }
+                    }
+                }
+            },
             _ = tick.tick() => {
+                if let Some(r) = &rec {
+                    let st = recording_status(r);
+                    app.status.send_modify(|s| s.recording = Some(st));
+                }
                 if let Some(a) = &active {
                     let b = a.buffer_ms.load(Ordering::Relaxed);
                     app.status.send_if_modified(|st| { let changed = st.buffer_ms / 1000 != b / 1000; st.buffer_ms = b; changed });

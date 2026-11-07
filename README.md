@@ -85,6 +85,14 @@ The updater leaves dev builds alone for 12 hours, so it won't immediately replac
 The service runs with `Restart=always` and a systemd watchdog. The app only pets the watchdog
 while its player loop and audio thread are healthy, so a hang also leads to a restart.
 
+## Salah times and recordings
+
+- **Salah times** from [masjidscreen.co.za](https://masjidscreen.co.za) for masjids that publish them, shown on the home screen with the
+  next salah highlighted and a countdown. Masjids that aren't on masjidscreen show a short note instead.
+- **Recordings** from livemasjid.com, for the selected masjid on the home screen and for any masjid from the Masjids list. They play on
+  the speaker (pause, resume, stop). A live broadcast that starts interrupts the recording, and live resumes afterwards.
+- The Pi does all the fetching, with caching and strict rate limits, so using the UI never hammers these sites.
+
 ## Play history
 
 Every broadcast is logged to `history.jsonl` with its start and end times, codec, what triggered

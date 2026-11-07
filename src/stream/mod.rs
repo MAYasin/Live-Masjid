@@ -10,6 +10,7 @@
 mod buffer;
 mod decode;
 mod ogg;
+pub mod recording;
 
 pub use decode::Codec;
 
@@ -174,6 +175,8 @@ impl Pipeline {
             on_first_audio: Box::new(move || {
                 let _ = events.send(StreamEvent::Started { url, codec: codec.name() });
             }),
+            paused: None,
+            position_ms: None,
         };
         let decoder = std::thread::Builder::new()
             .name("decoder".into())

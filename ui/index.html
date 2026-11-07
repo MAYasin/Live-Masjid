@@ -70,9 +70,12 @@
             <h1 class="truncate" id="station-name">—</h1>
             <div class="text-2 truncate" id="station-location"></div>
             <div class="text-3 small" id="station-detail" style="margin-top:6px"></div>
+            <div class="rec-progress" id="rec-progress" hidden><div class="meter"><i id="rec-bar"></i></div><span class="xsmall text-3 tabular" id="rec-time"></span></div>
             <div class="actions now-actions">
               <button class="btn primary" id="play"><svg><use href="#i-play"/></svg>Play now</button>
               <button class="btn primary" id="stop" hidden><svg><use href="#i-stop"/></svg>Stop</button>
+              <button class="btn primary" id="rec-pause" hidden>Pause</button>
+              <button class="btn" id="rec-stop" hidden><svg><use href="#i-stop"/></svg>Back to live radio</button>
               <button class="btn" data-go="masjids">Change masjid</button>
             </div>
           </div>
@@ -86,14 +89,27 @@
             <label class="switch"><input type="checkbox" id="autoplay" aria-label="Auto-play"><span></span></label>
           </div>
         </div>
+        <div class="section-title" id="salah-title">Salah times <a class="xsmall text-3" id="salah-source" target="_blank" rel="noopener">masjidscreen.co.za</a></div>
+        <div class="panel salah" id="salah"><div class="empty small">Loading salah times…</div></div>
         <div class="stats">
           <div class="stat"><div class="stat-key"><span class="dot" id="stat-output-dot"></span>Output</div><div class="stat-value truncate" id="stat-output">—</div></div>
           <div class="stat"><div class="stat-key"><span class="dot" id="stat-signal-dot"></span>Live signal</div><div class="stat-value truncate" id="stat-signal">—</div></div>
           <div class="stat"><div class="stat-key"><span class="dot" id="stat-poll-dot"></span>Status check</div><div class="stat-value truncate" id="stat-poll">—</div></div>
           <div class="stat"><div class="stat-key"><span class="dot" id="stat-extra-dot"></span><span id="stat-extra-key">Streams live</span></div><div class="stat-value truncate" id="stat-extra">—</div></div>
         </div>
+        <div class="section-title">Recordings <button class="btn ghost small" id="recordings-all">View all</button></div>
+        <div class="list" id="recordings-latest"><div class="empty small">Loading recordings…</div></div>
         <div class="section-title">Recent broadcasts <button class="btn ghost small" data-go="history">View all</button></div>
         <div class="list" id="recent"><div class="empty">No broadcasts recorded yet.</div></div>
+      </section>
+
+
+      <!-- Recordings (opened from the home screen or a masjid; not in the main navigation) -->
+      <section class="view" id="view-recordings">
+        <div class="section-title" style="margin-top:0"><span id="rec-heading">Recordings</span>
+          <button class="btn ghost small" id="rec-refresh">Refresh</button></div>
+        <div class="notice" id="rec-notice" hidden></div>
+        <div class="list" id="rec-list"><div class="empty"><span class="spinner"></span></div></div>
       </section>
 
       <!-- Masjids -->

@@ -3,8 +3,10 @@
 import { api } from "../api.js";
 import { $, runAction, setStat } from "../dom.js";
 import { clockTime, duration, lowerFirst, timeAgo } from "../format.js";
-import { subscribe } from "../store.js";
+import { getStatus, subscribe } from "../store.js";
 import { historyRow } from "./history.js";
+import * as recordings from "./recordings.js";
+import * as salah from "./salah.js";
 
 const PHASES = {
   idle: "No masjid selected",
@@ -13,9 +15,13 @@ const PHASES = {
   playing: "Live",
   reconnecting: "Reconnecting",
   stopped: "Stopped",
+  recording: "Playing a recording",
 };
 
 let volumeTimer;
+let salahMount = null;
+
+const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
 export function init() {
   $("#play").addEventListener("click", (e) => runAction(e.currentTarget, () => api("player/play", {}), "Starting"));
@@ -28,11 +34,35 @@ export function init() {
     clearTimeout(volumeTimer);
     volumeTimer = setTimeout(() => runAction(null, () => api("settings", { volume: Number($("#volume").value) })), 120);
   });
+  $("#rec-pause").addEventListener("click", (e) => {
+    const paused = getStatus()?.recording?.paused;
+    runAction(e.currentTarget, () => api("recordings/pause", { pause: !paused }));
+  });
+  $("#rec-stop").addEventListener("click", (e) => runAction(e.currentTarget, () => api("recordings/stop", {}), "Back to live radio"));
+  $("#recordings-all").addEventListener("click", () => { location.hash = `recordings/${getStatus()?.mount ?? ""}`; });
+  $("#recordings-latest").addEventListener("click", recordings.onPlayClick);
   subscribe(render);
+  // Countdown to the next salah, and a periodic refresh (the Pi serves it from cache).
+  setInterval(salah.tick, 30 * 1000);
+  setInterval(() => salah.load(salahMount), 30 * 60 * 1000);
 }
 
 export function show() {
   loadRecent();
+  loadRecordings();
+  salah.load(getStatus()?.mount);
+}
+
+async function loadRecordings() {
+  const mount = getStatus()?.mount;
+  const box = $("#recordings-latest");
+  if (!mount) { box.innerHTML = '<div class="empty small">Choose a masjid to see its recordings.</div>'; return; }
+  try {
+    const list = await api(`recordings?mount=${encodeURIComponent(mount)}`);
+    box.innerHTML = list.status === "ok" ? recordings.rows(list, 4) : recordings.fallback(list);
+  } catch (err) {
+    box.innerHTML = recordings.fallback({ message: err.message });
+  }
 }
 
 function paintVolume() {
@@ -59,16 +89,31 @@ function detailLine(s) {
 
 function render(s) {
   const active = ["playing", "connecting", "reconnecting"].includes(s.phase);
+  const rec = s.recording;
+  if (s.mount !== salahMount) {
+    salahMount = s.mount;
+    salah.load(s.mount);
+    loadRecordings();
+  }
   $("#no-selection").hidden = Boolean(s.mount);
   $("#now-panel").hidden = !s.mount;
   $("#now-panel").className = `panel phase-${s.phase}`;
   $("#phase").textContent = PHASES[s.phase] ?? s.phase;
-  $("#station-name").textContent = s.station_name || s.mount || "—";
+  $("#station-name").textContent = rec ? rec.title : (s.station_name || s.mount || "—");
   $("#station-location").textContent = s.station_location ?? "";
-  $("#station-location").hidden = !s.station_location;
-  $("#station-detail").textContent = detailLine(s);
-  $("#play").hidden = active;
+  $("#station-location").hidden = !s.station_location || Boolean(s.recording);
+  $("#station-detail").textContent = rec ? `Recording · ${rec.paused ? "paused" : "playing on the speaker"}` : detailLine(s);
+  $("#play").hidden = active || Boolean(rec);
   $("#stop").hidden = !active;
+  $("#rec-pause").hidden = !rec;
+  $("#rec-stop").hidden = !rec;
+  $("#rec-progress").hidden = !rec;
+  if (rec) {
+    $("#rec-pause").textContent = rec.paused ? "Resume" : "Pause";
+    const total = rec.duration_s;
+    $("#rec-time").textContent = total ? `${clock(rec.position_s)} / ${clock(total)}` : clock(rec.position_s);
+    $("#rec-bar").style.width = total ? `${Math.min(100, (100 * rec.position_s) / total)}%` : "0%";
+  }
   $("#autoplay").checked = s.autoplay;
   if (document.activeElement !== $("#volume")) $("#volume").value = s.volume;
   paintVolume();
