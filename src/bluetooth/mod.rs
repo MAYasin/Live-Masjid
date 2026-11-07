@@ -40,11 +40,11 @@ pub async fn refresh(app: &App) {
     app.sink.retarget(compute_targets(app));
 }
 
-/// Apply a Bluetooth SBC quality ("low" | "medium" | "high") by reconfiguring bluez-alsa.
+/// Apply a Bluetooth SBC quality ("medium" | "high") by reconfiguring bluez-alsa.
 /// Restarting bluez-alsa drops the audio link for a few seconds; the supervisor reconnects.
 /// Runs as a systemd one-shot unit: the service itself is sandboxed (`ProtectSystem=full`).
 pub async fn set_quality(app: &App, quality: &str) -> anyhow::Result<()> {
-    anyhow::ensure!(matches!(quality, "low" | "medium" | "high"), "invalid quality");
+    anyhow::ensure!(matches!(quality, "medium" | "high"), "invalid quality");
     let fut = tokio::process::Command::new("sudo")
         .args(["-n", "/usr/bin/systemctl", "start", &format!("livemasjid-bt-audio@{quality}.service")])
         .kill_on_drop(true)

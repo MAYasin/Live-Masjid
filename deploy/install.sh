@@ -186,7 +186,7 @@ $DEPLOY_USER ALL=(root) NOPASSWD: $D/install-bin.sh
 livemasjid ALL=(root) NOPASSWD: /usr/bin/systemctl start --no-block livemasjid-update.service
 livemasjid ALL=(root) NOPASSWD: /usr/sbin/rfkill unblock bluetooth
 livemasjid ALL=(root) NOPASSWD: $D/bt-recover.sh
-livemasjid ALL=(root) NOPASSWD: /usr/bin/systemctl start livemasjid-bt-audio@low.service, /usr/bin/systemctl start livemasjid-bt-audio@medium.service, /usr/bin/systemctl start livemasjid-bt-audio@high.service
+livemasjid ALL=(root) NOPASSWD: /usr/bin/systemctl start livemasjid-bt-audio@medium.service, /usr/bin/systemctl start livemasjid-bt-audio@high.service
 EOF
 chmod 440 /etc/sudoers.d/livemasjid
 visudo -cf /etc/sudoers.d/livemasjid >/dev/null
@@ -215,9 +215,10 @@ fi
 # A kernel installed since boot (e.g. by --upgrade) only takes effect after a reboot.
 REBOOT=0
 [ -f /var/run/reboot-required ] && REBOOT=1
-for m in /lib/modules/*; do
-  [ "$(basename "$m")" != "$(uname -r)" ] && [ "$m" -nt /proc/1 ] && REBOOT=1
-done
+# Compare only kernels of the running flavour (Pi images ship several, e.g. -v8 and -2712).
+CUR_KERNEL="$(uname -r)"
+NEWEST_KERNEL="$(ls /lib/modules 2>/dev/null | grep -- "-${CUR_KERNEL##*-}\$" | sort -V | tail -1)"
+if [ -n "$NEWEST_KERNEL" ] && [ "$NEWEST_KERNEL" != "$CUR_KERNEL" ]; then REBOOT=1; fi
 
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 PORT="$(. /etc/default/livemasjid; echo "${LIVEMASJID_PORT:-80}")"

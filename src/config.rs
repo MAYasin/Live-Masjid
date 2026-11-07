@@ -88,7 +88,8 @@ impl Settings {
     pub fn sanitize(&mut self) {
         self.volume = self.volume.min(100);
         self.poll_secs = self.poll_secs.clamp(10, 300);
-        if !matches!(self.bt_quality.as_str(), "low" | "medium" | "high") {
+        // "low" was removed: on some speakers its SBC bitpool cannot sustain real time (choppy audio).
+        if !matches!(self.bt_quality.as_str(), "medium" | "high") {
             self.bt_quality = "medium".into();
         }
         if !matches!(self.codec.as_str(), "auto" | "opus" | "mp3") {

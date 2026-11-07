@@ -61,6 +61,20 @@ impl ByteQueue {
         self.cv.notify_all();
     }
 
+    /// Drop the oldest chunks until at most `keep` bytes remain. Returns bytes dropped.
+    /// Chunks are whole Ogg pages for Opus, so the decoder resumes at a page boundary.
+    pub fn trim_front(&self, keep: usize) -> usize {
+        let mut g = self.inner.lock().unwrap();
+        let mut dropped = 0;
+        while g.len > keep {
+            let Some(chunk) = g.chunks.pop_front() else { break };
+            g.len -= chunk.len();
+            dropped += chunk.len();
+        }
+        self.cv.notify_all();
+        dropped
+    }
+
     pub fn buffered(&self) -> usize {
         self.inner.lock().unwrap().len
     }
@@ -129,6 +143,21 @@ mod tests {
         assert_eq!(s, "hello world");
         assert_eq!(q.consumed(), 11);
         assert!(!q.push(b"late".to_vec(), &AtomicBool::new(false)));
+    }
+
+    #[test]
+    fn trims_oldest_first() {
+        let q = ByteQueue::new();
+        let stop = AtomicBool::new(false);
+        for c in [b"aaaa".to_vec(), b"bbbb".to_vec(), b"cccc".to_vec()] {
+            assert!(q.push(c, &stop));
+        }
+        assert_eq!(q.trim_front(5), 8);
+        assert_eq!(q.buffered(), 4);
+        q.close();
+        let mut s = String::new();
+        QueueReader::new(q, Arc::new(AtomicBool::new(false))).read_to_string(&mut s).unwrap();
+        assert_eq!(s, "cccc");
     }
 
     #[test]
