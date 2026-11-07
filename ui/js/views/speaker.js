@@ -3,16 +3,22 @@
 import { api } from "../api.js";
 import { $, runAction, toast } from "../dom.js";
 import { escapeHtml } from "../format.js";
-import { subscribe } from "../store.js";
+import { getStatus, subscribe } from "../store.js";
 
 const SCAN_SECONDS = 20;
 let scanTimer;
 
 export function init() {
+  $("#repair").addEventListener("click", (e) => {
+    const mac = getStatus()?.bt.device;
+    if (mac) runAction(e.currentTarget, () => api("bt/repair", { mac }), (r) => r.message || "Re-paired").then(loadDevices);
+  });
   $("#test-sound").addEventListener("click", (e) => runAction(e.currentTarget, () => api("player/test", {}), "Playing test sound"));
   $("#scan").addEventListener("click", startScan);
   $("#devices").addEventListener("click", onDeviceAction);
   $("#fallback").addEventListener("change", (e) => runAction(null, () => api("settings", { fallback_output: e.target.value }), "Saved"));
+  $("#bt-quality").addEventListener("change", (e) =>
+    runAction(null, () => api("settings", { bt_quality: e.target.value }), "Saved. The speaker reconnects in a few seconds."));
   $("#keep-awake").addEventListener("change", (e) => runAction(null, () => api("settings", { keep_awake: e.target.checked }), "Saved"));
   subscribe(render);
 }
@@ -26,7 +32,8 @@ function speakerState(bt, output) {
   if (bt.recovering) return "Resetting the Bluetooth chip…";
   if (!bt.device) return "Choose a speaker below";
   if (!bt.powered) return "Bluetooth is off · recovering automatically";
-  if (!bt.connected) return "Not connected · reconnecting automatically";
+  if (bt.needs_repair) return "Needs re-pairing";
+  if (!bt.connected) return "Not connected · will connect when the speaker is on";
   const battery = bt.battery != null ? ` · Battery ${bt.battery}%` : "";
   return `Connected${battery}${output.kind === "bluetooth" ? " · Playing here" : ""}`;
 }
@@ -35,7 +42,8 @@ function render(s) {
   const { bt, output } = s;
   $("#speaker-name").textContent = bt.name || bt.device || "No Bluetooth speaker";
   $("#speaker-state").textContent = speakerState(bt, output);
-  const error = bt.error || (!output.open && output.error) || "";
+  $("#speaker-repair").hidden = !bt.needs_repair;
+  const error = bt.error || (!bt.needs_repair && !output.open && output.error) || "";
   $("#speaker-error").hidden = !error;
   $("#speaker-error").textContent = error;
   $("#keep-awake").checked = s.keep_awake;
@@ -106,5 +114,6 @@ async function loadOutputs() {
     const select = $("#fallback");
     select.innerHTML = options.map(([v, label]) => `<option value="${escapeHtml(v)}">${escapeHtml(label)}</option>`).join("");
     select.value = config.fallback_output;
+    $("#bt-quality").value = config.bt_quality ?? "medium";
   } catch { /* leave previous options */ }
 }

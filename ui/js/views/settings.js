@@ -33,6 +33,13 @@ export function show() {
   loadLogs();
 }
 
+/** "vipIatina VSW07 · Bluetooth (A2DP)" rather than the raw ALSA device name. */
+function outputLabel(out) {
+  if (!out.open) return out.error ? "Unavailable" : "Idle";
+  const kind = out.kind === "bluetooth" ? "Bluetooth (A2DP)" : out.kind === "wired" ? "Wired" : out.kind;
+  return `${out.label} · ${kind}`;
+}
+
 function render(s) {
   $("#password-info").textContent = s.password_set ? "This page is password protected" : "Anyone on your network can open this page";
   $("#set-password").textContent = s.password_set ? "Change password" : "Set password";
@@ -40,7 +47,7 @@ function render(s) {
   const rows = [
     ["Version", s.version],
     ["Running since", timeAgo(s.started_ms)],
-    ["Output device", s.output.device || "—"],
+    ["Output", outputLabel(s.output)],
     ...(s.stream_url ? [["Stream", s.stream_url]] : []),
   ];
   $("#system-info").innerHTML = rows.map(([k, v]) => `<dt>${k}</dt><dd>${escapeHtml(v)}</dd>`).join("");

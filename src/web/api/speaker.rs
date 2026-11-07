@@ -27,6 +27,11 @@ pub async fn use_device(State(app): State<App>, Json(r): Json<Mac>) -> ApiResult
     Ok(Json(json!({ "ok": true, "message": message })))
 }
 
+pub async fn repair(State(app): State<App>, Json(r): Json<Mac>) -> ApiResult {
+    let message = bluetooth::repair(&app, &r.mac).await?;
+    Ok(Json(json!({ "ok": true, "message": message })))
+}
+
 pub async fn release(State(app): State<App>, Json(r): Json<Mac>) -> ApiResult {
     bluetooth::release(&app, &r.mac, false).await?;
     ok()

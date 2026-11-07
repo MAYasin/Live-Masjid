@@ -64,11 +64,19 @@ pub async fn use_device(app: &App, mac: &str) -> anyhow::Result<String> {
             anyhow::bail!("{}", reason.trim());
         }
     }
+    let _ = quick(&["pairable", "off"]).await;
     let _ = quick(&["trust", mac]).await;
-    let out = btctl(&["connect", mac], Duration::from_secs(20)).await?;
-    let info = device_info(mac).await.ok();
-    let ok = out.contains("Connection successful") || info.as_ref().is_some_and(|i| i.connected);
-    let name = info.and_then(|i| i.name).unwrap_or_else(|| mac.to_string());
+    let _ = btctl(&["connect", mac], Duration::from_secs(20)).await?;
+    // Success means the audio channel is up, not merely the radio link.
+    let mut ok = false;
+    for _ in 0..8 {
+        if super::speaker::audio_ready(mac).await {
+            ok = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    let name = device_info(mac).await.ok().and_then(|i| i.name).unwrap_or_else(|| mac.to_string());
     app.update_settings(|s| {
         s.bt_device = Some(mac.to_string());
         s.bt_name = Some(name.clone());
@@ -77,6 +85,14 @@ pub async fn use_device(app: &App, mac: &str) -> anyhow::Result<String> {
     anyhow::ensure!(ok, "Paired, but not connected yet. Make sure the speaker is on; it will connect automatically.");
     super::refresh(app).await;
     Ok(format!("Connected to {name}"))
+}
+
+/// Forget the old (broken) bond and pair again. The speaker must be in pairing mode.
+pub async fn repair(app: &App, mac: &str) -> anyhow::Result<String> {
+    anyhow::ensure!(valid_mac(mac), "invalid address");
+    let _ = btctl(&["disconnect", mac], Duration::from_secs(8)).await;
+    let _ = btctl(&["remove", mac], Duration::from_secs(8)).await;
+    use_device(app, mac).await
 }
 
 /// Stop using a speaker (disconnect), optionally forgetting the pairing.
