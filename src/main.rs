@@ -4,6 +4,7 @@ mod bluetooth;
 mod catalog;
 mod config;
 mod history;
+mod integrations;
 mod monitor;
 mod net;
 mod player;
@@ -60,6 +61,7 @@ fn main() -> anyhow::Result<()> {
 async fn run() -> anyhow::Result<()> {
     let paths = config::Paths::from_env();
     let paths_site = paths.site.clone();
+    let data_dir = paths.site.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
     let settings = config::Settings::load(&paths.settings);
     settings.save(&paths.settings)?; // persist generated secret / migrated defaults
     tracing::info!("livemasjid {VERSION} starting; data in {:?}", paths.settings.parent());
@@ -91,6 +93,7 @@ async fn run() -> anyhow::Result<()> {
         started_ms: now_ms(),
         live_count: 0,
         site_blocked_until_ms: None,
+        recording: None,
         buffer_ms: 0,
     };
 
@@ -111,6 +114,7 @@ async fn run() -> anyhow::Result<()> {
         sink,
         hb_player: AtomicU64::new(now_ms()),
         site: site::SiteGuard::load(paths_site),
+        integrations: integrations::Integrations::new(&data_dir),
     });
 
     {

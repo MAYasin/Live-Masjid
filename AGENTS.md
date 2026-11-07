@@ -87,6 +87,21 @@ that aren't obvious from the code.
     - directory refresh monthly; after a failure, 6 h doubling up to 7 days
     - direct probe only after 2 minutes with no signal
 
+## Third-party integrations (`src/integrations/`)
+
+- **All fetching happens on the Pi, through `curl`** (system TLS works in every build), with an honest User-Agent, one request per site
+  at a time and TTL caches. Browsing the UI therefore never adds load to the sites. A 403/429 trips that site's `SiteGuard`
+  (persisted: `site.json` for livemasjid, `site-masjidscreen.json`).
+- **Salah times:** `https://masjidscreen.co.za/<mount>/api/prayertimes.php` returns `salaah_times.{fajr,zuhr,asr,maghrib,esha,jummah}.{athaan,jamaat}`.
+  Unknown masjids return 404, which shows as "not_listed" (cached 24 h). Successes are cached 6 h and re-fetched when the date changes.
+  The UI highlights the next athaan or jamaat with a countdown, and shows Jumu'ah instead of Zuhr on Fridays.
+- **Recordings:** the RSS feed at `https://www.livemasjid.com/api/get_mountrecordings.php?mountname=<m>&feeditems=40` (iso-8859-1,
+  single-quoted `enclosure url=` on `cdn.livemasjid.com` .mp3, no durations), cached 15 min. Override it with `LIVEMASJID_RECORDINGS_FEED`
+  (`{mount}`, `{n}`) for testing. **The livemasjid IP block was lifted by 2026-11-07 15:40** (the feed returns 200 again).
+- **Recording playback** (`stream/recording.rs`): `curl` → `ByteQueue` → the shared decoder, with pause/position on `DecodeCtx`.
+  The API plays by **id from the cached list, never a raw URL** (no SSRF). A broadcast that starts during a recording interrupts it;
+  stopping or finishing a recording resumes live if the masjid is on air. Verified: play, pause (position held), resume, stop, then back to live.
+
 ## Pi hardware gotchas (root causes found)
 
 - **"The Pi went down" turned out to be a Wi-Fi drop-out, not a crash.**
@@ -162,7 +177,7 @@ that aren't obvious from the code.
 - **Wizard:** the full interactive `setup.sh` run on a freshly flashed card is not yet verified. `deploy.sh --setup` (same installer,
   including `--upgrade` and reboot detection) was verified from Git Bash on Windows.
 - **The 32-bit CI build** is verified: release `v0.1.0-3` (2026-11-07) has aarch64, armv7 and armv6 assets, and the Pi updated to it through the timer path.
-- **The livemasjid IP ban** is in place until the owner lifts it. The app works through relay2 meanwhile.
+- **The livemasjid IP ban** was lifted (verified 2026-11-07). Keep the request budget to stay that way.
 - **Wi-Fi was marginal** (-64 dBm; -50 dBm by 2026-11-07, after the setup changed). It is 2.4 GHz and shared with Bluetooth. Large uploads to the Pi saturated it and coincided with stalls and the
   Bluetooth chip hang. Keep dev uploads small, and move the Pi or the access point closer if stalls recur.
 - **Possible additions:** password-protected remote access (Tailscale), and multiple masjids with a priority order.
@@ -176,8 +191,9 @@ that aren't obvious from the code.
 - `monitor/` `sse.rs` live push · `poll.rs` Icecast status · `site.rs` website back-off guard
 - `bluetooth/` `mod.rs` supervisor · `adapter.rs` power, rfkill and controller reset · `devices.rs` pair, use, forget, re-pair · `speaker.rs` audio-ready state machine · `agent.rs` persistent agent · `ctl.rs` bluetoothctl · `outputs.rs` ALSA targets
 - `sysinfo.rs` device, Wi-Fi, Bluetooth and app health for the System page
+- `integrations/` `mod.rs` curl fetch, caches and guards · `salah.rs` masjidscreen · `recordings.rs` RSS feed · `stream/recording.rs` playback
 - `catalog.rs` directory scrape, cache and seed · `history.rs` JSONL sessions · `net.rs` raw Icecast HTTP and endpoints
 - `web/` `mod.rs` router and `ApiError` · `auth.rs` · `assets.rs` (embedded UI, ETag) · `api/{status,stations,player,speaker,system}.rs`
 - Device setup: `setup.sh` (wizard), `deploy.sh` (dev loop) · `deploy/install.sh` (generic installer) · `deploy/update.sh` (`--check`, `--force`) · `docs/SETUP.md`
 - `ui/` `index.html` markup only · `css/{base,layout,components,views}.css` · `js/` ES modules: `main.js` router, `store.js` live status,
-  `api.js`, `dom.js`, `format.js`, `views/{now,masjids,speaker,history,settings,system}.js`. New UI files must be added to `FILES` in `web/assets.rs`.
+  `api.js`, `dom.js`, `format.js`, `views/{now,masjids,speaker,history,settings,system,recordings,salah}.js`. New UI files must be added to `FILES` in `web/assets.rs`.

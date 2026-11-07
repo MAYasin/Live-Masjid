@@ -24,6 +24,8 @@ export function init(go) {
     render();
   });
   $("#stations").addEventListener("click", (e) => {
+    const rec = e.target.closest("[data-recordings]");
+    if (rec) { location.hash = `recordings/${rec.dataset.recordings}`; return; }
     const row = e.target.closest(".item[data-mount]");
     if (row) choose(row.dataset.mount);
   });
@@ -70,6 +72,7 @@ function row(s) {
     </div>
     ${s.live ? '<span class="live-tag">LIVE</span>' : ""}
     ${s.selected ? '<svg class="check"><use href="#i-check"/></svg>' : ""}
+    <button class="btn ghost small" data-recordings="${escapeHtml(s.mount)}" title="Recordings">Recordings</button>
   </div>`;
 }
 

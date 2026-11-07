@@ -10,6 +10,17 @@ use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::{mpsc, watch};
 
+/// "HH:MM" in the device's local time for a unix-ms timestamp (falls back to "later").
+pub fn fmt_local_time(ms: u64) -> String {
+    std::process::Command::new("date")
+        .args(["-d", &format!("@{}", ms / 1000), "+%H:%M"])
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "later".into())
+}
+
 pub fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -31,6 +42,18 @@ pub enum Phase {
     Reconnecting,
     /// User pressed stop; resumes automatically next time the masjid goes live.
     Stopped,
+    /// Playing a past recording (live resumes automatically afterwards).
+    Recording,
+}
+
+/// The recording currently playing on the speaker.
+#[derive(Clone, Debug, Serialize)]
+pub struct RecordingStatus {
+    pub mount: String,
+    pub title: String,
+    pub position_s: u64,
+    pub duration_s: Option<u64>,
+    pub paused: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
@@ -95,6 +118,8 @@ pub struct Status {
     pub buffer_ms: u64,
     /// Set while livemasjid.com is refusing us and we are staying away.
     pub site_blocked_until_ms: Option<u64>,
+    /// Set while a past recording is playing.
+    pub recording: Option<RecordingStatus>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -120,6 +145,10 @@ pub enum PlayerCmd {
     TestTone,
     /// Selected mount changed (or settings that affect playback).
     Reconfigure,
+    /// Play a listed recording on the speaker.
+    PlayRecording { mount: String, title: String, url: String, duration_s: Option<u64> },
+    PauseRecording(bool),
+    StopRecording,
 }
 
 /// Live/offline evidence for the selected mount.
@@ -151,6 +180,8 @@ pub struct AppState {
     pub hb_player: AtomicU64,
     /// Back-off state for www.livemasjid.com.
     pub site: crate::site::SiteGuard,
+    /// Salah times and recordings (caches + per-site guards).
+    pub integrations: crate::integrations::Integrations,
 }
 
 pub type App = Arc<AppState>;
