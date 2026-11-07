@@ -62,3 +62,8 @@ pub async fn logs(State(app): State<App>) -> Json<Value> {
     let l = app.logs.lock().unwrap();
     Json(json!({ "logs": l.iter().rev().collect::<Vec<_>>() }))
 }
+
+/// Device health for the System page (network, Bluetooth, resources, app usage).
+pub async fn system(State(app): State<App>) -> Json<crate::sysinfo::SystemInfo> {
+    Json(crate::sysinfo::collect(&app).await)
+}

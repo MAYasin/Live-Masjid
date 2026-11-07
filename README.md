@@ -34,7 +34,8 @@ every 20 s, and backs off for up to 10 minutes when the server refuses requests 
 src/            Rust service (player, stream decoders, monitor, Bluetooth, web API)
 ui/index.html   The whole web UI (embedded into the binary)
 deploy/         systemd units, installer, updater, atomic installer with rollback
-deploy.ps1      Build on Windows and ship to the Pi over SSH
+setup.sh        Guided setup of a new device (macOS, Linux, Windows via Git Bash/WSL)
+deploy.sh       Dev loop: build for the device CPU and ship it over SSH
 .github/        CI: build, test and publish a release on every push to main
 ```
 
@@ -43,9 +44,9 @@ deploy.ps1      Build on Windows and ship to the Pi over SSH
 **New device? Follow [docs/SETUP.md](docs/SETUP.md).** In short:
 
 1. Flash the card with Raspberry Pi Imager: Raspberry Pi OS Lite, with Wi-Fi, SSH and your key set in the customisation screen.
-2. On the Windows PC, run the wizard:
+2. On any computer (macOS, Linux, or Windows in Git Bash/WSL), run the wizard:
    ```powershell
-   ./setup.ps1
+   ./setup.sh
    ```
    It sets up SSH, Wi-Fi, Bluetooth and the service, configures auto-updates, checks the release pipeline, and verifies the result.
 3. Open the address it prints, pick your masjid, and pair your speaker.
@@ -59,8 +60,8 @@ Supported boards:
 **From this PC (development):**
 
 ```powershell
-./deploy.ps1          # build for the device's CPU, upload, install; health check + automatic rollback
-./deploy.ps1 -Logs    # follow the service log
+./deploy.sh           # build for the device's CPU, upload, install; health check + automatic rollback
+./deploy.sh --logs    # follow the service log
 ```
 
 The updater leaves dev builds alone for 12 hours, so it won't immediately replace what you just deployed.

@@ -9,6 +9,7 @@ mod net;
 mod player;
 mod sink;
 mod site;
+mod sysinfo;
 mod state;
 mod stream;
 mod web;

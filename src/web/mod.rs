@@ -47,6 +47,7 @@ pub fn router(app: App) -> Router {
         .route("/events", get(api::status::events))
         .route("/history", get(api::status::history))
         .route("/logs", get(api::status::logs))
+        .route("/system", get(api::status::system))
         .route("/stations", get(api::stations::list))
         .route("/stations/refresh", post(api::stations::refresh))
         .route("/select", post(api::stations::select))
