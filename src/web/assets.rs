@@ -1,7 +1,8 @@
 //! The web UI, compiled into the binary from `ui/`.
 //!
-//! Files are served with an ETag equal to the build version, so browsers revalidate
-//! cheaply (304) and always pick up a new UI after an update.
+//! Files are served with an ETag derived from their *content*, so browsers revalidate
+//! cheaply (304) and always pick up a changed file — even between dev builds that share
+//! a version label (an earlier version-based ETag served stale JS after dev deploys).
 
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -45,12 +46,18 @@ const fn content_type(path: &str) -> &'static str {
     }
 }
 
-fn etag() -> String {
-    format!("\"{}\"", crate::VERSION)
+/// FNV-1a 64-bit hash of the file contents as a quoted ETag.
+fn etag(body: &str) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    for b in body.bytes() {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x0000_0100_0000_01b3);
+    }
+    format!("\"{h:016x}\"")
 }
 
 fn serve(headers: &HeaderMap, content_type: &'static str, body: &'static str) -> Response {
-    let tag = etag();
+    let tag = etag(body);
     if headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()) == Some(tag.as_str()) {
         return StatusCode::NOT_MODIFIED.into_response();
     }
@@ -92,5 +99,7 @@ mod tests {
         assert!(super::content_type("a/b.css").starts_with("text/css"));
         assert!(super::content_type("a/b.js").starts_with("text/javascript"));
         assert!(super::FILES.iter().all(|(p, _, body)| !body.is_empty() && !p.starts_with('/')));
+        assert_ne!(super::etag("a"), super::etag("b"), "content changes must change the ETag");
+        assert_eq!(super::etag("same"), super::etag("same"));
     }
 }

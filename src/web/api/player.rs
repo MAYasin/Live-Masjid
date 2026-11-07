@@ -21,7 +21,7 @@ pub async fn action(State(app): State<App>, Path(action): Path<String>) -> ApiRe
 /// Settings that aren't already part of the live status.
 pub async fn config(State(app): State<App>) -> ApiResult {
     let s = app.settings();
-    Ok(Json(json!({ "codec": s.codec, "poll_secs": s.poll_secs, "fallback_output": s.fallback_output })))
+    Ok(Json(json!({ "codec": s.codec, "poll_secs": s.poll_secs, "fallback_output": s.fallback_output, "bt_quality": s.bt_quality })))
 }
 
 #[derive(Deserialize)]
@@ -32,11 +32,16 @@ pub struct SettingsPatch {
     codec: Option<String>,
     poll_secs: Option<u64>,
     fallback_output: Option<String>,
+    bt_quality: Option<String>,
 }
 
 pub async fn settings(State(app): State<App>, Json(p): Json<SettingsPatch>) -> ApiResult {
     let autoplay_on = p.autoplay == Some(true);
     let output_changed = p.fallback_output.is_some();
+    let quality = p.bt_quality.clone().filter(|q| matches!(q.as_str(), "low" | "medium" | "high"));
+    if p.bt_quality.is_some() && quality.is_none() {
+        return Err(ApiError::bad("quality must be low, medium or high"));
+    }
     app.update_settings(|s| {
         if let Some(v) = p.autoplay { s.autoplay = v; }
         if let Some(v) = p.volume { s.volume = v; }
@@ -44,9 +49,13 @@ pub async fn settings(State(app): State<App>, Json(p): Json<SettingsPatch>) -> A
         if let Some(v) = p.codec { s.codec = v; }
         if let Some(v) = p.poll_secs { s.poll_secs = v; }
         if let Some(v) = p.fallback_output { s.fallback_output = v; }
+        if let Some(v) = quality.clone() { s.bt_quality = v; }
     })?;
     if output_changed {
         app.sink.retarget(crate::bluetooth::compute_targets(&app));
+    }
+    if let Some(q) = quality {
+        crate::bluetooth::set_quality(&app, &q).await?;
     }
     // Auto-play just switched on and the masjid is already live: start now.
     if autoplay_on {

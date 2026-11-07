@@ -1,0 +1,7 @@
+[Unit]
+Description=Live Masjid: apply Bluetooth audio quality %i
+After=bluetooth.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/livemasjid/bt-audio.sh %i

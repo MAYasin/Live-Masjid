@@ -114,6 +114,12 @@
       <!-- Speaker -->
       <section class="view" id="view-speaker">
         <div class="notice error" id="speaker-error" hidden></div>
+        <div class="notice repair" id="speaker-repair" hidden>
+          <div><b>Your speaker has forgotten this Pi.</b> It accepts the connection but refuses audio, which happens after it pairs with
+            another device. Put the speaker in pairing mode (usually hold its Bluetooth or power button until it flashes), then tap Re-pair.
+            The Pi also watches for pairing mode and re-pairs by itself.</div>
+          <button class="btn primary small" id="repair">Re-pair speaker</button>
+        </div>
         <div class="panel">
           <div class="field">
             <div class="field-label"><b id="speaker-name">No Bluetooth speaker</b><span id="speaker-state">Choose a speaker below</span></div>
@@ -128,6 +134,14 @@
           <div class="field">
             <div class="field-label"><b>Fallback output</b><span>Used when the Bluetooth speaker isn't available</span></div>
             <select id="fallback" aria-label="Fallback output"></select>
+          </div>
+          <div class="field">
+            <div class="field-label"><b>Bluetooth audio quality</b><span>Lower quality uses less radio time, so the connection is more robust. Speech sounds the same.</span></div>
+            <select id="bt-quality" aria-label="Bluetooth audio quality">
+              <option value="low">Most stable</option>
+              <option value="medium">Balanced</option>
+              <option value="high">High quality</option>
+            </select>
           </div>
           <div class="field">
             <div class="field-label"><b>Keep speaker awake</b><span>Plays silence while waiting so audio starts instantly and the speaker never sleeps</span></div>

@@ -40,31 +40,26 @@ deploy.ps1      Build on Windows and ship to the Pi over SSH
 
 ## First-time setup
 
-1. Flash **Raspberry Pi OS Lite 64-bit**. Trixie was used for development.
-2. On your PC, install Rust (`rustup`) and add the Pi target:
+**New device? Follow [docs/SETUP.md](docs/SETUP.md).** In short:
+
+1. Flash the card with Raspberry Pi Imager: Raspberry Pi OS Lite, with Wi-Fi, SSH and your key set in the customisation screen.
+2. On the Windows PC, run the wizard:
    ```powershell
-   rustup target add aarch64-unknown-linux-musl
+   ./setup.ps1
    ```
-   No Docker, zig or C toolchain is needed. The repo builds a static binary with Rust's bundled `rust-lld`.
-3. Make sure you can SSH to the Pi with a key (`ssh pi@192.168.1.101` works without a password).
-4. Run the installer once. It asks for the Pi's sudo password once:
-   ```powershell
-   ./deploy.ps1 -Setup -Repo <github-user>/<repo>
-   ```
-   It sets up everything on the Pi:
-   - **Packages:** installs `bluez-alsa-utils`.
-   - **Bluetooth:** unblocks the radio and powers it on at every boot.
-   - **Wi-Fi:** turns off Wi-Fi power saving, which causes stream drop-outs.
-   - **Logs:** caps the journal size to protect the SD card.
-   - **Service:** creates a dedicated `livemasjid` user and installs and enables the service plus the hourly updater.
-5. Open **http://192.168.1.101/** and pick your masjid. Then go to **Speaker**, tap **Scan**, and **Pair** your speaker.
+   It sets up SSH, Wi-Fi, Bluetooth and the service, configures auto-updates, checks the release pipeline, and verifies the result.
+3. Open the address it prints, pick your masjid, and pair your speaker.
+
+Supported boards:
+- Raspberry Pi Zero, Zero 2 W, 2, 3, 4 and 5
+- Debian-based ARM boards (Armbian, DietPi, Ubuntu), both 64-bit (`aarch64`) and 32-bit (`armv7`, `armv6`)
 
 ## Shipping updates
 
 **From this PC (development):**
 
 ```powershell
-./deploy.ps1          # build + upload + install, with health check and automatic rollback
+./deploy.ps1          # build for the device's CPU, upload, install; health check + automatic rollback
 ./deploy.ps1 -Logs    # follow the service log
 ```
 

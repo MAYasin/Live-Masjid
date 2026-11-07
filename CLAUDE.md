@@ -15,6 +15,9 @@ that aren't obvious from the code.
   - The Pi pulls releases hourly through `livemasjid-update.timer`, health-checks them and rolls back on failure.
   - `deploy.ps1` is the local development loop.
 - **No Docker anywhere.** The owner explicitly rejected it.
+- **Setup of new devices** is a Windows wizard, `setup.ps1`, driving the generic `deploy/install.sh` over SSH, with a guide in `docs/SETUP.md`.
+  It targets any Pi on Pi OS plus Debian-based ARM boards, 64-bit and 32-bit (aarch64, armv7, armv6).
+- **Audio: keep Bluetooth and wired both supported.** The owner currently has only a Bluetooth speaker, so Bluetooth must be rock-solid.
 - **UI style.** Minimal and neutral, like a FAANG product: grayscale plus one dark primary colour, green only for "live",
   6 px radii, flat 1 px borders, no gradients or glows. It must not scroll sideways at 375 px. The sidebar appears at 900 px and wider.
 - **Footprint matters.** In testing it used about 4 MB of RAM and 1–2% CPU while playing, as a 3 MB static binary.
@@ -34,8 +37,14 @@ that aren't obvious from the code.
 
 ## Build, test, deploy
 
-- **Build:** `cargo build --release --target aarch64-unknown-linux-musl`. This is pure Rust, linked with `rust-lld`
-  (`.cargo/config.toml`), so no C toolchain or zig is needed on Windows.
+- **Build:** `cargo build --release --target <t>`, where `<t>` is `aarch64-unknown-linux-musl`, `armv7-unknown-linux-musleabihf` or
+  `arm-unknown-linux-musleabihf` (ARMv6). This is pure Rust, linked with `rust-lld` (`.cargo/config.toml`), so no C toolchain or zig
+  is needed. The Pi Zero 2 W can run the 32-bit binaries too, which is handy for testing them.
+- **CI** (`release.yml`): a matrix over the three targets on `ubuntu-24.04-arm`; 32-bit tests run under `qemu-arm-static`. One release
+  holds `livemasjid-{aarch64,armv7,armv6}-linux.tar.gz`, and `update.sh` picks the asset by `uname -m`.
+- **`deploy/CONFIG_VERSION`:** bump it whenever system configuration changes in `install.sh`. `update.sh` then runs
+  `install.sh --skip-binary` once on every device.
+- **`install.sh` must read `/etc/os-release` in a subshell.** That file defines its own `VERSION=`, which once clobbered the build label.
 - **The `tls` feature** (rustls + ring) needs a C compiler, so only CI enables it. Local builds talk plain HTTP, which every endpoint supports.
 - **Host `cargo test` fails on Windows** (`dlltool.exe` not found, windows-gnu toolchain). Run the tests on the Pi instead:
   `cargo test --release --no-run --target aarch64-unknown-linux-musl`, then copy the `target/.../release/deps/livemasjid-*` binary over and run it.
@@ -95,9 +104,26 @@ that aren't obvious from the code.
      `Failed to set mode: Authentication Failed (0x05)` every few seconds. It happened while Wi-Fi was saturated, since the chip is shared.
      The fix is to re-bind the `hci_uart_bcm` serdev (`serial0-0`), which re-uploads the firmware. `deploy/bt-recover.sh` does this, and
      `bluetooth/adapter.rs` runs it automatically after 20 s unhealthy, with back-off of 1, 5, 15 and 30 minutes. Verified on the device.
-- **Speaker refusing audio:** `avdtp_connect_cb() ... Invalid exchange (52)` / `br-connection-unknown`. The ACL link comes up, but the speaker
-  rejects A2DP, usually because it re-paired with a phone or is busy with another device. Only a person can fix this: power-cycle the speaker,
-  or Forget it and re-pair. The UI says so after 5 failed connects.
+- **Speaker refusing audio** (`avdtp_connect_cb … Invalid exchange (52)` / `br-connection-unknown`) means **key missing**: the speaker forgot
+  the bond, for example after pairing with a phone (BlueZ maps EBADE to "key missing"). It was confirmed when re-pairing fixed it immediately.
+  `bluetooth/speaker.rs` handles it:
+  - "connected" means **audio-ready** (an A2DP PCM appears in `bluealsa-aplay -L`), not just the ACL link
+  - a link that comes up without audio counts as a refusal; after 3 refusals the state is `needs_repair`: retrying stops, the UI shows **Re-pair**,
+    and the app scans every 2 min to re-pair automatically when the speaker is in pairing mode
+  - a speaker that is simply off backs off quietly (5 s doubling to 60 s)
+- **Bluetooth agent:** without one, a speaker reconnecting by itself is rejected (`Authentication attempt without agent`).
+  `bluetooth/agent.rs` keeps an interactive `bluetoothctl` with a `NoInputNoOutput` default agent and answers `yes` to prompts.
+  The adapter is kept non-pairable and non-discoverable except during UI pairing.
+- **BlueZ and bluez-alsa configuration** (installer): `ControllerMode = bredr`, `FastConnectable = true`, `JustWorksRepairing = always`, and
+  `ReconnectIntervals`. The bluealsa drop-in runs `-p a2dp-source --keep-alive=10` (the stock unit also enabled `a2dp-sink`).
+  Verified recovery after a forced disconnect and after a bluetoothd restart: about 9 s each.
+- **Speaker battery** is only reported over HFP: the speaker sends battery AT commands, and bluealsa forwards them to the BlueZ battery provider.
+  `deploy/bt-audio.sh` therefore runs bluealsa with `-p a2dp-source -p hfp-ag --sbc-quality=<q> --keep-alive=10`. The SCO channel is never opened.
+  Verified: `Battery Percentage: 0x64 (100)`. The UI shows it and the log warns once at 20% or below.
+- **SBC quality** setting `bt_quality` (low / medium / high, shown as "Most stable" / "Balanced" / "High quality"). A lower bitrate means less airtime on
+  the shared Wi-Fi/Bluetooth chip. The owner's Pi runs `low`.
+- **The service is sandboxed (`ProtectSystem=full`)**, so `/etc` is read-only even for `sudo` children. Root actions that write `/etc` must go
+  through a systemd unit, for example `systemctl start livemasjid-bt-audio@<q>.service` (exact sudo rule), like the update service does.
 - **HDMI audio without a display fails** with ALSA error 524. The output list skips HDMI unless `/sys/class/drm/*HDMI*/status` reads `connected`.
 - **Audio goes through an `aplay` child process.** Bluetooth uses `bluealsa:DEV=<MAC>,PROFILE=a2dp` from Debian's `bluez-alsa-utils`
   (`bluealsa.service`). While waiting, the sink feeds silence ("keep awake") so playback starts instantly.
@@ -117,10 +143,11 @@ that aren't obvious from the code.
 
 ## Open issues / next steps
 
-- **The speaker "vipIatina VSW07"** paired and played at first, then started refusing A2DP. It needs a power-cycle or a re-pair by the owner.
-  End-to-end audio through Bluetooth is still not verified.
+- **Wizard:** the full interactive `setup.ps1` run on a freshly flashed card is not yet verified. Its install and verify steps were tested
+  through `deploy.ps1 -Setup` and by hand.
+- **The 32-bit CI build and release assets** are verified locally (both binaries run, and ARMv6 tests pass on the Pi) but not yet in CI.
 - **The livemasjid IP ban** is in place until the owner lifts it. The app works through relay2 meanwhile.
-- **Wi-Fi is marginal** (-64 dBm, 2.4 GHz shared with Bluetooth). Large uploads to the Pi saturated it and coincided with stalls and the
+- **Wi-Fi was marginal** (-64 dBm; -50 dBm by 2026-11-07, after the setup changed). It is 2.4 GHz and shared with Bluetooth. Large uploads to the Pi saturated it and coincided with stalls and the
   Bluetooth chip hang. Keep dev uploads small, and move the Pi or the access point closer if stalls recur.
 - **Possible additions:** password-protected remote access (Tailscale), and multiple masjids with a priority order.
 
@@ -131,8 +158,9 @@ that aren't obvious from the code.
 - `stream/` `mod.rs` session and reconnect · `buffer.rs` jitter buffer · `ogg.rs` seamless page filter · `decode.rs` Opus and MP3 decoding
 - `sink.rs` aplay output thread (epochs, keep-awake, failover)
 - `monitor/` `sse.rs` live push · `poll.rs` Icecast status · `site.rs` website back-off guard
-- `bluetooth/` `mod.rs` supervisor · `adapter.rs` power, rfkill and controller reset · `devices.rs` pair, use, forget · `ctl.rs` bluetoothctl · `outputs.rs` ALSA targets
+- `bluetooth/` `mod.rs` supervisor · `adapter.rs` power, rfkill and controller reset · `devices.rs` pair, use, forget, re-pair · `speaker.rs` audio-ready state machine · `agent.rs` persistent agent · `ctl.rs` bluetoothctl · `outputs.rs` ALSA targets
 - `catalog.rs` directory scrape, cache and seed · `history.rs` JSONL sessions · `net.rs` raw Icecast HTTP and endpoints
 - `web/` `mod.rs` router and `ApiError` · `auth.rs` · `assets.rs` (embedded UI, ETag) · `api/{status,stations,player,speaker,system}.rs`
+- Device setup: `setup.ps1` (Windows wizard) · `deploy/install.sh` (generic installer) · `deploy/update.sh` (`--check`, `--force`) · `docs/SETUP.md`
 - `ui/` `index.html` markup only · `css/{base,layout,components,views}.css` · `js/` ES modules: `main.js` router, `store.js` live status,
   `api.js`, `dom.js`, `format.js`, `views/{now,masjids,speaker,history,settings}.js`. New UI files must be added to `FILES` in `web/assets.rs`.

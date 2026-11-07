@@ -64,6 +64,8 @@ pub struct BtStatus {
     pub scanning: bool,
     /// Controller reset in progress.
     pub recovering: bool,
+    /// The speaker refuses audio (lost pairing): it must be re-paired.
+    pub needs_repair: bool,
     pub bluealsa: bool,
     pub error: Option<String>,
 }

@@ -9,8 +9,8 @@
 
 .EXAMPLE
   ./deploy.ps1                 # build + deploy (normal development loop)
-  ./deploy.ps1 -Setup          # first time: install dependencies, service, updater (asks for sudo password once)
-  ./deploy.ps1 -Setup -Repo you/live-masjid   # also enable hourly auto-updates from GitHub releases
+  ./deploy.ps1 -Setup          # re-run the full installer with this local build
+  (For a brand-new device use ./setup.ps1 — the guided wizard.)
   ./deploy.ps1 -Logs           # follow the service log
 #>
 param(
@@ -30,16 +30,22 @@ if (-not (Test-Path $cargo)) { $cargo = "cargo" }
 $sha = git rev-parse --short HEAD 2>$null
 if ($LASTEXITCODE -ne 0 -or -not $sha) { $sha = "local" }
 $dirty = if (git status --porcelain 2>$null) { "-dirty" } else { "" }
-$ErrorActionPreference = "Continue"  # native tools write progress to stderr; we check $LASTEXITCODE instead
 $version = "dev-$sha$dirty"
 $env:LIVEMASJID_BUILD = $version
 
-Write-Host "==> Building $version for aarch64 (Pi Zero 2 W)" -ForegroundColor Cyan
-& $cargo build --release --target aarch64-unknown-linux-musl
+$machine = (ssh -o ConnectTimeout=8 $PiHost "uname -m" 2>$null | Out-String).Trim()
+$target = switch -Regex ($machine) {
+  "^(aarch64|arm64)$" { "aarch64-unknown-linux-musl"; break }
+  "^(armv7l|armv8l)$" { "armv7-unknown-linux-musleabihf"; break }
+  "^armv6l$"          { "arm-unknown-linux-musleabihf"; break }
+  default { throw "Cannot reach $PiHost or unsupported CPU '$machine'. Use setup.ps1 for a new device." }
+}
+Write-Host "==> Building $version for $machine ($target)" -ForegroundColor Cyan
+& $cargo build --release --target $target
 if ($LASTEXITCODE -ne 0) { throw "build failed" }
 Remove-Item Env:LIVEMASJID_BUILD
 
-$bin = "target/aarch64-unknown-linux-musl/release/livemasjid"
+$bin = "target/$target/release/livemasjid"
 $stage = "/tmp/livemasjid-deploy"
 Write-Host "==> Uploading to $PiHost" -ForegroundColor Cyan
 ssh $PiHost "rm -rf $stage && mkdir -p $stage"

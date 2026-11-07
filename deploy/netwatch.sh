@@ -9,6 +9,7 @@
 set -uo pipefail
 
 STATE=/run/livemasjid-netwatch.count
+[ -f /etc/livemasjid/netwatch.conf ] && . /etc/livemasjid/netwatch.conf
 IFACE="${IFACE:-wlan0}"
 IW=$(command -v iw || echo /usr/sbin/iw)
 log() { echo "$*"; logger -t netwatch "$*"; }
@@ -38,18 +39,25 @@ log "network unreachable (check $n)"
 
 case "$n" in
   2|4)
-    con=$(nmcli -t -f NAME,DEVICE con show --active 2>/dev/null | awk -F: -v i="$IFACE" '$2==i {print $1; exit}')
-    if [ -n "$con" ]; then nmcli con up "$con" >/dev/null 2>&1 && log "reconnected $con"
-    else nmcli device connect "$IFACE" >/dev/null 2>&1 && log "reconnected $IFACE"; fi
+    if command -v nmcli >/dev/null; then
+      con=$(nmcli -t -f NAME,DEVICE con show --active 2>/dev/null | awk -F: -v i="$IFACE" '$2==i {print $1; exit}')
+      if [ -n "$con" ]; then nmcli con up "$con" >/dev/null 2>&1 && log "reconnected $con"
+      else nmcli device connect "$IFACE" >/dev/null 2>&1 && log "reconnected $IFACE"; fi
+    else
+      ip link set "$IFACE" down; sleep 2; ip link set "$IFACE" up; log "cycled $IFACE"
+    fi
     ;;
   6)
-    log "restarting NetworkManager"
-    systemctl restart NetworkManager
+    log "restarting network stack"
+    systemctl restart NetworkManager 2>/dev/null || systemctl restart networking 2>/dev/null || systemctl restart wpa_supplicant 2>/dev/null || true
     ;;
   10)
-    log "reloading Wi-Fi driver"
-    modprobe -r brcmfmac_wcc brcmfmac 2>/dev/null; sleep 2; modprobe brcmfmac; sleep 8
-    systemctl restart NetworkManager
+    drv=$(basename "$(readlink -f "/sys/class/net/$IFACE/device/driver/module" 2>/dev/null)" 2>/dev/null)
+    if [ -n "$drv" ] && [ "$drv" != "." ]; then
+      log "reloading Wi-Fi driver $drv"
+      modprobe -r "${drv}_wcc" "$drv" 2>/dev/null; sleep 2; modprobe "$drv"; sleep 8
+    fi
+    systemctl restart NetworkManager 2>/dev/null || systemctl restart networking 2>/dev/null || true
     ;;
   20)
     log "network down ~10 min; rebooting"

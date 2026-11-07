@@ -114,12 +114,19 @@ async fn run() -> anyhow::Result<()> {
 
     {
         let weak = Arc::downgrade(&app);
+        // Log output *changes* only (opened on X / lost X), not every retry or raw ALSA text.
+        let last_logged: Mutex<Option<String>> = Mutex::new(None);
         app.sink.on_status(move |out| {
             if let Some(app) = weak.upgrade() {
-                if let Some(err) = &out.error {
-                    app.log("warn", format!("Audio output: {err}"));
-                } else if out.open {
-                    app.log("info", format!("Audio output: {} ({})", out.label, out.kind));
+                let key = out.open.then(|| out.device.clone());
+                let mut last = last_logged.lock().unwrap();
+                if *last != key {
+                    match (&key, last.as_ref()) {
+                        (Some(_), _) => app.log("info", format!("Audio playing on {} ({})", out.label, out.kind)),
+                        (None, Some(_)) => app.log("warn", "Audio output lost; retrying"),
+                        (None, None) => {}
+                    }
+                    *last = key;
                 }
                 app.status.send_modify(|s| s.output = out);
             }

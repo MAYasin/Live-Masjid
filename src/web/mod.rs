@@ -58,6 +58,7 @@ pub fn router(app: App) -> Router {
         .route("/bt/use", post(api::speaker::use_device))
         .route("/bt/stop", post(api::speaker::release))
         .route("/bt/forget", post(api::speaker::forget))
+        .route("/bt/repair", post(api::speaker::repair))
         .route("/outputs", get(api::speaker::outputs))
         .route("/password", post(auth::set_password))
         .route("/logout", post(auth::logout))
