@@ -114,12 +114,38 @@ impl SinkHandle {
     }
 }
 
+/// If the device accepts no audio for this long, it is stalled (e.g. a Bluetooth link that
+/// stopped moving data without closing). We drop it and reopen rather than block: a blocked
+/// sink thread starves the systemd watchdog and gets the whole service killed.
+const STALL_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// An open `aplay`. Writes go through a small queue to a writer thread, so the sink thread
+/// itself never blocks on the pipe.
 struct Open {
     child: Child,
-    stdin: ChildStdin,
+    tx: SyncSender<Vec<u8>>,
+    /// Set by the writer thread when the pipe breaks.
+    broken: Arc<AtomicBool>,
     rate: u32,
     idx: usize,
     stderr: Arc<Mutex<String>>,
+}
+
+fn spawn_writer(mut stdin: ChildStdin, broken: Arc<AtomicBool>) -> SyncSender<Vec<u8>> {
+    // ~4 chunks (~80 ms) in flight on top of the 64 KB pipe buffer.
+    let (tx, rx) = sync_channel::<Vec<u8>>(4);
+    std::thread::Builder::new()
+        .name("aplay-writer".into())
+        .spawn(move || {
+            for buf in rx {
+                if stdin.write_all(&buf).is_err() {
+                    broken.store(true, Ordering::Relaxed);
+                    return;
+                }
+            }
+        })
+        .expect("spawn writer");
+    tx
 }
 
 struct Sink {
@@ -236,9 +262,31 @@ impl Sink {
                 self.bytes.extend_from_slice(&x.to_le_bytes());
             }
         }
-        if let Err(e) = o.stdin.write_all(&self.bytes) {
-            let idx = o.idx;
-            let err = self.child_error(e);
+        let idx = o.idx;
+        let mut chunk = std::mem::take(&mut self.bytes);
+        let started = Instant::now();
+        let outcome = loop {
+            if o.broken.load(Ordering::Relaxed) {
+                break Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe));
+            }
+            match o.tx.try_send(chunk) {
+                Ok(()) => break Ok(()),
+                Err(TrySendError::Disconnected(_)) => break Err(std::io::Error::from(std::io::ErrorKind::BrokenPipe)),
+                Err(TrySendError::Full(c)) => {
+                    if started.elapsed() > STALL_TIMEOUT {
+                        break Err(std::io::Error::new(std::io::ErrorKind::TimedOut, "output stalled"));
+                    }
+                    chunk = c;
+                    // Real-time pacing: the device drains ~1 chunk per 20 ms. Stay alive meanwhile.
+                    self.h.heartbeat.store(crate::state::now_ms(), Ordering::Relaxed);
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            }
+        };
+        self.bytes = Vec::with_capacity(16 * 1024);
+        if let Err(e) = outcome {
+            let stalled = e.kind() == std::io::ErrorKind::TimedOut;
+            let err = if stalled { "audio device stopped accepting data".to_string() } else { self.child_error(e) };
             self.fail(idx, err);
         }
     }
@@ -287,7 +335,11 @@ impl Sink {
 
     fn child_error(&mut self, e: std::io::Error) -> String {
         if let Some(o) = self.open.as_mut() {
-            let _ = o.child.wait();
+            // Never wait unbounded: aplay may be stuck in the driver.
+            let deadline = Instant::now() + Duration::from_millis(500);
+            while Instant::now() < deadline && matches!(o.child.try_wait(), Ok(None)) {
+                std::thread::sleep(Duration::from_millis(20));
+            }
             let s = o.stderr.lock().unwrap().trim().to_string();
             if !s.is_empty() {
                 return s;
@@ -312,7 +364,7 @@ impl Sink {
 
     fn close(&mut self) {
         if let Some(mut o) = self.open.take() {
-            drop(o.stdin);
+            drop(o.tx); // writer thread finishes and closes aplay's stdin
             let deadline = Instant::now() + Duration::from_millis(300);
             while Instant::now() < deadline {
                 if let Ok(Some(_)) = o.child.try_wait() {
@@ -320,6 +372,7 @@ impl Sink {
                 }
                 std::thread::sleep(Duration::from_millis(20));
             }
+            // Killing aplay also unblocks a writer thread stuck in write().
             let _ = o.child.kill();
             let _ = o.child.wait();
         }
@@ -365,6 +418,8 @@ fn spawn_aplay(device: &str, rate: u32) -> std::io::Result<Open> {
         .stderr(Stdio::piped())
         .spawn()?;
     let stdin = child.stdin.take().expect("stdin");
+    let broken = Arc::new(AtomicBool::new(false));
+    let tx = spawn_writer(stdin, broken.clone());
     let stderr = Arc::new(Mutex::new(String::new()));
     if let Some(mut err) = child.stderr.take() {
         let buf = stderr.clone();
@@ -374,7 +429,7 @@ fn spawn_aplay(device: &str, rate: u32) -> std::io::Result<Open> {
             *buf.lock().unwrap() = s.lines().last().unwrap_or("").to_string();
         });
     }
-    Ok(Open { child, stdin, rate, idx: 0, stderr })
+    Ok(Open { child, tx, broken, rate, idx: 0, stderr })
 }
 
 /// A short two-tone chime used by "Test speaker".

@@ -19,6 +19,21 @@ if [ -d "/sys/class/net/$IFACE" ] && "$IW" dev "$IFACE" get power_save 2>/dev/nu
   "$IW" dev "$IFACE" set power_save off && log "wifi power save turned off"
 fi
 
+# Bluetooth controller health. A hung chip can still report "Powered: yes" while every HCI
+# command times out (kernel: "hci0: Opcode 0x0401 failed: -110", "command 0x0408 tx timeout"),
+# so scans find nothing and the speaker can't connect. Reset it, at most every 5 minutes.
+BT_STAMP=/run/livemasjid-btreset.stamp
+if [ -x /opt/livemasjid/bt-recover.sh ] && ls /sys/class/bluetooth/hci* >/dev/null 2>&1; then
+  timeouts=$(journalctl -k --since "-90s" --no-pager -o cat 2>/dev/null \
+    | grep -cE 'hci[0-9]+: (Opcode 0x[0-9a-f]+ failed: -110|command 0x[0-9a-f]+ tx timeout)')
+  last=$(stat -c %Y "$BT_STAMP" 2>/dev/null || echo 0)
+  if [ "${timeouts:-0}" -ge 2 ] && [ $(( $(date +%s) - last )) -gt 300 ]; then
+    touch "$BT_STAMP"
+    log "Bluetooth controller timing out ($timeouts HCI timeouts in 90 s); resetting"
+    /opt/livemasjid/bt-recover.sh >/dev/null 2>&1
+  fi
+fi
+
 online() {
   local gw
   gw=$(ip -4 route show default 2>/dev/null | awk '/default/ {print $3; exit}')

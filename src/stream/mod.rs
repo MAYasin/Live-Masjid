@@ -58,6 +58,9 @@ pub struct SessionParams {
     pub buffer_ms: Arc<AtomicU64>,
 }
 
+/// Total compressed audio bytes received from the stream servers (for the System page).
+pub static BYTES_RECEIVED: AtomicU64 = AtomicU64::new(0);
+
 /// After a live signal the MP3 mirror / relay can lag by a few seconds.
 pub const START_GRACE: Duration = Duration::from_secs(12);
 /// How long a dropped broadcast may stay unreachable before we call it finished.
@@ -217,6 +220,7 @@ fn pump(conn: &mut StreamConn, pipe: &mut Pipeline, p: &SessionParams, carry: Op
         match conn.reader.read(&mut buf) {
             Ok(0) => return Pumped::Dropped("stream closed by server".into()),
             Ok(n) => {
+                BYTES_RECEIVED.fetch_add(n as u64, Ordering::Relaxed);
                 if let Some(r) = deliver(&buf[..n], pipe) {
                     return r;
                 }

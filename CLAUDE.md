@@ -13,9 +13,9 @@ that aren't obvious from the code.
 - **Shipping.**
   - GitHub Actions builds a release on every push to `main`.
   - The Pi pulls releases hourly through `livemasjid-update.timer`, health-checks them and rolls back on failure.
-  - `deploy.ps1` is the local development loop.
+  - `deploy.sh` is the local development loop.
 - **No Docker anywhere.** The owner explicitly rejected it.
-- **Setup of new devices** is a Windows wizard, `setup.ps1`, driving the generic `deploy/install.sh` over SSH, with a guide in `docs/SETUP.md`.
+- **Setup of new devices** is a bash wizard, `setup.sh` (macOS, Linux, Windows via Git Bash/WSL; bash 3.2-compatible for macOS), driving the generic `deploy/install.sh` over SSH, with a guide in `docs/SETUP.md`.
   It targets any Pi on Pi OS plus Debian-based ARM boards, 64-bit and 32-bit (aarch64, armv7, armv6).
 - **Audio: keep Bluetooth and wired both supported.** The owner currently has only a Bluetooth speaker, so Bluetooth must be rock-solid.
 - **UI style.** Minimal and neutral, like a FAANG product: grayscale plus one dark primary colour, green only for "live",
@@ -48,12 +48,12 @@ that aren't obvious from the code.
 - **The `tls` feature** (rustls + ring) needs a C compiler, so only CI enables it. Local builds talk plain HTTP, which every endpoint supports.
 - **Host `cargo test` fails on Windows** (`dlltool.exe` not found, windows-gnu toolchain). Run the tests on the Pi instead:
   `cargo test --release --no-run --target aarch64-unknown-linux-musl`, then copy the `target/.../release/deps/livemasjid-*` binary over and run it.
-- **Deploy:** `./deploy.ps1` (dev loop) or `./deploy.ps1 -Setup -Repo MAYasin/Live-Masjid` (idempotent full install).
+- **Deploy:** `./deploy.sh` (dev loop; picks the target from the device's `uname -m`) or `./deploy.sh --setup --repo MAYasin/Live-Masjid`
+  (idempotent full install). The PowerShell scripts were replaced by these on 2026-11-07.
   - Dev builds are labelled `dev-<sha>`.
   - `update.sh` won't replace a dev build for 12 hours unless run with `--force`.
-- **PowerShell 5.1 treats native stderr as an error.** `deploy.ps1` uses `$ErrorActionPreference="Continue"` and checks `$LASTEXITCODE` instead.
 - **Over SSH, never run `pkill -f livemasjid`.** It matches the SSH command line and kills your own session. Use `pkill -x livemasjid`.
-- **Shell scripts must keep LF line endings** (`.gitattributes`). `deploy.ps1` also strips CR on the Pi as a safety net.
+- **Shell scripts must keep LF line endings** (`.gitattributes`). `deploy.sh` and `setup.sh` also strip CR on the device as a safety net.
 
 ## livemasjid.com — verified behaviour (Nov 2026)
 
@@ -126,6 +126,17 @@ that aren't obvious from the code.
   from one commit shares the label `dev-<sha>-dirty`.
 - **The service is sandboxed (`ProtectSystem=full`)**, so `/etc` is read-only even for `sudo` children. Root actions that write `/etc` must go
   through a systemd unit, for example `systemctl start livemasjid-bt-audio@<q>.service` (exact sudo rule), like the update service does.
+- **Watchdog restart loop (2026-11-07, 74 restarts in 1.5 h).** A stalled Bluetooth link made `aplay`'s pipe stop accepting audio. The sink's
+  blocking write froze its thread, its heartbeat went stale, the app stopped petting systemd, and `WatchdogSec=45` killed the service.
+  Each restart dropped the speaker, which looked like Bluetooth flapping. Fix (`sink.rs`): writes go through a writer thread and a bounded queue;
+  after 5 s without progress the output counts as stalled (`audio device stopped accepting data`), and `aplay` is killed and re-opened.
+  Verified by `kill -STOP` on `aplay`: recovered in about 6 s with 0 restarts. **Never do blocking I/O on the sink or player thread.**
+- **Half-hung Bluetooth chip:** it reports `Powered: yes`, but HCI commands time out (`hci0: Opcode 0x0401 failed: -110`,
+  `command 0x0408 tx timeout`), so scans find nothing. The app cannot read the kernel log, so `netwatch.sh` (root, every 30 s) counts these
+  lines and runs `bt-recover.sh` when there are 2 or more in 90 s, at most once every 5 min.
+  The upgrade from kernel 6.18.50 to 6.18.60 (via `install.sh --upgrade`) left 0 timeouts after reboot.
+- **System page data** (`sysinfo.rs`, `/api/system`) comes from /proc, /sys, `iw` and `bluealsa-aplay -L`. On this kernel, Pi under-voltage is
+  read from hwmon `rpi_volt/in0_lcrit_alarm`; `get_throttled` doesn't exist.
 - **HDMI audio without a display fails** with ALSA error 524. The output list skips HDMI unless `/sys/class/drm/*HDMI*/status` reads `connected`.
 - **Audio goes through an `aplay` child process.** Bluetooth uses `bluealsa:DEV=<MAC>,PROFILE=a2dp` from Debian's `bluez-alsa-utils`
   (`bluealsa.service`). While waiting, the sink feeds silence ("keep awake") so playback starts instantly.
@@ -145,8 +156,8 @@ that aren't obvious from the code.
 
 ## Open issues / next steps
 
-- **Wizard:** the full interactive `setup.ps1` run on a freshly flashed card is not yet verified. Its install and verify steps were tested
-  through `deploy.ps1 -Setup` and by hand.
+- **Wizard:** the full interactive `setup.sh` run on a freshly flashed card is not yet verified. `deploy.sh --setup` (same installer,
+  including `--upgrade` and reboot detection) was verified from Git Bash on Windows.
 - **The 32-bit CI build** is verified: release `v0.1.0-3` (2026-11-07) has aarch64, armv7 and armv6 assets, and the Pi updated to it through the timer path.
 - **The livemasjid IP ban** is in place until the owner lifts it. The app works through relay2 meanwhile.
 - **Wi-Fi was marginal** (-64 dBm; -50 dBm by 2026-11-07, after the setup changed). It is 2.4 GHz and shared with Bluetooth. Large uploads to the Pi saturated it and coincided with stalls and the
@@ -161,8 +172,9 @@ that aren't obvious from the code.
 - `sink.rs` aplay output thread (epochs, keep-awake, failover)
 - `monitor/` `sse.rs` live push · `poll.rs` Icecast status · `site.rs` website back-off guard
 - `bluetooth/` `mod.rs` supervisor · `adapter.rs` power, rfkill and controller reset · `devices.rs` pair, use, forget, re-pair · `speaker.rs` audio-ready state machine · `agent.rs` persistent agent · `ctl.rs` bluetoothctl · `outputs.rs` ALSA targets
+- `sysinfo.rs` device, Wi-Fi, Bluetooth and app health for the System page
 - `catalog.rs` directory scrape, cache and seed · `history.rs` JSONL sessions · `net.rs` raw Icecast HTTP and endpoints
 - `web/` `mod.rs` router and `ApiError` · `auth.rs` · `assets.rs` (embedded UI, ETag) · `api/{status,stations,player,speaker,system}.rs`
-- Device setup: `setup.ps1` (Windows wizard) · `deploy/install.sh` (generic installer) · `deploy/update.sh` (`--check`, `--force`) · `docs/SETUP.md`
+- Device setup: `setup.sh` (wizard), `deploy.sh` (dev loop) · `deploy/install.sh` (generic installer) · `deploy/update.sh` (`--check`, `--force`) · `docs/SETUP.md`
 - `ui/` `index.html` markup only · `css/{base,layout,components,views}.css` · `js/` ES modules: `main.js` router, `store.js` live status,
-  `api.js`, `dom.js`, `format.js`, `views/{now,masjids,speaker,history,settings}.js`. New UI files must be added to `FILES` in `web/assets.rs`.
+  `api.js`, `dom.js`, `format.js`, `views/{now,masjids,speaker,history,settings,system}.js`. New UI files must be added to `FILES` in `web/assets.rs`.
