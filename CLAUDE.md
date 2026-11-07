@@ -122,6 +122,8 @@ that aren't obvious from the code.
   Verified: `Battery Percentage: 0x64 (100)`. The UI shows it and the log warns once at 20% or below.
 - **SBC quality** setting `bt_quality` (low / medium / high, shown as "Most stable" / "Balanced" / "High quality"). A lower bitrate means less airtime on
   the shared Wi-Fi/Bluetooth chip. The owner's Pi runs `low`.
+- **UI assets use content-hash ETags** (FNV-1a of the file). Version-based ETags served stale JS after dev deploys, because every dev build
+  from one commit shares the label `dev-<sha>-dirty`.
 - **The service is sandboxed (`ProtectSystem=full`)**, so `/etc` is read-only even for `sudo` children. Root actions that write `/etc` must go
   through a systemd unit, for example `systemctl start livemasjid-bt-audio@<q>.service` (exact sudo rule), like the update service does.
 - **HDMI audio without a display fails** with ALSA error 524. The output list skips HDMI unless `/sys/class/drm/*HDMI*/status` reads `connected`.
@@ -145,7 +147,7 @@ that aren't obvious from the code.
 
 - **Wizard:** the full interactive `setup.ps1` run on a freshly flashed card is not yet verified. Its install and verify steps were tested
   through `deploy.ps1 -Setup` and by hand.
-- **The 32-bit CI build and release assets** are verified locally (both binaries run, and ARMv6 tests pass on the Pi) but not yet in CI.
+- **The 32-bit CI build** is verified: release `v0.1.0-3` (2026-11-07) has aarch64, armv7 and armv6 assets, and the Pi updated to it through the timer path.
 - **The livemasjid IP ban** is in place until the owner lifts it. The app works through relay2 meanwhile.
 - **Wi-Fi was marginal** (-64 dBm; -50 dBm by 2026-11-07, after the setup changed). It is 2.4 GHz and shared with Bluetooth. Large uploads to the Pi saturated it and coincided with stalls and the
   Bluetooth chip hang. Keep dev uploads small, and move the Pi or the access point closer if stalls recur.
