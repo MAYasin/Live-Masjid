@@ -102,9 +102,15 @@ that aren't obvious from the code.
   The API plays by **id from the cached list, never a raw URL** (no SSRF). A broadcast that starts during a recording interrupts it;
   stopping or finishing a recording resumes live if the masjid is on air. Verified: play, pause (position held), resume, stop, then back to live.
 
-- **Listening in the browser** (setting `browser_listening`, off by default). `/api/listen` returns the stream sources (MP3 first for
-  iOS, relay before origin) and `/api/recordings/url` returns a listed recording's file. Both refuse while the setting is off. The browser
-  plays directly from livemasjid's servers, like livemasjid.com's own player; the Pi's output is untouched (`ui/js/local.js`).
+- **Listening in the browser** (setting `browser_listening`, off by default). Both endpoints refuse while the setting is off.
+  - **In sync with the speaker:** the sink copies exactly what it hands to the device (`SinkHandle::mirror`, a tokio broadcast) as mono 24 kHz s16.
+    `/api/listen/live.wav` streams it as an endless WAV (at most 6 listeners; a lagging listener skips ahead). It is paced by the Pi's audio
+    device, so it mirrors live and recordings alike.
+  - The browser (`ui/js/local.js`) nudges `playbackRate` (1.04–1.1 with pitch preserved, 0.97 when too low) to hold about 0.9 s buffered
+    (`SYNC_TARGET_S`), matching the speaker's path (queue, pipe, aplay 250 ms, Bluetooth). Measured: the buffer settles at 0.6–1.2 s with 0 stalls.
+  - Before this fix the browser pulled its own stream from livemasjid. Different mount (MP3 runs about 6 s behind Opus), its own Icecast burst and
+    its own buffering put it seconds out of sync. That path remains only as a fallback `<source>`.
+  - `/api/recordings/url` gives "Play here" for recordings, which are independent of the speaker.
 
 ## Pi hardware gotchas (root causes found)
 

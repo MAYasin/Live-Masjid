@@ -49,7 +49,13 @@ pub struct SinkHandle {
     /// PCM tagged with an older epoch is discarded (instant stop / switch).
     pub epoch: Arc<AtomicU64>,
     targets: Arc<Mutex<Vec<Target>>>,
+    /// Copy of exactly what goes to the device (mono, MIRROR_RATE, s16le), for browsers that
+    /// "listen on this device" in sync with the speaker. Only produced while someone listens.
+    pub mirror: tokio::sync::broadcast::Sender<Arc<[u8]>>,
 }
+
+/// Sample rate of the browser mirror (mono). 24 kHz is plenty for speech and adhan.
+pub const MIRROR_RATE: u32 = 24_000;
 
 impl SinkHandle {
     pub fn spawn(volume: Arc<AtomicU8>, keep_awake: bool) -> Self {
@@ -63,6 +69,7 @@ impl SinkHandle {
             audible: Arc::new(AtomicBool::new(false)),
             epoch: Arc::new(AtomicU64::new(0)),
             targets: Arc::new(Mutex::new(Vec::new())),
+            mirror: tokio::sync::broadcast::channel(64).0,
         };
         let h2 = h.clone();
         std::thread::Builder::new()
@@ -242,6 +249,7 @@ impl Sink {
     }
 
     fn play(&mut self, rate: u32, data: &[i16], real: bool) {
+        self.mirror(rate, data);
         if self.open.as_ref().is_some_and(|o| o.rate != rate) {
             self.close();
         }
@@ -296,6 +304,25 @@ impl Sink {
             let err = if stalled { "audio device stopped accepting data".to_string() } else { self.child_error(e) };
             self.fail(idx, err);
         }
+    }
+
+    /// Down-mix to mono and resample to MIRROR_RATE for browser listeners (nearest sample;
+    /// cheap and fine for speech). Skipped entirely when nobody is listening.
+    fn mirror(&self, rate: u32, stereo: &[i16]) {
+        if self.h.mirror.receiver_count() == 0 || rate == 0 {
+            return;
+        }
+        let frames = stereo.len() / 2;
+        let step = f64::from(rate) / f64::from(MIRROR_RATE);
+        let mut out = Vec::with_capacity((frames as f64 / step) as usize * 2 + 2);
+        let mut pos = 0.0f64;
+        while (pos as usize) < frames {
+            let i = pos as usize * 2;
+            let mono = ((i32::from(stereo[i]) + i32::from(stereo[i + 1])) / 2) as i16;
+            out.extend_from_slice(&mono.to_le_bytes());
+            pos += step;
+        }
+        let _ = self.h.mirror.send(out.into());
     }
 
     fn try_open(&mut self, rate: u32) {

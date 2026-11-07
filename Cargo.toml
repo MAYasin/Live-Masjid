@@ -16,6 +16,7 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time",
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "form"] }
 reqwest = { version = "0.13", default-features = false, features = ["stream"] }
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
+bytes = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 symphonia = { version = "0.6", default-features = false, features = ["mp3"] }
