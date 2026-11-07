@@ -38,9 +38,9 @@ pub struct SettingsPatch {
 pub async fn settings(State(app): State<App>, Json(p): Json<SettingsPatch>) -> ApiResult {
     let autoplay_on = p.autoplay == Some(true);
     let output_changed = p.fallback_output.is_some();
-    let quality = p.bt_quality.clone().filter(|q| matches!(q.as_str(), "low" | "medium" | "high"));
+    let quality = p.bt_quality.clone().filter(|q| matches!(q.as_str(), "medium" | "high"));
     if p.bt_quality.is_some() && quality.is_none() {
-        return Err(ApiError::bad("quality must be low, medium or high"));
+        return Err(ApiError::bad("quality must be medium or high"));
     }
     app.update_settings(|s| {
         if let Some(v) = p.autoplay { s.autoplay = v; }

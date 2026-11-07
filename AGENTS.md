@@ -120,8 +120,11 @@ that aren't obvious from the code.
 - **Speaker battery** is only reported over HFP: the speaker sends battery AT commands, and bluealsa forwards them to the BlueZ battery provider.
   `deploy/bt-audio.sh` therefore runs bluealsa with `-p a2dp-source -p hfp-ag --sbc-quality=<q> --keep-alive=10`. The SCO channel is never opened.
   Verified: `Battery Percentage: 0x64 (100)`. The UI shows it and the log warns once at 20% or below.
-- **SBC quality** setting `bt_quality` (low / medium / high, shown as "Most stable" / "Balanced" / "High quality"). A lower bitrate means less airtime on
-  the shared Wi-Fi/Bluetooth chip. The owner's Pi runs `low`.
+- **SBC quality** setting `bt_quality`: `medium` ("Balanced", the default) or `high`. **`low` was removed on 2026-11-07**: on the owner's VSW07
+  speaker it only sustained about 150 KB/s instead of the 192 KB/s real time, so playback was choppy and the buffer drifted minutes behind live.
+  Medium and high both measured 193 KB/s. Measure throughput with the delta of `wchar` in `/proc/<livemasjid pid>/io` over 20–30 s.
+- **Latency cap:** if the jitter buffer grows past 60 s (the output played slower than real time), the pump trims to about 20 s behind live
+  (`ByteQueue::trim_front` drops whole Ogg pages) and logs it once.
 - **UI assets use content-hash ETags** (FNV-1a of the file). Version-based ETags served stale JS after dev deploys, because every dev build
   from one commit shares the label `dev-<sha>-dirty`.
 - **The service is sandboxed (`ProtectSystem=full`)**, so `/etc` is read-only even for `sudo` children. Root actions that write `/etc` must go

@@ -30,6 +30,8 @@ pub enum StreamEvent {
     Started { url: String, codec: &'static str },
     /// Connection lost; buffered audio keeps playing while we reconnect.
     Reconnecting(String),
+    /// The buffer grew far past normal (output slower than real time); skipped ahead this many seconds.
+    CaughtUp(u64),
     /// Session over.
     Ended(EndReason),
 }
@@ -63,6 +65,11 @@ pub static BYTES_RECEIVED: AtomicU64 = AtomicU64::new(0);
 
 /// After a live signal the MP3 mirror / relay can lag by a few seconds.
 pub const START_GRACE: Duration = Duration::from_secs(12);
+/// Normal buffer is the ~20 s Icecast burst. If it grows past MAX (the output played slower than
+/// real time for a while), skip ahead to TARGET so we never drift minutes behind live.
+const MAX_BUFFER_MS: u64 = 60_000;
+const TARGET_BUFFER_MS: u64 = 20_000;
+
 /// How long a dropped broadcast may stay unreachable before we call it finished.
 const DROP_GRACE: Duration = Duration::from_secs(30);
 
@@ -224,10 +231,24 @@ fn pump(conn: &mut StreamConn, pipe: &mut Pipeline, p: &SessionParams, carry: Op
                 if let Some(r) = deliver(&buf[..n], pipe) {
                     return r;
                 }
+                catch_up(pipe, p);
             }
             Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
             Err(e) => return Pumped::Dropped(format!("no data ({})", e.kind())),
         }
+    }
+}
+
+/// Bound latency behind live (see MAX_BUFFER_MS).
+fn catch_up(pipe: &Pipeline, p: &SessionParams) {
+    let ms = p.buffer_ms.load(Ordering::Relaxed);
+    if ms <= MAX_BUFFER_MS {
+        return;
+    }
+    let keep = (pipe.queue.buffered() as u64 * TARGET_BUFFER_MS / ms) as usize;
+    if pipe.queue.trim_front(keep) > 0 {
+        p.buffer_ms.store(TARGET_BUFFER_MS, Ordering::Relaxed);
+        let _ = p.events.send(StreamEvent::CaughtUp((ms - TARGET_BUFFER_MS) / 1000));
     }
 }
 

@@ -114,6 +114,9 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                             app.set_phase(Phase::Playing);
                         }
                     }
+                    StreamEvent::CaughtUp(secs) => {
+                        app.log("warn", format!("Audio had fallen {secs} s behind live (the speaker played slower than real time); skipped ahead"));
+                    }
                     StreamEvent::Reconnecting(msg) => {
                         app.log("warn", format!("Stream interrupted ({msg}); reconnecting"));
                         app.set_phase(Phase::Reconnecting);
