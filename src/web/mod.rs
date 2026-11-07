@@ -53,6 +53,8 @@ pub fn router(app: App) -> Router {
         .route("/recordings/play", post(api::extras::play))
         .route("/recordings/pause", post(api::extras::pause))
         .route("/recordings/stop", post(api::extras::stop))
+        .route("/listen", get(api::extras::listen))
+        .route("/recordings/url", get(api::extras::recording_url))
         .route("/stations", get(api::stations::list))
         .route("/stations/refresh", post(api::stations::refresh))
         .route("/select", post(api::stations::select))

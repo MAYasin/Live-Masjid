@@ -23,6 +23,7 @@ static FILES: &[(&str, &str, &str)] = embed![
     "js/api.js",
     "js/store.js",
     "js/format.js",
+    "js/local.js",
     "js/dom.js",
     "js/views/now.js",
     "js/views/masjids.js",

@@ -94,6 +94,7 @@ async fn run() -> anyhow::Result<()> {
         live_count: 0,
         site_blocked_until_ms: None,
         recording: None,
+        browser_listening: settings.browser_listening,
         buffer_ms: 0,
     };
 

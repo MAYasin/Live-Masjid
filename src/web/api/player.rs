@@ -21,7 +21,7 @@ pub async fn action(State(app): State<App>, Path(action): Path<String>) -> ApiRe
 /// Settings that aren't already part of the live status.
 pub async fn config(State(app): State<App>) -> ApiResult {
     let s = app.settings();
-    Ok(Json(json!({ "codec": s.codec, "poll_secs": s.poll_secs, "fallback_output": s.fallback_output, "bt_quality": s.bt_quality })))
+    Ok(Json(json!({ "codec": s.codec, "poll_secs": s.poll_secs, "fallback_output": s.fallback_output, "bt_quality": s.bt_quality, "browser_listening": s.browser_listening })))
 }
 
 #[derive(Deserialize)]
@@ -33,6 +33,7 @@ pub struct SettingsPatch {
     poll_secs: Option<u64>,
     fallback_output: Option<String>,
     bt_quality: Option<String>,
+    browser_listening: Option<bool>,
 }
 
 pub async fn settings(State(app): State<App>, Json(p): Json<SettingsPatch>) -> ApiResult {
@@ -50,6 +51,7 @@ pub async fn settings(State(app): State<App>, Json(p): Json<SettingsPatch>) -> A
         if let Some(v) = p.poll_secs { s.poll_secs = v; }
         if let Some(v) = p.fallback_output { s.fallback_output = v; }
         if let Some(v) = quality.clone() { s.bt_quality = v; }
+        if let Some(v) = p.browser_listening { s.browser_listening = v; }
     })?;
     if output_changed {
         app.sink.retarget(crate::bluetooth::compute_targets(&app));

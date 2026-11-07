@@ -5,6 +5,7 @@ import { api } from "../api.js";
 import { $, runAction } from "../dom.js";
 import { duration, escapeHtml, shortDate } from "../format.js";
 import { getStatus } from "../store.js";
+import * as local from "../local.js";
 
 let currentMount = null;
 
@@ -23,6 +24,7 @@ function meta(r) {
 /** List rows with a Play button each. */
 export function rows(list, limit) {
   const items = limit ? list.items.slice(0, limit) : list.items;
+  const here = Boolean(getStatus()?.browser_listening);
   return items.map((r) => `
     <div class="item wrap">
       <div class="grow">
@@ -30,6 +32,7 @@ export function rows(list, limit) {
         <div class="item-meta truncate">${escapeHtml(meta(r))}</div>
       </div>
       <div class="item-actions">
+        ${here ? `<button class="btn small ghost" data-play-here="${escapeHtml(r.id)}" data-mount="${escapeHtml(list.mount)}">Play here</button>` : ""}
         <button class="btn small" data-play-recording="${escapeHtml(r.id)}" data-mount="${escapeHtml(list.mount)}">Play on speaker</button>
       </div>
     </div>`).join("");
@@ -43,6 +46,11 @@ export function fallback(list) {
 
 /** Handle a click on any "Play on speaker" button (event delegation). */
 export function onPlayClick(e) {
+  const here = e.target.closest("[data-play-here]");
+  if (here) {
+    runAction(here, () => local.playRecording(here.dataset.mount, here.dataset.playHere));
+    return;
+  }
   const btn = e.target.closest("[data-play-recording]");
   if (!btn) return;
   runAction(btn, () => api("recordings/play", { mount: btn.dataset.mount, id: btn.dataset.playRecording }), "Playing on the speaker");

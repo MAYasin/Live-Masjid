@@ -93,7 +93,7 @@ async function refresh() {
     ["Connected", bt.speaker ? yesNo(bt.connected) : null],
     ["Battery", bt.battery == null ? null : `${bt.battery}%`],
     ["Audio link", bt.transport],
-    ["Quality", { medium: "Balanced", high: "High quality" }[bt.quality] ?? bt.quality],
+    ["Quality", { medium: "Low", high: "High" }[bt.quality] ?? bt.quality],
   ]);
 
   kv("sys-device", [

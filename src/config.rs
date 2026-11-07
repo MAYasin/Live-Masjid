@@ -25,8 +25,11 @@ pub struct Settings {
     pub keep_awake: bool,
     /// "auto" (Opus first – it goes live ~6 s before the MP3 mirror), "opus" or "mp3".
     pub codec: String,
-    /// Bluetooth SBC encoder quality: "low" (most robust), "medium" (default) or "high".
+    /// Bluetooth SBC encoder quality: "high" (default) or "medium" (shown as "Low").
     pub bt_quality: String,
+    /// Let people who open the UI play the stream / recordings on their own device (off by default).
+    /// The Pi's own output is unaffected.
+    pub browser_listening: bool,
     /// Icecast status poll interval in seconds (backup to the server-sent events).
     /// Kept polite: the livemasjid.com page itself polls every 60 s.
     pub poll_secs: u64,
@@ -48,7 +51,8 @@ impl Default for Settings {
             fallback_output: "auto".into(),
             keep_awake: true,
             codec: "auto".into(),
-            bt_quality: "medium".into(),
+            bt_quality: "high".into(),
+            browser_listening: false,
             poll_secs: 20,
             password_hash: None,
             secret: random_hex(32),
@@ -90,7 +94,7 @@ impl Settings {
         self.poll_secs = self.poll_secs.clamp(10, 300);
         // "low" was removed: on some speakers its SBC bitpool cannot sustain real time (choppy audio).
         if !matches!(self.bt_quality.as_str(), "medium" | "high") {
-            self.bt_quality = "medium".into();
+            self.bt_quality = "high".into();
         }
         if !matches!(self.codec.as_str(), "auto" | "opus" | "mp3") {
             self.codec = "auto".into();

@@ -63,3 +63,45 @@ pub async fn stop(State(app): State<App>) -> ApiResult {
     let _ = app.player_tx.send(PlayerCmd::StopRecording);
     Ok(Json(json!({ "ok": true })))
 }
+
+// ------------------------------------------------------------------ listening in the browser
+
+fn browser_listening_enabled(app: &App) -> Result<(), ApiError> {
+    if app.settings().browser_listening {
+        Ok(())
+    } else {
+        Err(ApiError::bad("Listening in the browser is turned off (Settings)"))
+    }
+}
+
+/// Stream URLs for the visitor's own device. MP3 first (plays everywhere, incl. iOS Safari),
+/// relay before origin (keeps load off the origin). The Pi's own output is untouched.
+pub async fn listen(State(app): State<App>, Query(q): Query<MountQuery>) -> ApiResult {
+    browser_listening_enabled(&app)?;
+    let mount = mount_or_selected(&app, q)?;
+    let base = mount.strip_suffix(".mp3").unwrap_or(&mount).to_string();
+    let live = crate::monitor::is_live(&app.live.read().unwrap(), &base);
+    let mut sources = Vec::new();
+    for (path, kind) in [(format!("{base}.mp3"), "audio/mpeg"), (base.clone(), "audio/ogg")] {
+        for (host, port) in crate::net::STREAM_HOSTS.iter().rev() {
+            sources.push(json!({ "url": format!("http://{host}:{port}/{path}"), "type": kind }));
+        }
+    }
+    Ok(Json(json!({ "mount": base, "live": live, "sources": sources })))
+}
+
+#[derive(Deserialize)]
+pub struct RecordingRef {
+    mount: String,
+    id: String,
+}
+
+/// The file URL of a listed recording, for playing it on the visitor's device.
+pub async fn recording_url(State(app): State<App>, Query(r): Query<RecordingRef>) -> ApiResult {
+    browser_listening_enabled(&app)?;
+    if !valid_mount(&r.mount) {
+        return Err(ApiError::bad("invalid masjid"));
+    }
+    let rec = recordings::find(&app, &r.mount, &r.id).await.ok_or_else(|| ApiError::bad("recording not found; refresh the list"))?;
+    Ok(Json(json!({ "url": rec.url, "title": rec.title })))
+}

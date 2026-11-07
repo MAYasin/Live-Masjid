@@ -102,6 +102,10 @@ that aren't obvious from the code.
   The API plays by **id from the cached list, never a raw URL** (no SSRF). A broadcast that starts during a recording interrupts it;
   stopping or finishing a recording resumes live if the masjid is on air. Verified: play, pause (position held), resume, stop, then back to live.
 
+- **Listening in the browser** (setting `browser_listening`, off by default). `/api/listen` returns the stream sources (MP3 first for
+  iOS, relay before origin) and `/api/recordings/url` returns a listed recording's file. Both refuse while the setting is off. The browser
+  plays directly from livemasjid's servers, like livemasjid.com's own player; the Pi's output is untouched (`ui/js/local.js`).
+
 ## Pi hardware gotchas (root causes found)
 
 - **"The Pi went down" turned out to be a Wi-Fi drop-out, not a crash.**
@@ -135,9 +139,13 @@ that aren't obvious from the code.
 - **Speaker battery** is only reported over HFP: the speaker sends battery AT commands, and bluealsa forwards them to the BlueZ battery provider.
   `deploy/bt-audio.sh` therefore runs bluealsa with `-p a2dp-source -p hfp-ag --sbc-quality=<q> --keep-alive=10`. The SCO channel is never opened.
   Verified: `Battery Percentage: 0x64 (100)`. The UI shows it and the log warns once at 20% or below.
-- **SBC quality** setting `bt_quality`: `medium` ("Balanced", the default) or `high`. **`low` was removed on 2026-11-07**: on the owner's VSW07
+- **SBC quality** setting `bt_quality`: `high` (the default since 2026-11-07, at the owner's request) or `medium` (shown as "Low"). The UI never offers real `low`. **`low` was removed on 2026-11-07**: on the owner's VSW07
   speaker it only sustained about 150 KB/s instead of the 192 KB/s real time, so playback was choppy and the buffer drifted minutes behind live.
   Medium and high both measured 193 KB/s. Measure throughput with the delta of `wchar` in `/proc/<livemasjid pid>/io` over 20–30 s.
+- **Keep-awake silence was under-feeding (fixed 2026-11-07).** The sink waited 25 ms before each 20 ms silence chunk, which is about 80% of
+  real time (measured 154 KB/s), so idle Bluetooth speakers kept under-running. That caused the instability between broadcasts while
+  24/7 streams were fine. It now writes silence back-to-back, paced by the device (1 ms receive timeout while feeding). Measured
+  193 KB/s at about 0% CPU. **Always verify any output path at real time (192 KB/s, 48 kHz stereo s16).**
 - **Latency cap:** if the jitter buffer grows past 60 s (the output played slower than real time), the pump trims to about 20 s behind live
   (`ByteQueue::trim_front` drops whole Ogg pages) and logs it once.
 - **UI assets use content-hash ETags** (FNV-1a of the file). Version-based ETags served stale JS after dev deploys, because every dev build
