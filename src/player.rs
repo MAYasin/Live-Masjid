@@ -223,7 +223,7 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                         }
                     }
                     StreamEvent::CaughtUp(secs) => {
-                        app.log("warn", format!("Audio had fallen {secs} s behind live (the speaker played slower than real time); skipped ahead"));
+                        app.log("info", format!("Skipped {secs} s ahead to stay near live (after a network drop-out or slow output)"));
                     }
                     StreamEvent::Reconnecting(msg) => {
                         app.log("warn", format!("Stream interrupted ({msg}); reconnecting"));

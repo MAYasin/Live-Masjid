@@ -9,6 +9,7 @@
 
 mod buffer;
 mod decode;
+mod edge;
 mod ogg;
 pub mod recording;
 
@@ -66,10 +67,13 @@ pub static BYTES_RECEIVED: AtomicU64 = AtomicU64::new(0);
 
 /// After a live signal the MP3 mirror / relay can lag by a few seconds.
 pub const START_GRACE: Duration = Duration::from_secs(12);
-/// Normal buffer is the ~20 s Icecast burst. If it grows past MAX (the output played slower than
-/// real time for a while), skip ahead to TARGET so we never drift minutes behind live.
-const MAX_BUFFER_MS: u64 = 60_000;
-const TARGET_BUFFER_MS: u64 = 20_000;
+/// How far behind the live edge playback starts and is held, in ms (setting `live_delay_s`).
+/// Smaller is closer to live; larger rides out longer network drop-outs without a gap.
+pub static LIVE_DELAY_MS: AtomicU64 = AtomicU64::new(3_000);
+
+fn live_delay_ms() -> u64 {
+    LIVE_DELAY_MS.load(Ordering::Relaxed)
+}
 
 /// How long a dropped broadcast may stay unreachable before we call it finished.
 const DROP_GRACE: Duration = Duration::from_secs(30);
@@ -119,6 +123,7 @@ pub fn run_session(p: SessionParams) {
                 tracing::info!("stream restarted upstream; new decoder");
                 pipe.finish();
                 pipe = Pipeline::start(Codec::Opus, &p, conn.url.clone());
+                pipe.fresh = false; // a new encoder: no burst to skip
                 carry = Some(rest);
             }
             Pumped::Dropped(why) => {
@@ -127,6 +132,8 @@ pub fn run_session(p: SessionParams) {
                 match connect(&p, &cands, DROP_GRACE, Some(pipe.codec)) {
                     Ok(c) if codec_of(&c) == pipe.codec => {
                         pipe.filter.reconnected();
+                        // Ogg pages resume exactly where we stopped; MP3 can't, so jump to live.
+                        pipe.fresh = pipe.codec == Codec::Mp3;
                         let _ = p.events.send(StreamEvent::Started { url: c.url.clone(), codec: pipe.codec.name() });
                         conn = c;
                     }
@@ -160,6 +167,10 @@ struct Pipeline {
     queue: Arc<ByteQueue>,
     filter: OggFilter,
     decoder: JoinHandle<()>,
+    /// The next connection's burst is cut to the live edge (fresh start, or MP3 reconnect).
+    fresh: bool,
+    /// When we last joined at the live edge.
+    started: Instant,
 }
 
 impl Pipeline {
@@ -182,7 +193,7 @@ impl Pipeline {
             .name("decoder".into())
             .spawn(move || decode::run(codec, ctx))
             .expect("spawn decoder");
-        Self { codec, queue, filter: OggFilter::new(), decoder }
+        Self { codec, queue, filter: OggFilter::new(), decoder, fresh: true, started: Instant::now() }
     }
 
     /// Close the buffer and wait for the decoder to play out what's left (or stop).
@@ -223,6 +234,37 @@ fn pump(conn: &mut StreamConn, pipe: &mut Pipeline, p: &SessionParams, carry: Op
             return r;
         }
     }
+    if std::mem::take(&mut pipe.fresh) {
+        let raw = match read_burst(conn, p) {
+            Ok(raw) => raw,
+            Err(r) => return r,
+        };
+        let delay = Duration::from_millis(live_delay_ms());
+        pipe.started = Instant::now();
+        match pipe.codec {
+            Codec::Mp3 => {
+                let start = edge::mp3_start(&raw, delay);
+                tracing::info!("joined near live: kept {} of {} burst bytes", raw.len() - start, raw.len());
+                if let Some(r) = deliver(&raw[start..], pipe) {
+                    return r;
+                }
+            }
+            Codec::Opus => {
+                let mut all = Vec::new();
+                if let Feed::NewStream(rest) = pipe.filter.feed(&raw, &mut all) {
+                    return Pumped::NewStream(rest);
+                }
+                let (total, n) = (all.len(), raw.len());
+                let kept = edge::opus_pages(all, delay);
+                tracing::info!("joined near live: kept {} of {total} pages ({n} burst bytes)", kept.len());
+                for page in kept {
+                    if !pipe.queue.push(page, &p.stop) {
+                        return Pumped::Stopped;
+                    }
+                }
+            }
+        }
+    }
     loop {
         if p.stop.load(Ordering::Relaxed) {
             return Pumped::Stopped;
@@ -242,16 +284,56 @@ fn pump(conn: &mut StreamConn, pipe: &mut Pipeline, p: &SessionParams, carry: Op
     }
 }
 
-/// Bound latency behind live (see MAX_BUFFER_MS).
+/// Read the connect burst: everything that arrives faster than real time (Icecast sends it
+/// in well under a second), stopping at the first read that has to wait for new audio.
+fn read_burst(conn: &mut StreamConn, p: &SessionParams) -> Result<Vec<u8>, Pumped> {
+    let mut raw = Vec::new();
+    let mut buf = vec![0u8; 16 * 1024];
+    let started = Instant::now();
+    loop {
+        if p.stop.load(Ordering::Relaxed) {
+            return Err(Pumped::Stopped);
+        }
+        let t = Instant::now();
+        match conn.reader.read(&mut buf) {
+            Ok(0) => break,
+            Ok(n) => {
+                BYTES_RECEIVED.fetch_add(n as u64, Ordering::Relaxed);
+                let had = !raw.is_empty();
+                raw.extend_from_slice(&buf[..n]);
+                // Real-time Opus pages arrive ~1/s; a burst may pause briefly on Wi-Fi.
+                let waited = t.elapsed() > Duration::from_millis(400);
+                if (had && waited) || started.elapsed() > Duration::from_secs(3) || raw.len() > 2 * 1024 * 1024 {
+                    break;
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+            Err(e) if raw.is_empty() => return Err(Pumped::Dropped(format!("no data ({})", e.kind()))),
+            Err(_) => break,
+        }
+    }
+    Ok(raw)
+}
+
+/// Hold latency near the live-delay target: after a drop-out the buffer refills with the
+/// audio we missed, putting us further behind; past target + slack, skip ahead to target.
 fn catch_up(pipe: &Pipeline, p: &SessionParams) {
-    let ms = p.buffer_ms.load(Ordering::Relaxed);
-    if ms <= MAX_BUFFER_MS {
+    // The buffer estimate needs a few seconds of decoded audio to settle.
+    if pipe.started.elapsed() < Duration::from_secs(8) {
         return;
     }
-    let keep = (pipe.queue.buffered() as u64 * TARGET_BUFFER_MS / ms) as usize;
+    let ms = p.buffer_ms.load(Ordering::Relaxed);
+    let target = live_delay_ms();
+    if ms <= target + (target / 2).max(3_000) {
+        return;
+    }
+    // Only the compressed part can be trimmed; the decoded part is already queued for the sink.
+    let decoded = p.sink.queued_ms().min(ms);
+    let keep = (pipe.queue.buffered() as u64 * target.saturating_sub(decoded) / (ms - decoded).max(1)) as usize;
+    tracing::debug!("catch-up: buffer {ms} ms (decoded {decoded} ms, {} bytes queued), keeping {keep} bytes", pipe.queue.buffered());
     if pipe.queue.trim_front(keep) > 0 {
-        p.buffer_ms.store(TARGET_BUFFER_MS, Ordering::Relaxed);
-        let _ = p.events.send(StreamEvent::CaughtUp((ms - TARGET_BUFFER_MS) / 1000));
+        p.buffer_ms.store(target, Ordering::Relaxed);
+        let _ = p.events.send(StreamEvent::CaughtUp((ms - target) / 1000));
     }
 }
 

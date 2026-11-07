@@ -69,7 +69,10 @@ that aren't obvious from the code.
   - The site's page polls every 60 s. **Our default is 20 s, with jitter and back-off on 403/429/refused.**
 - **Streams:**
   - `/<m>` is Ogg **Opus**, mono 48 kHz, and goes live about 6 s before `/<m>.mp3`. Some mounts are MP3-only without the suffix.
-  - Icecast sends a burst of about 20 s on connect, so the first audio arrives about 0.4 s after connecting.
+  - Icecast sends a fixed-size **byte** burst (~120–150 KB) on connect: about **28 s of Opus** (~35 kbps) but about **17 s of MP3** (64 kbps).
+    A player that plays the burst from its start is that far behind live; that is why Opus "sounded behind MP3" (measured 2026-11-07).
+    At the live edge the two are within about 1 s (cross-correlated in Chrome), so we keep Opus and skip the burst instead (`stream/edge.rs`).
+  - Chrome's plain `<audio>` won't skip a live MP3 burst: it reads only ~2–3 s ahead and the rest waits in the socket.
 - **Icecast resets connections whose HTTP request arrives in fragments.** Always send the request in a single `write_all` (see `net.rs`).
 - **The TLS chains on `relay.livemasjid.com:8443` and `livemasjid.com:8443` are incomplete** and fail on the Pi. Use plain HTTP on :8000.
 - **There is no JSON directory API.** The masjid list is scraped from `index.php` cards (`catalog::parse`), about 471 entries
@@ -106,10 +109,15 @@ that aren't obvious from the code.
   - **In sync with the speaker:** the sink copies exactly what it hands to the device (`SinkHandle::mirror`, a tokio broadcast) as mono 24 kHz s16.
     `/api/listen/live.wav` streams it as an endless WAV (at most 6 listeners; a lagging listener skips ahead). It is paced by the Pi's audio
     device, so it mirrors live and recordings alike.
-  - The browser (`ui/js/local.js`) nudges `playbackRate` (1.04–1.1 with pitch preserved, 0.97 when too low) to hold about 0.9 s buffered
-    (`SYNC_TARGET_S`), matching the speaker's path (queue, pipe, aplay 250 ms, Bluetooth). Measured: the buffer settles at 0.6–1.2 s with 0 stalls.
-  - Before this fix the browser pulled its own stream from livemasjid. Different mount (MP3 runs about 6 s behind Opus), its own Icecast burst and
-    its own buffering put it seconds out of sync. That path remains only as a fallback `<source>`.
+  - The browser (`ui/js/local.js`) holds 0.85 s buffered (`SYNC_TARGET_S`, matching the speaker's path: writer queue, 64 KB pipe, aplay 250 ms,
+    Bluetooth), plus a per-device "Timing" offset (−/+ 0.1 s, localStorage). **Steer on the peak of `buffered.end - currentTime` over ~2 s**: Chrome
+    moves data into `buffered` in ~0.5 s steps, so the value is a sawtooth whose peak is the true lag (steering on the mean left it ~0.35 s late).
+    More than 0.8 s off: seek within the buffer (works on the endless WAV); otherwise `playbackRate` 0.97–1.08, pitch preserved.
+    Chrome prebuffers ~2.4 s before it starts, so without the seek it took ~35 s to converge. Measured: peak 0.81–0.97 s, 0 stalls.
+  - **Two modes** (segmented control, remembered per device): "In sync with speaker" (above) and "Lowest delay": `fetch` livemasjid's MP3,
+    drop the connect burst except the newest 1.5 s (`mp3Start`), and append to MediaSource (`audio/mpeg`, sequence mode). It holds ~1.3–1.5 s.
+    Browsers without MediaSource (iPhone Safari) fall back to a plain `<source>` (burst-delayed).
+  - The Pi's socket Send-Q for the WAV stays under 3 KB, so no lag hides on the Pi side.
   - `/api/recordings/url` gives "Play here" for recordings, which are independent of the speaker.
 
 ## Pi hardware gotchas (root causes found)
@@ -152,8 +160,8 @@ that aren't obvious from the code.
   real time (measured 154 KB/s), so idle Bluetooth speakers kept under-running. That caused the instability between broadcasts while
   24/7 streams were fine. It now writes silence back-to-back, paced by the device (1 ms receive timeout while feeding). Measured
   193 KB/s at about 0% CPU. **Always verify any output path at real time (192 KB/s, 48 kHz stereo s16).**
-- **Latency cap:** if the jitter buffer grows past 60 s (the output played slower than real time), the pump trims to about 20 s behind live
-  (`ByteQueue::trim_front` drops whole Ogg pages) and logs it once.
+- **Latency cap:** if the buffer exceeds the live delay + max(3 s, delay/2) (after a drop-out, the missed audio refills it), the pump trims
+  back to the delay (`ByteQueue::trim_front` drops whole Ogg pages). It waits 8 s after joining, because the estimate needs time to settle.
 - **UI assets use content-hash ETags** (FNV-1a of the file). Version-based ETags served stale JS after dev deploys, because every dev build
   from one commit shares the label `dev-<sha>-dirty`.
 - **The service is sandboxed (`ProtectSystem=full`)**, so `/etc` is read-only even for `sudo` children. Root actions that write `/etc` must go
@@ -179,12 +187,19 @@ that aren't obvious from the code.
 
 `socket → pump → OggFilter → ByteQueue (jitter buffer, up to 4 MB) → decoder thread → sink`
 
-- **The buffer holds about 20 s**, which is Icecast's burst on connect. It keeps playing while the pump reconnects.
+- **Join at the live edge** (setting `live_delay_s`: 3 s by default, "Near live"; 8 "Balanced"; 20 "Extra steady"; `stream::LIVE_DELAY_MS`
+  applies immediately). `read_burst` reads until a read waits more than 400 ms (150 ms split the burst on Wi-Fi), then
+  `edge::opus_pages` keeps the header pages and the newest pages that start a fresh packet, and `edge::mp3_start` cuts at a frame confirmed
+  by the next one. Before this the Pi played the whole burst and drifted to about 29 s behind live. MP3 reconnects also re-join at the edge.
+- **`buffer_ms`** = the jitter buffer plus decoded PCM queued for the sink (`SinkHandle::queued_ms`, up to ~1.3 s in the 64-chunk channel).
+  With a 3 s delay it reads about 1.3–2.2 s; the rest is in the pipe, aplay and Bluetooth. A drop-out longer than the delay plays silence,
+  then resumes where it stopped (Ogg). Latency grows by the gap until the cap trims it.
 - **Stall detection:** 6 s socket read timeout (pages normally arrive about once per second).
 - **On reconnect, `OggFilter` skips** the replayed headers and every page whose granule is ≤ the last forwarded one. Playback resumes
   exactly where it stopped: no gap if the buffer lasted, never a repeat. A new serial means the encoder restarted upstream, so a fresh decoder is used.
   MP3 has no granules, so an MP3 reconnect may repeat up to the burst length.
-- **Verified:** a 16 s blackhole of relay2 was inaudible; the buffer went from 21 s down to about 2 s and back to 21 s. `buffer_ms` is shown in the UI.
+- **Verified (with the old 20 s buffer):** a 16 s blackhole of relay2 was inaudible. With the 3 s default, a stall longer than about 2 s is
+  audible as a gap. Users on weak Wi-Fi should pick "Extra steady".
 
 ## Open issues / next steps
 

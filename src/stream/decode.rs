@@ -92,8 +92,9 @@ impl PcmOut {
             let secs = self.frames as f64 / rate as f64;
             if secs > 1.0 {
                 let bps = self.ctx.queue.consumed() as f64 / secs;
+                // Compressed audio in the jitter buffer + decoded audio queued for the sink.
                 let ms = self.ctx.queue.buffered() as f64 / bps.max(1.0) * 1000.0;
-                self.ctx.buffer_ms.store(ms as u64, Ordering::Relaxed);
+                self.ctx.buffer_ms.store(ms as u64 + self.ctx.sink.queued_ms(), Ordering::Relaxed);
             }
         }
         self.ctx.sink.send_pcm(self.ctx.epoch, rate, stereo)
