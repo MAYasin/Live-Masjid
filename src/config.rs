@@ -75,7 +75,7 @@ impl Default for Settings {
 }
 
 pub fn random_hex(bytes: usize) -> String {
-    use rand::RngCore;
+    use rand::Rng;
     let mut b = vec![0u8; bytes];
     rand::rng().fill_bytes(&mut b);
     hex(&b)

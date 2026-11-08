@@ -10,7 +10,7 @@ pub use poll::{LiveMap, is_live};
 
 /// ±20 % randomisation so devices never synchronise their requests.
 pub(crate) fn jitter(secs: u64) -> u64 {
-    use rand::Rng;
+    use rand::RngExt;
     let s = secs.max(1) as f64;
     (s * rand::rng().random_range(0.8..1.2)).round().max(1.0) as u64
 }
