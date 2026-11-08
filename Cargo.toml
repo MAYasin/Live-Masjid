@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Always-on Live Masjid auto-player for Raspberry Pi"
-license = "MIT"
+license = "Unlicense"
 
 [features]
 default = []
