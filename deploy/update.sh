@@ -98,16 +98,16 @@ curl -fsSL --retry 3 --max-time 300 -o "$TMP/$ASSET" "$URL"
 curl -fsSL --retry 3 --max-time 60 -o "$TMP/$ASSET.sha256" "$URL.sha256"
 WANT="$(awk '{print $1}' "$TMP/$ASSET.sha256")"
 GOT="$(sha256sum "$TMP/$ASSET" | awk '{print $1}')"
-[ "$WANT" = "$GOT" ] || { echo "checksum mismatch" >&2; exit 1; }
+[ "$WANT" = "$GOT" ] || { echo "checksum mismatch" >&2; status failed "The download was corrupted (checksum mismatch); try again" "$CUR" "$TAG"; REPORTED=1; exit 1; }
 
 # Ed25519 signature. The public key was installed on the device earlier; it is never taken from the download.
 PUB=/etc/livemasjid/release.pub
 if [ -f "$PUB" ]; then
-  command -v openssl >/dev/null || { echo "openssl is needed to verify the release signature" >&2; exit 1; }
-  curl -fsSL --retry 3 --max-time 60 -o "$TMP/$ASSET.sig" "$URL.sig" \
-    || { echo "release has no signature; refusing to install" >&2; exit 1; }
+  refuse() { echo "$1; refusing to install" >&2; status failed "$1, so it was not installed" "$CUR" "$TAG"; REPORTED=1; exit 1; }
+  command -v openssl >/dev/null || refuse "openssl is missing, so the release signature can't be checked"
+  curl -fsSL --retry 3 --max-time 60 -o "$TMP/$ASSET.sig" "$URL.sig" || refuse "Release $TAG has no signature"
   openssl pkeyutl -verify -pubin -inkey "$PUB" -rawin -in "$TMP/$ASSET" -sigfile "$TMP/$ASSET.sig" >/dev/null 2>&1 \
-    || { echo "release signature is invalid; refusing to install" >&2; exit 1; }
+    || refuse "Release $TAG has an invalid signature"
 else
   echo "no release-signing key installed yet; skipping signature check" >&2
 fi

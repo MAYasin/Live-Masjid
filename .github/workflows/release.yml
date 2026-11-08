@@ -111,6 +111,7 @@ jobs:
         run: |
           [ -n "$SIGNING_KEY" ] || { echo "RELEASE_SIGNING_KEY secret is not set" >&2; exit 1; }
           key=$(mktemp)
+          trap 'rm -f "$key"' EXIT   # removed even if a step below fails
           printf '%s\n' "$SIGNING_KEY" > "$key"
           for f in dist/*.tar.gz; do
             openssl pkeyutl -sign -inkey "$key" -rawin -in "$f" -out "$f.sig"

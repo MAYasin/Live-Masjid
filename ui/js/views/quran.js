@@ -240,11 +240,20 @@ export function init() {
   miniplayer.mount($("#quran-player"));
   $("#quran-list").addEventListener("click", (e) => {
     const b = e.target.closest("[data-surah]");
-    if (b) runAction(b, () => api("quran/play", { surah: Number(b.dataset.surah), reciter: lib?.reciter.key }), "Playing on the speaker").then(() => setTimeout(load, 800));
+    if (!b) return;
+    const n = Number(b.dataset.surah);
+    miniplayer.starting(`${n}. ${surahName(n)}`);
+    api("quran/play", { surah: n, reciter: lib?.reciter.key })
+      .then(() => setTimeout(load, 800))
+      .catch((err) => { miniplayer.cancelStarting(); toast(err.message); });
   });
   $("#pl-list").addEventListener("click", (e) => {
     const play = e.target.closest("[data-play-pl]");
-    if (play) runAction(play, () => api("quran/play", { playlist: play.dataset.playPl }), "Playing on the speaker");
+    if (play) {
+      const p = playlists.find((x) => x.id === play.dataset.playPl);
+      if (p) miniplayer.starting(`${p.surahs[0]}. ${surahName(p.surahs[0])}`);
+      api("quran/play", { playlist: play.dataset.playPl }).catch((err) => { miniplayer.cancelStarting(); toast(err.message); });
+    }
     const edit = e.target.closest("[data-edit]");
     if (edit) openEditor(playlists.find((p) => p.id === edit.dataset.edit));
   });

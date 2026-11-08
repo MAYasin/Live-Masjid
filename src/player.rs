@@ -40,6 +40,21 @@ struct Rec {
     lib: Option<Arc<crate::quran::Library>>,
     /// Quran: the recitation.
     reciter: Option<crate::quran::Reciter>,
+    /// The output, to tell how much decoded audio hasn't been heard yet.
+    sink: crate::sink::SinkHandle,
+}
+
+/// Audio between the sink queue and the listener's ears: writer queue, pipe, aplay's 250 ms
+/// buffer and Bluetooth (about 0.7 s, see the browser-sync notes).
+const OUTPUT_LAG_MS: u64 = 700;
+
+/// Position the listener is hearing: decoded audio minus what is still queued for the speaker.
+fn heard_ms(r: &Rec) -> u64 {
+    let decoded = r.position_ms.load(Ordering::Relaxed);
+    if r.paused.load(Ordering::Relaxed) {
+        return decoded; // set to the heard position when paused
+    }
+    decoded.saturating_sub(r.sink.queued_ms() + OUTPUT_LAG_MS)
 }
 
 /// The surah before/after (`by` = -1/+1) the playing one: within its playlist, else in
@@ -80,7 +95,7 @@ fn recording_status(r: &Rec) -> crate::state::RecordingStatus {
     crate::state::RecordingStatus {
         mount: r.mount.clone(),
         title: r.title.clone(),
-        position_s: r.position_ms.load(Ordering::Relaxed) / 1000,
+        position_s: heard_ms(r) / 1000,
         duration_s: r.duration_s.or((known > 0).then_some(known / 1000)),
         paused: r.paused.load(Ordering::Relaxed),
         kind: if r.surah.is_some() { "quran" } else { "recording" },
@@ -120,6 +135,7 @@ fn start_quran(
         playlist,
         lib: Some(app.quran.clone()),
         reciter: Some(reciter.clone()),
+        sink: app.sink.clone(),
     };
     let (tx, mut rx) = unbounded_channel();
     let fwd = rec_tx.clone();
@@ -160,7 +176,7 @@ fn quran_resume_of(r: &Rec) -> Option<crate::state::QuranResume> {
     Some(crate::state::QuranResume {
         surah: r.surah?,
         title: r.title.clone(),
-        position_s: r.position_ms.load(Ordering::Relaxed) / 1000,
+        position_s: heard_ms(r) / 1000,
         auto: !r.paused.load(Ordering::Relaxed),
         playlist: r.playlist.clone(),
         reciter: r.reciter.as_ref()?.key.clone(),
@@ -251,6 +267,7 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                         playlist: None,
                         lib: None,
                         reciter: None,
+                        sink: app.sink.clone(),
                         duration_ms: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                     };
                     quran_resume = None;
@@ -281,8 +298,25 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                     rec = Some(r);
                 }
                 PlayerCmd::PauseRecording(pause) => {
-                    if let Some(r) = &rec {
-                        r.paused.store(pause, Ordering::Relaxed);
+                    let quran_paused = rec.as_ref().is_some_and(|r| r.surah.is_some() && r.paused.load(Ordering::Relaxed));
+                    if !pause && quran_paused {
+                        // Resume exactly where the listener stopped hearing it (the queued audio
+                        // was dropped on pause): a fresh start from that position, from the file.
+                        if let Some((n, pl, rc, live, pos)) = rec.as_ref().and_then(|r| Some((r.surah?, r.playlist.clone(), r.reciter.clone()?, r.live_at_start, heard_ms(r)))) {
+                            stop_recording(&app, &mut rec);
+                            next_token += 1;
+                            rec = Some(start_quran(&app, rc, n, pl, pos, false, live, next_token, &rec_tx));
+                        }
+                    } else if let Some(r) = &rec {
+                        if pause && r.surah.is_some() && !r.paused.load(Ordering::Relaxed) {
+                            // Silence now rather than after the ~2 s already queued for the speaker.
+                            let heard = heard_ms(r);
+                            r.paused.store(true, Ordering::Relaxed);
+                            r.position_ms.store(heard, Ordering::Relaxed);
+                            app.sink.new_epoch();
+                        } else {
+                            r.paused.store(pause, Ordering::Relaxed);
+                        }
                         app.status.send_modify(|st| st.recording = Some(recording_status(r)));
                     }
                 }

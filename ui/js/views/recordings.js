@@ -2,10 +2,11 @@
 // (#recordings/<mount>). Tapping one plays it on the Pi speaker.
 
 import { api } from "../api.js";
-import { $, runAction } from "../dom.js";
+import { $, runAction, toast } from "../dom.js";
 import { duration, escapeHtml, shortDate } from "../format.js";
 import { getStatus } from "../store.js";
 import * as local from "../local.js";
+import * as miniplayer from "../miniplayer.js";
 
 let currentMount = null;
 
@@ -53,7 +54,11 @@ export function onPlayClick(e) {
   }
   const btn = e.target.closest("[data-play-recording]");
   if (!btn) return;
-  runAction(btn, () => api("recordings/play", { mount: btn.dataset.mount, id: btn.dataset.playRecording }), "Playing on the speaker");
+  // Show it in the player card at once; the Pi confirms (or the card goes back) moments later.
+  const title = btn.closest(".item")?.querySelector(".item-title")?.textContent ?? "Recording";
+  miniplayer.starting(title, "recording");
+  api("recordings/play", { mount: btn.dataset.mount, id: btn.dataset.playRecording })
+    .catch((err) => { miniplayer.cancelStarting(); toast(err.message); });
 }
 
 export function init() {

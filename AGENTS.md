@@ -223,6 +223,14 @@ that aren't obvious from the code.
   layout-dependent: the same source built with symbols kept didn't crash. Fix: the `/api` routes are registered with full paths and
   `merge`d instead of `nest`ed, so no catch-all fallback is inserted. Diagnose such crashes with gdb on the Pi (`gdb -batch -ex run -ex bt`),
   then read the buffer behind `x0` to see what was being written.
+- **Optimistic controls (2026-11-08).** `runAction` swaps a button for a spinner and then restores the HTML it saved before the click, so
+  a status push that arrived in between (play → pause icon) was overwritten until the next 5 s tick. Player controls therefore don't use it:
+  `miniplayer.js` applies the expected state at once (`optimistic()`, confirmed by the live status or dropped after 4 s or on error), ticks
+  the clock locally between pushes, and `starting(title)` shows a card the moment a Play button (surah, playlist, recording) is tapped.
+  The home Play/Stop swap at once too (`liveAction`). Keep spinners for slow, failure-prone actions (Bluetooth, downloads, updates).
+- **Quran pause is instant:** pausing drops the ~2 s already queued for the speaker (`sink.new_epoch()`) and stores the *heard* position
+  (`heard_ms` = decoded − `queued_ms` − `OUTPUT_LAG_MS` 700); resume restarts from the file at that position. Status positions are heard positions.
+- **Signed-release failures** (missing signature, bad signature, checksum mismatch) are reported in `update-status.json` with the reason.
 - **Range sliders paint their fill on the `<input>` background** (`--fill`), not on `::-webkit-slider-runnable-track`: Safari doesn't repaint
   the track pseudo-element when the custom property changes (the Quran seek bar looked stuck at 50%).
 - **`node --check` isn't a reliable syntax check for the UI's ES modules here** (it passed a broken string). Check in the browser

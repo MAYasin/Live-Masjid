@@ -1,7 +1,7 @@
 // "Now playing": selected masjid, playback controls, volume, health stats, recent broadcasts.
 
 import { api } from "../api.js";
-import { $, runAction, setStat } from "../dom.js";
+import { $, runAction, setStat, toast } from "../dom.js";
 import { clockTime, duration, lowerFirst, timeAgo } from "../format.js";
 import { getStatus, subscribe } from "../store.js";
 import * as local from "../local.js";
@@ -23,9 +23,9 @@ let volumeTimer;
 let salahMount = null;
 
 export function init() {
-  $("#play").addEventListener("click", (e) => runAction(e.currentTarget, () => api("player/play", {}), "Starting"));
-  $("#stop").addEventListener("click", (e) =>
-    runAction(e.currentTarget, () => api("player/stop", {}), "Stopped until the next broadcast"));
+  // Optimistic: the card changes on the tap; the live status confirms it (or puts it back).
+  $("#play").addEventListener("click", () => liveAction("Connecting", true, api("player/play", {})));
+  $("#stop").addEventListener("click", () => liveAction("Stopped", false, api("player/stop", {}), "Stopped until the next broadcast"));
   $("#autoplay").addEventListener("change", (e) =>
     runAction(null, () => api("settings", { autoplay: e.target.checked }), e.target.checked ? "Auto-play on" : "Auto-play off"));
   $("#volume").addEventListener("input", () => {
@@ -186,4 +186,18 @@ function paintTiles(s, active) {
     setStat("stat-extra", sig.poll_live ? "Yours" : String(s.live_count), sig.poll_live ? "ok" : "");
     $("#stat-extra-btn").dataset.go = "masjids";
   }
+}
+
+/** Show the live card in its new state at once (Play/Stop), and send the command. */
+function liveAction(phaseText, playing, request, done) {
+  $("#phase").textContent = phaseText;
+  $("#play").hidden = playing;
+  $("#stop").hidden = !playing;
+  request
+    .then(() => { if (done) toast(done); })
+    .catch((err) => {
+      toast(err.message);
+      const s = getStatus();
+      if (s) render(s);
+    });
 }
