@@ -24,7 +24,7 @@ opus-pure = "0.2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "env-filter", "ansi"] }
 anyhow = "1"
-sha2 = "0.10"
+sha2 = "0.11"
 rand = "0.9"
 rustls = { version = "0.23", optional = true, default-features = false, features = ["ring", "std", "tls12"] }
 
