@@ -1,19 +1,50 @@
-//! Quran recitation stored on the Pi: library, playback controls, downloads.
+//! Quran stored on the Pi: reciters, library, playlists, playback controls, downloads.
 //! Pause and stop use the recording endpoints (`/recordings/pause`, `/recordings/stop`).
 
-use crate::quran::{self, LibraryInfo};
+use crate::quran::{self, LibraryInfo, Playlist, Reciter};
 use crate::state::{App, PlayerCmd};
 use crate::web::{ApiError, ApiResult, ok};
 use axum::Json;
-use axum::extract::State;
+use axum::extract::{Query, State};
 use serde::Deserialize;
 use serde_json::json;
 
-pub async fn library(State(app): State<App>) -> ApiResult<Json<LibraryInfo>> {
+#[derive(Deserialize)]
+pub struct ReciterQuery {
+    reciter: Option<String>,
+}
+
+/// The recitation asked for, or the app's default.
+fn reciter_key(app: &App, asked: Option<&str>) -> String {
+    asked.filter(|k| quran::valid_key(k)).map(str::to_string).unwrap_or_else(|| app.settings().quran_reciter)
+}
+
+/// Surahs of one recitation (default: the app's reciter) with download states.
+pub async fn library(State(app): State<App>, Query(q): Query<ReciterQuery>) -> ApiResult<Json<LibraryInfo>> {
+    let key = reciter_key(&app, q.reciter.as_deref());
     let lib = app.quran.clone();
-    // Reads 228 file sizes: off the async threads.
-    let info = tokio::task::spawn_blocking(move || lib.info()).await.map_err(ApiError::bad)?;
+    // Reads a few hundred file sizes: off the async threads.
+    let info = tokio::task::spawn_blocking(move || lib.info(&key)).await.map_err(ApiError::bad)?;
     Ok(Json(info))
+}
+
+/// Every recitation, popular first, plus the default.
+pub async fn reciters(State(app): State<App>) -> Json<serde_json::Value> {
+    let list: Vec<Reciter> = app.quran.reciters();
+    Json(json!({ "default": app.settings().quran_reciter, "reciters": list }))
+}
+
+#[derive(Deserialize)]
+pub struct SetReciter {
+    reciter: String,
+}
+
+/// Choose the app's default reciter.
+pub async fn set_reciter(State(app): State<App>, Json(r): Json<SetReciter>) -> ApiResult {
+    let rc = app.quran.reciter(&r.reciter).ok_or_else(|| ApiError::bad("Unknown reciter"))?;
+    app.update_settings(|s| s.quran_reciter = rc.key.clone())?;
+    app.log("info", format!("Quran reciter: {}", rc.label()));
+    ok()
 }
 
 fn surah(n: u16) -> Result<u16, ApiError> {
@@ -30,23 +61,29 @@ pub struct PlayReq {
     index: usize,
     #[serde(default)]
     position_s: u64,
+    /// Recitation (default: the playlist's, else the app's).
+    reciter: Option<String>,
 }
 
 pub async fn play(State(app): State<App>, Json(r): Json<PlayReq>) -> ApiResult {
-    let (n, playlist) = match (&r.playlist, r.surah) {
+    let (n, playlist, pinned) = match (&r.playlist, r.surah) {
         (Some(id), _) => {
             let p = app.quran.playlist(id).ok_or_else(|| ApiError::bad("That playlist no longer exists"))?;
             let ctx = quran::PlaylistCtx::new(&p, r.index);
-            (ctx.surah(), Some(ctx))
+            (ctx.surah(), Some(ctx), p.reciter)
         }
-        (None, Some(n)) => (surah(n)?, None),
+        (None, Some(n)) => (surah(n)?, None, None),
         (None, None) => return Err(ApiError::bad("choose a surah or a playlist")),
     };
-    let _ = app.player_tx.send(PlayerCmd::PlayQuran { surah: n, position_ms: r.position_s * 1000, playlist });
+    let key = reciter_key(&app, r.reciter.as_deref().or(pinned.as_deref()));
+    if !app.quran.resolve(Some(&key)).has(n) {
+        return Err(ApiError::bad(format!("This reciter doesn't have {}", quran::name(n))));
+    }
+    let _ = app.player_tx.send(PlayerCmd::PlayQuran { surah: n, position_ms: r.position_s * 1000, playlist, reciter: key });
     ok()
 }
 
-pub async fn playlists(State(app): State<App>) -> Json<Vec<quran::Playlist>> {
+pub async fn playlists(State(app): State<App>) -> Json<Vec<Playlist>> {
     Json(app.quran.playlists())
 }
 
@@ -57,10 +94,23 @@ pub struct SavePlaylist {
     surahs: Vec<u16>,
     #[serde(default)]
     repeat: bool,
+    reciter: Option<String>,
+    #[serde(default)]
+    days: Vec<u8>,
+    time: Option<String>,
 }
 
-pub async fn save_playlist(State(app): State<App>, Json(r): Json<SavePlaylist>) -> ApiResult<Json<quran::Playlist>> {
-    app.quran.save_playlist(r.id, &r.name, r.surahs, r.repeat).map(Json).map_err(ApiError::bad)
+pub async fn save_playlist(State(app): State<App>, Json(r): Json<SavePlaylist>) -> ApiResult<Json<Playlist>> {
+    let p = Playlist {
+        id: r.id.unwrap_or_default(),
+        name: r.name,
+        surahs: r.surahs,
+        repeat: r.repeat,
+        reciter: r.reciter.filter(|k| !k.is_empty()),
+        days: r.days,
+        time: r.time.filter(|t| !t.is_empty()),
+    };
+    app.quran.save_playlist(p).map(Json).map_err(ApiError::bad)
 }
 
 #[derive(Deserialize)]
@@ -95,17 +145,19 @@ pub async fn step(State(app): State<App>, Json(r): Json<StepReq>) -> ApiResult {
 
 #[derive(Deserialize)]
 pub struct DownloadReq {
-    /// Download one surah, or start/stop downloading all.
+    /// Download one surah, or start/stop downloading all of the recitation.
     surah: Option<u16>,
     all: Option<bool>,
+    reciter: Option<String>,
 }
 
 pub async fn download(State(app): State<App>, Json(r): Json<DownloadReq>) -> ApiResult {
+    let key = reciter_key(&app, r.reciter.as_deref());
     if let Some(n) = r.surah {
-        app.quran.request(surah(n)?);
+        app.quran.request(&key, surah(n)?);
     }
     if let Some(on) = r.all {
-        app.quran.download_all(on);
+        app.quran.download_all(on.then_some(key.as_str()));
         app.log("info", if on { "Quran: downloading all surahs in the background" } else { "Quran: stopped downloading all" });
     }
     ok()
@@ -114,13 +166,18 @@ pub async fn download(State(app): State<App>, Json(r): Json<DownloadReq>) -> Api
 #[derive(Deserialize)]
 pub struct DeleteReq {
     surah: Option<u16>,
+    reciter: Option<String>,
 }
 
-/// Remove downloaded surahs (one, or all) to free space. The playing surah is kept.
+/// Remove downloads (one surah of a recitation, or everything) to free space.
+/// The surah playing is kept.
 pub async fn delete(State(app): State<App>, Json(r): Json<DeleteReq>) -> ApiResult {
-    let n = r.surah.map(surah).transpose()?;
-    let playing = app.status.borrow().recording.as_ref().and_then(|r| r.surah);
+    let what = match r.surah {
+        Some(n) => Some((reciter_key(&app, r.reciter.as_deref()), surah(n)?)),
+        None => None,
+    };
+    let playing = app.status.borrow().recording.as_ref().and_then(|x| Some((x.reciter_key.clone()?, x.surah?)));
     let lib = app.quran.clone();
-    let removed = tokio::task::spawn_blocking(move || lib.delete(n, playing)).await.map_err(ApiError::bad)?;
+    let removed = tokio::task::spawn_blocking(move || lib.delete(what, playing)).await.map_err(ApiError::bad)?;
     Ok(Json(json!({ "ok": true, "removed": removed })))
 }

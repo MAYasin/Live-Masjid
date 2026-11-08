@@ -62,6 +62,10 @@ pub struct RecordingStatus {
     pub playlist: Option<crate::quran::PlaylistCtx>,
     /// Quran: download progress (percent) while the surah is still downloading.
     pub loaded_pct: Option<u8>,
+    /// Quran: the reciter (display name).
+    pub reciter: Option<String>,
+    /// Quran: the recitation key.
+    pub reciter_key: Option<String>,
 }
 
 /// The Quran was interrupted by a live broadcast and continues when it closes.
@@ -73,6 +77,8 @@ pub struct QuranResume {
     /// Resume by itself (false if the user had paused it).
     pub auto: bool,
     pub playlist: Option<crate::quran::PlaylistCtx>,
+    /// Recitation key.
+    pub reciter: String,
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
@@ -141,6 +147,8 @@ pub struct Status {
     pub recording: Option<RecordingStatus>,
     /// Set while the Quran waits for a live broadcast to end.
     pub quran_resume: Option<QuranResume>,
+    /// A scheduled playlist waiting for the live broadcast to end (its name).
+    pub quran_pending: Option<String>,
     /// Visitors may listen on their own device.
     pub browser_listening: bool,
 }
@@ -173,7 +181,9 @@ pub enum PlayerCmd {
     PauseRecording(bool),
     StopRecording,
     /// Play a Quran surah (downloading it first if needed) from a position.
-    PlayQuran { surah: u16, position_ms: u64, playlist: Option<crate::quran::PlaylistCtx> },
+    PlayQuran { surah: u16, position_ms: u64, playlist: Option<crate::quran::PlaylistCtx>, reciter: String },
+    /// A playlist's scheduled time has come (playlist id).
+    ScheduledPlaylist(String),
     /// Seek within the playing surah.
     QuranSeek(u64),
     /// Previous (-1) / next (+1) surah.

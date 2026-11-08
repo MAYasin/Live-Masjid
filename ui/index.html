@@ -76,6 +76,7 @@
       <!-- Now playing -->
       <section class="view" id="view-now">
         <div class="notice" id="site-blocked" hidden></div>
+        <div class="notice" id="now-alert" hidden></div>
         <div class="panel empty-state" id="no-selection" hidden>
           <h1>Choose a masjid</h1>
           <p>Audio starts automatically whenever it goes live. This page doesn't need to stay open.</p>
@@ -125,16 +126,8 @@
         <div class="panel mp-panel" id="now-player" hidden></div>
         <div class="section-title" id="salah-title">Salah times <span class="xsmall text-3"><a class="text-3" id="salah-source" target="_blank" rel="noopener">masjidscreen.co.za</a> · <button class="linklike" id="salah-change" type="button">Change</button></span></div>
         <div class="panel salah" id="salah"><div class="empty small">Loading salah times…</div></div>
-        <div class="stats">
-          <div class="stat"><div class="stat-key"><span class="dot" id="stat-output-dot"></span>Output</div><div class="stat-value truncate" id="stat-output">—</div></div>
-          <div class="stat"><div class="stat-key"><span class="dot" id="stat-signal-dot"></span>Live signal</div><div class="stat-value truncate" id="stat-signal">—</div></div>
-          <div class="stat"><div class="stat-key"><span class="dot" id="stat-poll-dot"></span>Status check</div><div class="stat-value truncate" id="stat-poll">—</div></div>
-          <div class="stat"><div class="stat-key"><span class="dot" id="stat-extra-dot"></span><span id="stat-extra-key">Streams live</span></div><div class="stat-value truncate" id="stat-extra">—</div></div>
-        </div>
         <div class="section-title">Recordings <button class="btn ghost small" id="recordings-all">View all</button></div>
         <div class="list" id="recordings-latest"><div class="empty small">Loading recordings…</div></div>
-        <div class="section-title">Recent broadcasts <button class="btn ghost small" data-go="history">View all</button></div>
-        <div class="list" id="recent"><div class="empty">No broadcasts recorded yet.</div></div>
       </section>
 
 
@@ -151,7 +144,7 @@
         <div class="panel mp-panel" id="quran-player" hidden></div>
         <div class="section-title" style="margin-top:0">Playlists <button class="btn small" id="pl-new"><svg><use href="#i-plus"/></svg>New playlist</button></div>
         <div class="list" id="pl-list"><div class="empty small">Loading…</div></div>
-        <div class="section-title">Surahs <span class="xsmall text-3" id="quran-store"></span></div>
+        <div class="section-title">Surahs <button class="reciter-chip" id="reciter-chip" type="button" aria-haspopup="dialog"><span class="text-3">Recited by</span> <b id="reciter-name">…</b><svg><use href="#i-down"/></svg></button></div>
         <div class="quran-tools">
           <input type="search" id="quran-filter" placeholder="Search surah" aria-label="Search surah" autocomplete="off">
           <button class="btn small" id="quran-all">Download all</button>
@@ -159,7 +152,7 @@
         </div>
         <div class="notice" id="quran-error" hidden></div>
         <div class="list" id="quran-list"><div class="empty"><span class="spinner"></span></div></div>
-        <div class="xsmall text-3" style="margin-top:12px">Recited by Abdul Rahman Al-Sudais. A surah downloads to the Pi the first time it plays, then plays from the Pi. A live broadcast pauses the Quran; it continues once the broadcast has ended.</div>
+        <div class="xsmall text-3" style="margin-top:12px"><span id="quran-store"></span>. A surah downloads to the Pi the first time it plays. A live broadcast pauses the Quran; it continues once the broadcast has ended.</div>
       </section>
 
       <!-- Masjids -->
@@ -203,6 +196,10 @@
             <div class="field-label"><b>Fallback output</b><span>Used when the Bluetooth speaker isn't available</span></div>
             <select id="fallback" aria-label="Fallback output"></select>
           </div>
+        </div>
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <div class="panel">
           <div class="field">
             <div class="field-label"><b>Bluetooth audio quality</b><span>High is the default. Low uses less Bluetooth bandwidth, which can help if the speaker is far away or Wi-Fi is busy.</span></div>
             <select id="bt-quality" aria-label="Bluetooth audio quality">
@@ -214,7 +211,8 @@
             <div class="field-label"><b>Keep speaker awake</b><span>Plays silence while waiting so audio starts instantly and the speaker never sleeps</span></div>
             <label class="switch"><input type="checkbox" id="keep-awake" aria-label="Keep speaker awake"><span></span></label>
           </div>
-        </div>
+          </div>
+        </details>
       </section>
 
       <!-- History -->
@@ -235,20 +233,9 @@
       <section class="view" id="view-settings">
         <div class="panel">
           <div class="field">
-            <div class="field-label"><b>Stream format</b><span>Auto prefers Opus, which goes live a few seconds before MP3</span></div>
-            <select id="codec" aria-label="Stream format"><option value="auto">Auto</option><option value="opus">Opus</option><option value="mp3">MP3</option></select>
-          </div>
-          <div class="field">
             <div class="field-label"><b>Delay behind live</b><span>How far behind the broadcast the speaker plays. A longer delay rides out Wi-Fi drop-outs without a gap.</span></div>
             <select id="live-delay" aria-label="Delay behind live">
               <option value="3">Near live (3 s)</option><option value="8">Balanced (8 s)</option><option value="20">Extra steady (20 s)</option>
-            </select>
-          </div>
-          <div class="field">
-            <div class="field-label"><b>Status check interval</b><span>Backup to the live signal. Keep it gentle on livemasjid's servers.</span></div>
-            <select id="poll" aria-label="Status check interval">
-              <option value="10">10 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option>
-              <option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option>
             </select>
           </div>
           <div class="field">
@@ -258,10 +245,6 @@
           <div class="field" data-install-field>
             <div class="field-label"><b>Install on your phone</b><span>Open Live Masjid from your home screen, full screen on iPhone.</span></div>
             <button class="btn" data-install type="button">How to install</button>
-          </div>
-          <div class="field">
-            <div class="field-label"><b>Masjid directory</b><span id="directory-info">—</span></div>
-            <button class="btn" id="refresh-directory">Refresh</button>
           </div>
         </div>
         <div class="section-title">Security</div>
@@ -275,6 +258,26 @@
             <button class="btn" id="logout">Sign out</button>
           </div>
         </div>
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <div class="panel">
+          <div class="field">
+            <div class="field-label"><b>Stream format</b><span>Auto prefers Opus, which goes live a few seconds before MP3</span></div>
+            <select id="codec" aria-label="Stream format"><option value="auto">Auto</option><option value="opus">Opus</option><option value="mp3">MP3</option></select>
+          </div>
+          <div class="field">
+            <div class="field-label"><b>Status check interval</b><span>Backup to the live signal. Keep it gentle on livemasjid's servers.</span></div>
+            <select id="poll" aria-label="Status check interval">
+              <option value="10">10 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option>
+              <option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option>
+            </select>
+          </div>
+          <div class="field">
+            <div class="field-label"><b>Masjid directory</b><span id="directory-info">—</span></div>
+            <button class="btn" id="refresh-directory">Refresh</button>
+          </div>
+          </div>
+        </details>
       </section>
 
       <!-- System -->
@@ -366,8 +369,23 @@
         <button type="button" class="btn small" id="pl-add"><svg><use href="#i-plus"/></svg>Add</button>
       </div>
       <div class="pl-repeat">
+        <div class="field-label"><b>Reciter</b><span id="pl-reciter-name">App default</span></div>
+        <button type="button" class="btn small" id="pl-reciter">Change</button>
+      </div>
+      <div class="pl-repeat">
         <div class="field-label"><b>Repeat</b><span>Start again from the first surah after the last</span></div>
         <label class="switch"><input type="checkbox" id="pl-repeat" aria-label="Repeat"><span></span></label>
+      </div>
+      <div class="pl-repeat">
+        <div class="field-label"><b>Schedule</b><span>Play by itself on these days</span></div>
+        <label class="switch"><input type="checkbox" id="pl-scheduled" aria-label="Play on a schedule"><span></span></label>
+      </div>
+      <div class="pl-schedule" id="pl-schedule" hidden>
+        <div class="day-chips" id="pl-days" role="group" aria-label="Days">
+          <button type="button" data-day="0" aria-pressed="false">Sun</button><button type="button" data-day="1" aria-pressed="false">Mon</button><button type="button" data-day="2" aria-pressed="false">Tue</button><button type="button" data-day="3" aria-pressed="false">Wed</button><button type="button" data-day="4" aria-pressed="false">Thu</button><button type="button" data-day="5" aria-pressed="false">Fri</button><button type="button" data-day="6" aria-pressed="false">Sat</button>
+        </div>
+        <label class="pl-time">At <input type="time" id="pl-time" value="11:00" aria-label="Time"></label>
+        <div class="xsmall text-3">If the masjid is live then, it starts when the broadcast ends (up to 2 hours later).</div>
       </div>
       <div class="actions">
         <button type="button" class="btn ghost small" id="pl-delete">Delete playlist</button>
@@ -375,6 +393,29 @@
         <button type="button" class="btn" data-close>Cancel</button>
         <button class="btn primary">Save</button>
       </div>
+    </form>
+  </div>
+
+  <div class="modal" id="reciter-modal">
+    <form onsubmit="return false">
+      <h3 id="reciter-heading">Reciter</h3>
+      <input type="search" id="reciter-search" placeholder="Search reciters" autocomplete="off" aria-label="Search reciters">
+      <div class="reciter-list" id="reciter-list" role="listbox"></div>
+      <div class="actions"><button type="button" class="btn" data-close>Close</button></div>
+    </form>
+  </div>
+
+  <div class="modal" id="masjid-modal">
+    <form onsubmit="return false">
+      <h3 id="ms-name"></h3>
+      <div class="text-2 small" id="ms-place"></div>
+      <div class="ms-actions">
+        <button type="button" class="btn primary" id="ms-listen"><svg><use href="#i-play"/></svg>Listen now</button>
+        <button type="button" class="btn" id="ms-follow">Follow this masjid</button>
+        <div class="xsmall text-3" id="ms-following" hidden>You're following this masjid. It plays on the speaker whenever they go live.</div>
+        <button type="button" class="btn" id="ms-recordings">Recordings</button>
+      </div>
+      <div class="actions"><button type="button" class="btn ghost" data-close>Cancel</button></div>
     </form>
   </div>
 

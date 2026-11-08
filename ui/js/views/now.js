@@ -1,10 +1,9 @@
 // "Now playing": selected masjid, playback controls, volume, health stats, recent broadcasts.
 
 import { api } from "../api.js";
-import { $, runAction, setStat } from "../dom.js";
+import { $, runAction } from "../dom.js";
 import { clockTime, duration, lowerFirst, timeAgo } from "../format.js";
 import { getStatus, subscribe } from "../store.js";
-import { historyRow } from "./history.js";
 import * as local from "../local.js";
 import * as miniplayer from "../miniplayer.js";
 import * as recordings from "./recordings.js";
@@ -50,7 +49,6 @@ export function init() {
 }
 
 export function show() {
-  loadRecent();
   loadRecordings();
   salah.load(getStatus()?.mount);
 }
@@ -61,7 +59,7 @@ async function loadRecordings() {
   if (!mount) { box.innerHTML = '<div class="empty small">Choose a masjid to see its recordings.</div>'; return; }
   try {
     const list = await api(`recordings?mount=${encodeURIComponent(mount)}`);
-    box.innerHTML = list.status === "ok" ? recordings.rows(list, 4) : recordings.fallback(list);
+    box.innerHTML = list.status === "ok" ? recordings.rows(list, 3) : recordings.fallback(list);
   } catch (err) {
     box.innerHTML = recordings.fallback({ message: err.message });
   }
@@ -124,23 +122,10 @@ function render(s) {
   if (document.activeElement !== $("#volume")) $("#volume").value = s.volume;
   paintVolume();
 
-  const out = s.output;
-  const sig = s.signals;
-  const battery = out.kind === "bluetooth" && s.bt.battery != null ? ` · ${s.bt.battery}%` : "";
-  setStat("stat-output", out.open ? `${out.label}${out.kind === "bluetooth" ? " (Bluetooth)" : ""}${battery}` : out.error ? "Unavailable" : "Idle",
-    out.open ? "ok" : out.error ? "err" : "");
-  if (s.site_blocked_until_ms) setStat("stat-signal", "Paused", "warn");
-  else if (s.phase !== "waiting") setStat("stat-signal", s.mount ? "Standby" : "—");
-  else setStat("stat-signal", sig.sse_connected ? "Listening" : "Reconnecting", sig.sse_connected ? "ok" : "warn");
-  setStat("stat-poll", sig.poll_ok ? `OK, ${lowerFirst(timeAgo(sig.poll_last_ms))}` : "Failing", sig.poll_ok ? "ok" : "err");
-  if (active) {
-    const secs = Math.round(s.buffer_ms / 1000);
-    $("#stat-extra-key").textContent = "Buffer";
-    setStat("stat-extra", `${secs} s of audio`, secs >= 5 ? "ok" : "warn");
-  } else {
-    $("#stat-extra-key").textContent = "Streams live";
-    setStat("stat-extra", `${s.live_count}${s.mount && sig.poll_live ? " · yours is live" : ""}`, sig.poll_live ? "ok" : "");
-  }
+  // Only speak up when something needs attention (details live on Speaker and System).
+  const alert = alertFor(s);
+  $("#now-alert").hidden = !alert;
+  if (alert) $("#now-alert").innerHTML = alert;
 
   const blocked = $("#site-blocked");
   blocked.hidden = !s.site_blocked_until_ms;
@@ -152,11 +137,15 @@ function render(s) {
   document.title = s.phase === "playing" ? `● ${s.station_name ?? "Live Masjid"}` : "Live Masjid";
 }
 
-async function loadRecent() {
-  try {
-    const { sessions } = await api("history?limit=5");
-    $("#recent").innerHTML = sessions.length
-      ? sessions.map(historyRow).join("")
-      : '<div class="empty">No broadcasts recorded yet. They appear here automatically.</div>';
-  } catch { /* shown via connection indicator */ }
+/** One short warning for the home screen, or "" when all is well. */
+function alertFor(s) {
+  if (s.site_blocked_until_ms) return ""; // has its own notice
+  if (s.bt.needs_repair) return 'Your speaker forgot this Pi. Put it in pairing mode and <a href="#speaker">pair it again</a>.';
+  if (!s.output.open && s.output.error) return 'No speaker is connected, so nothing can play. <a href="#speaker">Check the speaker</a>.';
+  const sig = s.signals;
+  const silentFor = Date.now() - Math.max(sig.poll_last_ms || 0, s.started_ms || 0);
+  if (s.mount && !sig.poll_ok && !sig.sse_connected && silentFor > 3 * 60 * 1000) {
+    return `Can't reach the livemasjid servers to watch for broadcasts. Check the Pi's internet connection on <a href="#system">System</a>.`;
+  }
+  return "";
 }

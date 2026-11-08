@@ -94,9 +94,10 @@ while its player loop and audio thread are healthy, so a hang also leads to a re
   livemasjid stream; otherwise "Change" lets you paste the masjid's board link (a likely board is offered to confirm).
 - **Recordings** from livemasjid.com, for the selected masjid on the home screen and for any masjid from the Masjids list. They play on
   the speaker (pause, resume, stop). A live broadcast that starts interrupts the recording, and live resumes afterwards.
-- **Quran** recited by Abdul Rahman Al-Sudais (from mp3quran.net), played on the speaker with seek, pause, previous and next; it moves
-  on to the next surah by itself. Build named playlists (for example Al-Fātiḥah, Al-Baqarah and Yā Sīn), each with an optional repeat;
-  they are kept on the Pi for everyone. A surah downloads to the Pi the first time it plays (and starts playing straight away); "Download all"
+- **Quran** from mp3quran.net, recited by Abdul Rahman Al-Sudais by default or any of about 240 other reciters (searchable picker), played on the speaker with seek, pause, previous and next; it moves
+  on to the next surah by itself. Build named playlists (for example Al-Fātiḥah, Al-Baqarah and Yā Sīn), each with an optional repeat,
+  its own reciter and a weekly schedule (for example every Friday at 11:00); they are kept on the Pi for everyone. A scheduled playlist
+  waits for a live broadcast to end (up to 2 hours) rather than interrupting it. A surah downloads to the Pi the first time it plays (and starts playing straight away); "Download all"
   fetches the rest in the background. A live broadcast pauses the Quran, which continues by itself once the broadcast has ended
   (not while it is only reconnecting).
 - The Pi does all the fetching, with caching and strict rate limits, so using the UI never hammers these sites.

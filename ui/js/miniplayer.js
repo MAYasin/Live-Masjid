@@ -34,6 +34,11 @@ export function mount(box) {
       <button class="icon-btn" data-act="next" aria-label="Next surah" title="Next">${icon("next")}</button>
       <button class="icon-btn" data-act="stop" aria-label="Stop" title="Stop">${icon("stop")}</button>
     </div>
+    <div class="mp-volume" data-f="volume" hidden>
+      <svg aria-hidden="true"><use href="#i-volume"/></svg>
+      <input type="range" min="0" max="100" aria-label="Volume" data-f="vol">
+      <output class="tabular" data-f="volval">–</output>
+    </div>
     <div class="mp-resume" data-f="resume" hidden>
       <button class="btn small" data-act="continue">${icon("play")}Continue now</button>
       <button class="btn small ghost" data-act="dismiss">Don't continue</button>
@@ -41,6 +46,16 @@ export function mount(box) {
   const f = (name) => box.querySelector(`[data-f="${name}"]`);
   box._f = f;
   box._seeking = false;
+  const vol = f("vol");
+  let volTimer;
+  vol.addEventListener("input", () => {
+    box._volBusy = true;
+    paintVolume(f, Number(vol.value));
+    clearTimeout(volTimer);
+    volTimer = setTimeout(() => {
+      runAction(null, () => api("settings", { volume: Number(vol.value) })).finally(() => { box._volBusy = false; });
+    }, 120);
+  });
   const seek = f("seek");
   seek.addEventListener("input", () => {
     box._seeking = true;
@@ -73,26 +88,50 @@ export function mount(box) {
   });
 }
 
-/** Update `box` from the status; hides it when nothing (or a non-Quran thing, with `quranOnly`) plays. */
-export function update(box, s, { quranOnly = false } = {}) {
+function paintVolume(f, v) {
+  f("vol").style.setProperty("--fill", `${v}%`);
+  f("volval").textContent = v;
+}
+
+/** Update `box` from the status; hides it when nothing (or a non-Quran thing, with `quranOnly`) plays.
+ *  `volume` adds a volume slider (pages without their own). */
+export function update(box, s, { quranOnly = false, volume = false } = {}) {
   if (!box._f) mount(box);
   box._status = s;
   const f = box._f;
   const r = s?.recording && (!quranOnly || s.recording.kind === "quran") ? s.recording : null;
   const q = s?.quran_resume;
-  box.hidden = !r && !q;
+  const pending = s?.quran_pending;
+  box.hidden = !r && !q && !pending;
   if (box.hidden) return;
+  f("volume").hidden = !volume || (!r && !q);
+  if (volume && !box._volBusy && s) {
+    f("vol").value = String(s.volume);
+    paintVolume(f, s.volume);
+  }
+  if (!r && !q) {
+    // Only a scheduled playlist waiting for the broadcast.
+    f("source").textContent = "Scheduled";
+    f("title").textContent = pending;
+    f("note").hidden = false;
+    f("note").textContent = "Starts when the live broadcast ends.";
+    f("seekrow").hidden = true;
+    f("controls").hidden = true;
+    f("resume").hidden = true;
+    return;
+  }
 
   if (r) {
     const quran = r.kind === "quran";
     const pl = r.playlist;
     f("source").textContent = quran
-      ? (pl ? `${pl.name} · ${pl.index + 1} of ${pl.surahs.length}${pl.repeat ? " · repeat" : ""}` : "Quran · Abdul Rahman Al-Sudais")
+      ? [pl ? `${pl.name}, ${pl.index + 1} of ${pl.surahs.length}` : "Quran", r.reciter].filter(Boolean).join(" · ")
       : "Recording";
     f("title").textContent = r.title;
     const loading = r.loaded_pct != null ? `Downloading to the Pi: ${r.loaded_pct}%` : "";
-    f("note").hidden = !loading && !r.paused;
-    f("note").textContent = loading || (r.paused ? "Paused" : "");
+    const waiting = pending ? `"${pending}" starts when the live broadcast ends.` : "";
+    f("note").hidden = !loading && !r.paused && !waiting;
+    f("note").textContent = loading || waiting || (r.paused ? "Paused" : "");
     const dur = r.duration_s || 0;
     const seek = f("seek");
     seek.max = String(Math.max(1, dur));
@@ -111,7 +150,7 @@ export function update(box, s, { quranOnly = false } = {}) {
     f("resume").hidden = true;
   } else {
     const pl = q.playlist;
-    f("source").textContent = pl ? `${pl.name} · ${pl.index + 1} of ${pl.surahs.length}` : "Quran · Abdul Rahman Al-Sudais";
+    f("source").textContent = pl ? `${pl.name}, ${pl.index + 1} of ${pl.surahs.length}` : "Quran";
     f("title").textContent = q.title;
     f("note").hidden = false;
     f("note").textContent = q.auto

@@ -19,6 +19,8 @@ use tokio::sync::mpsc::UnboundedSender;
 
 pub struct LocalParams {
     pub lib: Arc<Library>,
+    /// Recitation key (see `quran::Reciter`).
+    pub reciter: String,
     pub surah: u16,
     pub start_ms: u64,
     pub sink: SinkHandle,
@@ -38,6 +40,7 @@ const STALL: Duration = Duration::from_secs(90);
 struct Growing {
     file: File,
     lib: Arc<Library>,
+    key: String,
     n: u16,
     stop: Arc<AtomicBool>,
     last_data: Instant,
@@ -57,7 +60,7 @@ impl Growing {
                 return Err("stopped".into());
             }
             let len = self.len();
-            if len >= want || self.lib.is_ready(self.n) {
+            if len >= want || self.lib.is_ready(&self.key, self.n) {
                 return Ok(());
             }
             if len != last_len {
@@ -81,7 +84,7 @@ impl Read for Growing {
                 self.last_data = Instant::now();
                 return Ok(k);
             }
-            if self.lib.is_ready(self.n) {
+            if self.lib.is_ready(&self.key, self.n) {
                 // Complete (renamed): read anything written just before, then EOF.
                 return self.file.read(buf);
             }
@@ -128,14 +131,14 @@ fn read_at(f: &mut File, at: u64, n: usize) -> std::io::Result<Vec<u8>> {
 /// Open the surah file, find where to start for `start_ms`. Returns the reader positioned
 /// there and the position (ms) it corresponds to.
 fn open(p: &LocalParams) -> Result<(Growing, u64), String> {
-    let (lib, n) = (&p.lib, p.surah);
+    let (lib, n, key) = (&p.lib, p.surah, p.reciter.as_str());
     // Wait for the download to create the file.
     let t0 = Instant::now();
     let file = loop {
         if p.stop.load(Ordering::Relaxed) {
             return Err("stopped".into());
         }
-        let path = if lib.is_ready(n) { lib.final_path(n) } else { lib.part_path(n) };
+        let path = if lib.is_ready(key, n) { lib.final_path(key, n) } else { lib.part_path(key, n) };
         if let Ok(f) = File::open(&path) {
             break f;
         }
@@ -144,7 +147,7 @@ fn open(p: &LocalParams) -> Result<(Growing, u64), String> {
         }
         std::thread::sleep(Duration::from_millis(200));
     };
-    let mut g = Growing { file, lib: lib.clone(), n, stop: p.stop.clone(), last_data: Instant::now() };
+    let mut g = Growing { file, lib: lib.clone(), key: key.to_string(), n, stop: p.stop.clone(), last_data: Instant::now() };
     let io = |e: std::io::Error| e.to_string();
 
     g.wait_for(10)?;
@@ -154,7 +157,7 @@ fn open(p: &LocalParams) -> Result<(Growing, u64), String> {
     let (off, len, us) = find_frame(&head).ok_or("not an MP3 file")?;
     let first = start + off as u64;
     let bytes_per_ms = len as f64 / (us as f64 / 1000.0);
-    if let Some(total) = lib.total(n) {
+    if let Some(total) = lib.total(key, n) {
         p.duration_ms.store((total.saturating_sub(first) as f64 / bytes_per_ms) as u64, Ordering::Relaxed);
     }
 
@@ -162,7 +165,7 @@ fn open(p: &LocalParams) -> Result<(Growing, u64), String> {
     let mut pos = 0;
     if p.start_ms > 0 {
         let mut target = first + (p.start_ms as f64 * bytes_per_ms) as u64;
-        if let Some(total) = lib.total(n) {
+        if let Some(total) = lib.total(key, n) {
             target = target.min(total.saturating_sub(16 * 1024).max(first));
         }
         g.wait_for(target + 16 * 1024)?;
