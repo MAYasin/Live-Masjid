@@ -2,10 +2,11 @@
 
 import { api } from "../api.js";
 import { $, runAction, setStat } from "../dom.js";
-import { clockTime, duration, escapeHtml, lowerFirst, timeAgo } from "../format.js";
+import { clockTime, duration, lowerFirst, timeAgo } from "../format.js";
 import { getStatus, subscribe } from "../store.js";
 import { historyRow } from "./history.js";
 import * as local from "../local.js";
+import * as miniplayer from "../miniplayer.js";
 import * as recordings from "./recordings.js";
 import * as salah from "./salah.js";
 
@@ -16,13 +17,11 @@ const PHASES = {
   playing: "Live",
   reconnecting: "Reconnecting",
   stopped: "Stopped",
-  recording: "Playing a recording",
+  recording: "Waiting for broadcast",
 };
 
 let volumeTimer;
 let salahMount = null;
-
-const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
 
 export function init() {
   $("#play").addEventListener("click", (e) => runAction(e.currentTarget, () => api("player/play", {}), "Starting"));
@@ -35,11 +34,7 @@ export function init() {
     clearTimeout(volumeTimer);
     volumeTimer = setTimeout(() => runAction(null, () => api("settings", { volume: Number($("#volume").value) })), 120);
   });
-  $("#rec-pause").addEventListener("click", (e) => {
-    const paused = getStatus()?.recording?.paused;
-    runAction(e.currentTarget, () => api("recordings/pause", { pause: !paused }));
-  });
-  $("#rec-stop").addEventListener("click", (e) => runAction(e.currentTarget, () => api("recordings/stop", {}), "Back to live radio"));
+  miniplayer.mount($("#now-player"));
   $("#recordings-all").addEventListener("click", () => { location.hash = `recordings/${getStatus()?.mount ?? ""}`; });
   $("#recordings-latest").addEventListener("click", recordings.onPlayClick);
   $("#listen-here").addEventListener("click", (e) => {
@@ -106,36 +101,25 @@ function render(s) {
   $("#now-panel").hidden = !s.mount;
   $("#now-panel").className = `panel phase-${s.phase}`;
   $("#phase").textContent = PHASES[s.phase] ?? s.phase;
-  $("#station-name").textContent = rec ? rec.title : (s.station_name || s.mount || "—");
+  // The masjid card is always about the broadcast; the Quran or a recording has its own card.
+  $("#station-name").textContent = s.station_name || s.mount || "—";
   $("#station-location").textContent = s.station_location ?? "";
-  $("#station-location").hidden = !s.station_location || Boolean(s.recording);
-  const quranNow = rec?.kind === "quran";
-  const kind = quranNow ? "Quran · Al-Sudais" : "Recording";
-  $("#phase").textContent = quranNow ? "Quran" : PHASES[s.phase] ?? s.phase;
-  $("#station-detail").textContent = rec ? `${kind} · ${rec.paused ? "paused" : "playing on the speaker"}` : detailLine(s);
-  $("#play").hidden = active || Boolean(rec);
-  $("#stop").hidden = !active;
-  $("#rec-pause").hidden = !rec;
-  $("#rec-stop").hidden = !rec;
-  $("#rec-stop").lastChild.textContent = quranNow ? "Stop Quran" : "Back to live radio";
-  $("#rec-progress").hidden = !rec;
-  // The Quran waits for the live broadcast to end.
-  const resume = s.quran_resume;
-  $("#quran-note").hidden = !resume;
-  if (resume) {
-    $("#quran-note").innerHTML = resume.auto
-      ? `Quran paused for the broadcast: <b>${escapeHtml(resume.title)}</b> continues at ${clock(resume.position_s)} when it ends. <a href="#quran">Open</a>`
-      : `Quran paused: <b>${escapeHtml(resume.title)}</b> at ${clock(resume.position_s)}. <a href="#quran">Open</a>`;
+  $("#station-location").hidden = !s.station_location;
+  const liveNow = s.signals.poll_live;
+  if (rec) {
+    $("#phase").textContent = liveNow ? "Live now" : "Waiting for broadcast";
+    $("#now-panel").className = `panel phase-${liveNow ? "stopped" : "waiting"}`;
   }
+  $("#station-detail").textContent = rec
+    ? (liveNow ? `On air; the speaker is playing ${rec.kind === "quran" ? "the Quran" : "a recording"}. Play now to listen live.`
+      : `Last heard ${lowerFirst(timeAgo(s.last_heard_ms))}. The live broadcast takes over when it starts.`)
+    : detailLine(s);
+  $("#play").hidden = active;
+  $("#stop").hidden = !active;
+  miniplayer.update($("#now-player"), s);
   // The Pi mirrors whatever it plays (live or a recording) to the browser, in sync.
   const onAir = s.signals.poll_live || ["playing", "reconnecting", "recording"].includes(s.phase);
   $("#listen-here").hidden = !s.browser_listening || !onAir || local.isPlaying();
-  if (rec) {
-    $("#rec-pause").textContent = rec.paused ? "Resume" : "Pause";
-    const total = rec.duration_s;
-    $("#rec-time").textContent = total ? `${clock(rec.position_s)} / ${clock(total)}` : clock(rec.position_s);
-    $("#rec-bar").style.width = total ? `${Math.min(100, (100 * rec.position_s) / total)}%` : "0%";
-  }
   $("#autoplay").checked = s.autoplay;
   if (document.activeElement !== $("#volume")) $("#volume").value = s.volume;
   paintVolume();

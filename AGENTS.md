@@ -20,6 +20,13 @@ that aren't obvious from the code.
 - **Audio: keep Bluetooth and wired both supported.** The owner currently has only a Bluetooth speaker, so Bluetooth must be rock-solid.
 - **UI style.** Minimal and neutral, like a FAANG product: grayscale plus one dark primary colour, green only for "live",
   6 px radii, flat 1 px borders, no gradients or glows. It must not scroll sideways at 375 px. The sidebar appears at 900 px and wider.
+- **Phone navigation** (2026-11-08): four tabs (Now, Masjids, Quran, More). More opens a sheet with Speaker, History, System, Settings and
+  "Install on this phone", each with a one-line live status. The masjid card on Now always shows the broadcast; the Quran or a recording
+  has its own player card under it (`ui/js/miniplayer.js`, also at the top of the Quran page) with icon buttons.
+- **Phone install over plain HTTP:** iPhone Safari "Add to Home Screen" gives a full-screen app (apple-touch-icon and meta tags). Chrome
+  installs a real app only on HTTPS, so Android gets a shortcut. The owner chose "best effort on http" for now; HTTPS (own domain with
+  DNS-01, or Tailscale) is the way to a real Android install. Home-screen widgets need native apps. PNG icons are drawn by a small Node
+  rasteriser (no image tools on the dev PC) into `ui/icons/` and served at `/icons/<name>`.
 - **Footprint matters.** In testing it used about 4 MB of RAM and 1–2% CPU while playing, as a 3 MB static binary.
 
 ## Target device
@@ -121,7 +128,10 @@ that aren't obvious from the code.
   - **Playing while downloading:** `Growing` reader waits for the file to grow, and gives up after 90 s with no growth.
   - **Seeking:** byte offset = ID3 length + time × bitrate, then the next frame confirmed by the frame after it. It waits until that
     part is downloaded. `DecodeCtx::position_base_ms` keeps the position right after a seek.
-  - Surahs play in order (end → next surah).
+  - **Playlists** (2026-11-08): named, stored on the Pi in `quran-playlists.json` (`Library::save_playlist`, at most 50) and shared by all users,
+    each with a repeat toggle. Playing one carries a `PlaylistCtx` snapshot (surahs, index, repeat), so editing doesn't disturb playback.
+    `neighbour()` picks next/previous inside the playlist (wrapping only with repeat) or in Quran order. The end of a playlist without
+    repeat stops; the resume after a live broadcast keeps the playlist.
   - **Live precedence** (player): a broadcast that starts during the Quran stops it and saves `quran_resume` (surah and position;
     `auto` = it wasn't paused by the user). "Play now" also saves it. The Quran continues once the broadcast has **closed**: no
     session, not live (or stopped by the user), for 15 s straight, checked on the 5 s tick. A reconnect keeps its session, so it never
@@ -263,5 +273,5 @@ that aren't obvious from the code.
 - `catalog.rs` directory scrape, cache and seed · `history.rs` JSONL sessions · `net.rs` raw Icecast HTTP and endpoints
 - `web/` `mod.rs` router and `ApiError` · `auth.rs` · `assets.rs` (embedded UI, ETag) · `api/{status,stations,player,speaker,system}.rs`
 - Device setup: `setup.sh` (wizard), `deploy.sh` (dev loop) · `deploy/install.sh` (generic installer) · `deploy/update.sh` (`--check`, `--force`) · `docs/SETUP.md`
-- `ui/` `index.html` markup only · `css/{base,layout,components,views}.css` · `js/` ES modules: `main.js` router, `store.js` live status,
+- `ui/` `index.html` markup only · `miniplayer.js` Quran/recording player card · `install.js` install guide · `icons/` PNG app icons · · `css/{base,layout,components,views}.css` · `js/` ES modules: `main.js` router, `store.js` live status,
   `api.js`, `dom.js`, `format.js`, `views/{now,masjids,quran,speaker,history,settings,system,recordings,salah}.js`. New UI files must be added to `FILES` in `web/assets.rs`.

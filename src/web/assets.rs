@@ -34,6 +34,8 @@ static FILES: &[(&str, &str, &str)] = embed![
     "js/views/salah.js",
     "js/views/recordings.js",
     "js/views/quran.js",
+    "js/miniplayer.js",
+    "js/install.js",
 ];
 
 const INDEX: &str = include_str!("../../ui/index.html");
@@ -77,6 +79,21 @@ pub async fn index(headers: HeaderMap) -> Response {
     serve(&headers, "text/html; charset=utf-8", INDEX)
 }
 
+/// App icons (PNG) for phones: iOS home screen, Android/Chrome install.
+static ICONS: &[(&str, &[u8])] = &[
+    ("icon-192.png", include_bytes!("../../ui/icons/icon-192.png")),
+    ("icon-512.png", include_bytes!("../../ui/icons/icon-512.png")),
+    ("icon-maskable-512.png", include_bytes!("../../ui/icons/icon-maskable-512.png")),
+    ("apple-touch-icon.png", include_bytes!("../../ui/icons/apple-touch-icon.png")),
+];
+
+pub async fn png(axum::extract::Path(name): axum::extract::Path<String>) -> Response {
+    match ICONS.iter().find(|(n, _)| *n == name) {
+        Some((_, body)) => ([(header::CONTENT_TYPE, "image/png"), (header::CACHE_CONTROL, "public, max-age=604800")], *body).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
 pub async fn icon(headers: HeaderMap) -> Response {
     serve(&headers, "image/svg+xml", ICON)
 }
@@ -90,9 +107,20 @@ pub async fn file(headers: HeaderMap, axum::extract::Path(path): axum::extract::
 
 pub async fn manifest() -> Response {
     let m = serde_json::json!({
-        "name": "Live Masjid", "short_name": "Live Masjid", "start_url": "/", "display": "standalone",
+        "id": "/", "name": "Live Masjid", "short_name": "Live Masjid", "start_url": "/", "scope": "/",
+        "display": "standalone", "orientation": "portrait",
+        "description": "Live masjid broadcasts, salah times and Quran on your speaker",
         "background_color": "#0a0a0a", "theme_color": "#0a0a0a",
-        "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }]
+        "icons": [
+            { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+            { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+            { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+            { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }
+        ],
+        "shortcuts": [
+            { "name": "Quran", "url": "/#quran", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] },
+            { "name": "Masjids", "url": "/#masjids", "icons": [{ "src": "/icons/icon-192.png", "sizes": "192x192" }] }
+        ]
     });
     ([(header::CONTENT_TYPE, "application/manifest+json")], m.to_string()).into_response()
 }

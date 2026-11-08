@@ -22,14 +22,54 @@ fn surah(n: u16) -> Result<u16, ApiError> {
 
 #[derive(Deserialize)]
 pub struct PlayReq {
-    surah: u16,
+    /// A surah on its own, or…
+    surah: Option<u16>,
+    /// …a playlist, from entry `index`.
+    playlist: Option<String>,
+    #[serde(default)]
+    index: usize,
     #[serde(default)]
     position_s: u64,
 }
 
 pub async fn play(State(app): State<App>, Json(r): Json<PlayReq>) -> ApiResult {
-    let n = surah(r.surah)?;
-    let _ = app.player_tx.send(PlayerCmd::PlayQuran { surah: n, position_ms: r.position_s * 1000 });
+    let (n, playlist) = match (&r.playlist, r.surah) {
+        (Some(id), _) => {
+            let p = app.quran.playlist(id).ok_or_else(|| ApiError::bad("That playlist no longer exists"))?;
+            let ctx = quran::PlaylistCtx::new(&p, r.index);
+            (ctx.surah(), Some(ctx))
+        }
+        (None, Some(n)) => (surah(n)?, None),
+        (None, None) => return Err(ApiError::bad("choose a surah or a playlist")),
+    };
+    let _ = app.player_tx.send(PlayerCmd::PlayQuran { surah: n, position_ms: r.position_s * 1000, playlist });
+    ok()
+}
+
+pub async fn playlists(State(app): State<App>) -> Json<Vec<quran::Playlist>> {
+    Json(app.quran.playlists())
+}
+
+#[derive(Deserialize)]
+pub struct SavePlaylist {
+    id: Option<String>,
+    name: String,
+    surahs: Vec<u16>,
+    #[serde(default)]
+    repeat: bool,
+}
+
+pub async fn save_playlist(State(app): State<App>, Json(r): Json<SavePlaylist>) -> ApiResult<Json<quran::Playlist>> {
+    app.quran.save_playlist(r.id, &r.name, r.surahs, r.repeat).map(Json).map_err(ApiError::bad)
+}
+
+#[derive(Deserialize)]
+pub struct PlaylistRef {
+    id: String,
+}
+
+pub async fn delete_playlist(State(app): State<App>, Json(r): Json<PlaylistRef>) -> ApiResult {
+    app.quran.delete_playlist(&r.id).map_err(ApiError::bad)?;
     ok()
 }
 

@@ -95,7 +95,8 @@ while its player loop and audio thread are healthy, so a hang also leads to a re
 - **Recordings** from livemasjid.com, for the selected masjid on the home screen and for any masjid from the Masjids list. They play on
   the speaker (pause, resume, stop). A live broadcast that starts interrupts the recording, and live resumes afterwards.
 - **Quran** recited by Abdul Rahman Al-Sudais (from mp3quran.net), played on the speaker with seek, pause, previous and next; it moves
-  on to the next surah by itself. A surah downloads to the Pi the first time it plays (and starts playing straight away); "Download all"
+  on to the next surah by itself. Build named playlists (for example Al-Fātiḥah, Al-Baqarah and Yā Sīn), each with an optional repeat;
+  they are kept on the Pi for everyone. A surah downloads to the Pi the first time it plays (and starts playing straight away); "Download all"
   fetches the rest in the background. A live broadcast pauses the Quran, which continues by itself once the broadcast has ended
   (not while it is only reconnecting).
 - The Pi does all the fetching, with caching and strict rate limits, so using the UI never hammers these sites.
@@ -105,3 +106,9 @@ while its player loop and audio thread are healthy, so a hang also leads to a re
 Every broadcast is logged to `history.jsonl` with its start and end times, codec, what triggered
 it, how it ended, and any reconnects. Progress is saved every minute, so "last heard" survives power cuts.
 The **History** tab shows it per masjid, and the directory shows "heard … ago" for each masjid.
+
+## Phone
+
+On a phone the app has four tabs (Now, Masjids, Quran, More). To keep it on your home screen, open **More → Install on this phone**:
+on iPhone, Safari's *Add to Home Screen* opens it full screen like an app; on Android, Chrome's *Add to Home screen* adds a shortcut
+(a full app install needs HTTPS, which isn't set up on the Pi yet).

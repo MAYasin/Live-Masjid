@@ -64,6 +64,52 @@ pub struct LibraryInfo {
     pub error: Option<String>,
 }
 
+/// A user's named selection of surahs, played in order.
+#[derive(Clone, Debug, Serialize, serde::Deserialize)]
+pub struct Playlist {
+    pub id: String,
+    pub name: String,
+    pub surahs: Vec<u16>,
+    /// Start again from the first surah after the last.
+    pub repeat: bool,
+}
+
+/// What is playing from a playlist (a snapshot, so editing the playlist doesn't disturb it).
+#[derive(Clone, Debug, Serialize)]
+pub struct PlaylistCtx {
+    pub id: String,
+    pub name: String,
+    pub surahs: Vec<u16>,
+    pub index: usize,
+    pub repeat: bool,
+}
+
+impl PlaylistCtx {
+    pub fn new(p: &Playlist, index: usize) -> Self {
+        Self { id: p.id.clone(), name: p.name.clone(), surahs: p.surahs.clone(), index: index.min(p.surahs.len().saturating_sub(1)), repeat: p.repeat }
+    }
+
+    pub fn surah(&self) -> u16 {
+        self.surahs[self.index]
+    }
+
+    /// The entry `by` steps away (-1/+1); wraps around only with repeat. None past the end.
+    pub fn step(&self, by: i32) -> Option<Self> {
+        let len = self.surahs.len() as i64;
+        let mut i = self.index as i64 + i64::from(by);
+        if i >= len {
+            if !self.repeat {
+                return None;
+            }
+            i = 0;
+        }
+        if i < 0 {
+            i = if self.repeat { len - 1 } else { 0 };
+        }
+        Some(Self { index: i as usize, ..self.clone() })
+    }
+}
+
 #[derive(Default)]
 struct Inner {
     /// Content lengths learned from the server.
@@ -81,13 +127,68 @@ pub struct Library {
     dir: PathBuf,
     inner: Mutex<Inner>,
     wake: tokio::sync::Notify,
+    playlists_path: PathBuf,
+    playlists: Mutex<Vec<Playlist>>,
 }
 
 impl Library {
     pub fn new(data_dir: &Path) -> Arc<Self> {
         let dir = data_dir.join("quran").join("sudais");
         let _ = std::fs::create_dir_all(&dir);
-        Arc::new(Self { dir, inner: Mutex::new(Inner::default()), wake: tokio::sync::Notify::new() })
+        let playlists_path = data_dir.join("quran-playlists.json");
+        let playlists = std::fs::read(&playlists_path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+        Arc::new(Self {
+            dir,
+            inner: Mutex::new(Inner::default()),
+            wake: tokio::sync::Notify::new(),
+            playlists_path,
+            playlists: Mutex::new(playlists),
+        })
+    }
+
+    pub fn playlists(&self) -> Vec<Playlist> {
+        self.playlists.lock().unwrap().clone()
+    }
+
+    pub fn playlist(&self, id: &str) -> Option<Playlist> {
+        self.playlists.lock().unwrap().iter().find(|p| p.id == id).cloned()
+    }
+
+    /// Create (no id) or replace a playlist. Validates and saves to disk.
+    pub fn save_playlist(&self, id: Option<String>, name: &str, surahs: Vec<u16>, repeat: bool) -> Result<Playlist, String> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 60 {
+            return Err("Give the playlist a name (up to 60 characters)".into());
+        }
+        if surahs.is_empty() || surahs.len() > 300 || !surahs.iter().all(|&n| valid(n)) {
+            return Err("Add at least one surah".into());
+        }
+        let mut list = self.playlists.lock().unwrap();
+        let p = Playlist { id: id.filter(|i| list.iter().any(|p| &p.id == i)).unwrap_or_else(|| crate::config::random_hex(6)), name: name.into(), surahs, repeat };
+        match list.iter_mut().find(|x| x.id == p.id) {
+            Some(x) => *x = p.clone(),
+            None => {
+                if list.len() >= 50 {
+                    return Err("That's the maximum of 50 playlists".into());
+                }
+                list.push(p.clone());
+            }
+        }
+        self.persist(&list)?;
+        Ok(p)
+    }
+
+    pub fn delete_playlist(&self, id: &str) -> Result<bool, String> {
+        let mut list = self.playlists.lock().unwrap();
+        let before = list.len();
+        list.retain(|p| p.id != id);
+        self.persist(&list)?;
+        Ok(list.len() != before)
+    }
+
+    fn persist(&self, list: &[Playlist]) -> Result<(), String> {
+        let body = serde_json::to_vec_pretty(list).map_err(|e| e.to_string())?;
+        crate::config::write_atomic(&self.playlists_path, &body).map_err(|e| format!("couldn't save playlists: {e}"))
     }
 
     pub fn final_path(&self, n: u16) -> PathBuf {
@@ -100,6 +201,16 @@ impl Library {
 
     pub fn is_ready(&self, n: u16) -> bool {
         self.final_path(n).is_file()
+    }
+
+    /// Download progress of a surah that isn't complete yet (percent), None once ready.
+    pub fn progress(&self, n: u16) -> Option<u8> {
+        if self.is_ready(n) {
+            return None;
+        }
+        let have = std::fs::metadata(self.part_path(n)).map(|m| m.len()).unwrap_or(0);
+        let total = self.inner.lock().unwrap().totals.get(&n).copied()?;
+        Some((have * 100 / total.max(1)).min(99) as u8)
     }
 
     /// Expected size of the surah file, if known.
@@ -346,5 +457,18 @@ mod tests {
         assert_eq!(super::name(114), "An-Nās");
         assert_eq!(super::name(0), "");
         assert!(!super::valid(115));
+    }
+
+    #[test]
+    fn playlist_steps() {
+        let p = super::Playlist { id: "a".into(), name: "Morning".into(), surahs: vec![1, 2, 36], repeat: false };
+        let c = super::PlaylistCtx::new(&p, 0);
+        assert_eq!(c.step(1).unwrap().surah(), 2);
+        assert_eq!(c.step(-1).unwrap().surah(), 1); // stays at the start
+        let last = super::PlaylistCtx::new(&p, 2);
+        assert!(last.step(1).is_none()); // ends without repeat
+        let r = super::PlaylistCtx { repeat: true, ..last };
+        assert_eq!(r.step(1).unwrap().surah(), 1); // wraps with repeat
+        assert_eq!(super::PlaylistCtx::new(&p, 9).index, 2);
     }
 }
