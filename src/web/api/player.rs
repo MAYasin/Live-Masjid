@@ -31,6 +31,7 @@ pub struct SettingsPatch {
     keep_awake: Option<bool>,
     codec: Option<String>,
     live_delay_s: Option<u32>,
+    auto_update: Option<bool>,
     poll_secs: Option<u64>,
     fallback_output: Option<String>,
     bt_quality: Option<String>,
@@ -50,6 +51,7 @@ pub async fn settings(State(app): State<App>, Json(p): Json<SettingsPatch>) -> A
         if let Some(v) = p.keep_awake { s.keep_awake = v; }
         if let Some(v) = p.codec { s.codec = v; }
         if let Some(v) = p.live_delay_s { s.live_delay_s = v.clamp(2, 30); }
+        if let Some(v) = p.auto_update { s.auto_update = v; }
         if let Some(v) = p.poll_secs { s.poll_secs = v; }
         if let Some(v) = p.fallback_output { s.fallback_output = v; }
         if let Some(v) = quality.clone() { s.bt_quality = v; }

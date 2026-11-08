@@ -63,6 +63,11 @@ that aren't obvious from the code.
   (idempotent full install). The PowerShell scripts were replaced by these on 2026-11-07.
   - Dev builds are labelled `dev-<sha>`.
   - `update.sh` won't replace a dev build for 12 hours unless run with `--force`.
+  - **Updates from the UI** (System → App): "Check for updates" runs `update.sh --check` as the app user (GitHub API) and shows the
+    answer; "Update now" writes `<data>/update-request` and starts `livemasjid-update.service`, and `update.sh` treats that run as `--force`.
+    The "Automatic updates" switch is `Settings::auto_update`; timer runs grep `settings.json` for `"auto_update": false` and skip.
+    `update.sh` writes `<data>/update-status.json` (`checking/updating/updated/up_to_date/skipped/failed`); the page polls it and
+    reloads once the version changes. No new sudo rules were needed. `deploy.sh` now also installs the helper scripts.
 - **Over SSH, never run `pkill -f livemasjid`.** It matches the SSH command line and kills your own session. Use `pkill -x livemasjid`.
 - **Shell scripts must keep LF line endings** (`.gitattributes`). `deploy.sh` and `setup.sh` also strip CR on the device as a safety net.
 

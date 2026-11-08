@@ -54,5 +54,8 @@ if [ "$SETUP" = 1 ]; then
 else
   ssh $SSH_OPTS "$HOST" "sudo -n /opt/livemasjid/install-bin.sh $STAGE/livemasjid $VERSION" \
     || die "deploy failed. First deploy to this device? Run ./setup.sh"
+  # Keep the helper scripts (updater, Wi-Fi and Bluetooth watchdogs) in step with the build.
+  ssh $SSH_OPTS "$HOST" "cd $STAGE && sudo -n install -m 755 update.sh install-bin.sh netwatch.sh bt-recover.sh bt-audio.sh /opt/livemasjid/" \
+    || echo "!! could not refresh the helper scripts" >&2
 fi
 echo "==> Done: http://${HOST#*@}/"

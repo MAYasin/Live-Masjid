@@ -81,6 +81,7 @@ pub fn router(app: App) -> Router {
         .route("/api/outputs", get(api::speaker::outputs))
         .route("/api/password", post(auth::set_password))
         .route("/api/logout", post(auth::logout))
+        .route("/api/system/updates", get(api::system::updates))
         .route("/api/system/{action}", post(api::system::action))
         .layer(middleware::from_fn_with_state(app.clone(), auth::require_session));
 

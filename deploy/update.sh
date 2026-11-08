@@ -5,10 +5,40 @@
 #   update.sh            normal update (skips a dev build deployed < 12 h ago)
 #   update.sh --force    update even over a recent dev build
 #   update.sh --check    report current/latest version and asset availability; change nothing
+#
+# The web UI's "Update now" leaves $DATA/update-request and starts this service: that run is
+# treated as --force. Timer runs respect the app's "Automatic updates" setting (settings.json
+# "auto_update": false skips them). Progress is written to $DATA/update-status.json for the UI.
 set -euo pipefail
 
 D=/opt/livemasjid
+DATA=/var/lib/livemasjid
 MODE="${1:-}"
+MANUAL=no
+if [ "$MODE" != "--check" ] && [ -f "$DATA/update-request" ]; then
+  rm -f "$DATA/update-request"
+  MANUAL=yes
+  MODE=--force
+fi
+
+# Status for the web UI (only for real runs, not --check).
+status() { # state message [from] [to]
+  [ "$MODE" = "--check" ] && return 0
+  [ -d "$DATA" ] || return 0
+  local manual=false
+  [ "$MANUAL" = yes ] && manual=true
+  printf '{"state":"%s","message":"%s","from":"%s","to":"%s","manual":%s,"at":%s}\n' \
+    "$1" "$2" "${3:-}" "${4:-}" "$manual" "$(date +%s)" > "$DATA/update-status.json.tmp" \
+    && mv "$DATA/update-status.json.tmp" "$DATA/update-status.json" \
+    && chmod 644 "$DATA/update-status.json" || true
+}
+trap 'rc=$?; [ $rc -ne 0 ] && [ -z "${REPORTED:-}" ] && status failed "The update failed (exit $rc); the current version keeps running" "${CUR:-}" "${TAG:-}"' EXIT
+
+if [ "$MODE" != "--check" ] && [ "$MANUAL" = no ] && [ -f "$DATA/settings.json" ] \
+   && grep -Eq '"auto_update" *: *false' "$DATA/settings.json"; then
+  echo "automatic updates are off; skipping"
+  exit 0
+fi
 [ -f /etc/livemasjid/update.conf ] && . /etc/livemasjid/update.conf
 REPO="${REPO:-}"
 
@@ -20,6 +50,7 @@ case "$(uname -m)" in
 esac
 ASSET="livemasjid-${ARCH}-linux.tar.gz"
 CUR="$(cat "$D/VERSION" 2>/dev/null || echo none)"
+status checking "Checking for a new version" "$CUR"
 
 if [ -z "$REPO" ]; then
   echo "REPO not set in /etc/livemasjid/update.conf; skipping"
@@ -48,17 +79,20 @@ fi
 if [[ "$CUR" == dev-* ]] && [ "$MODE" != "--force" ] && \
    [ $(( $(date +%s) - $(stat -c %Y "$D/VERSION") )) -lt 43200 ]; then
   echo "dev build $CUR installed recently; skipping (use --force)"
+  status skipped "A test build is installed; automatic updates resume within 12 hours" "$CUR" "$TAG"
   exit 0
 fi
 if [ "$TAG" = "$CUR" ]; then
   echo "up to date ($CUR)"
+  status up_to_date "Up to date" "$CUR" "$TAG"
   exit 0
 fi
 [ "$HAS_ASSET" = yes ] || { echo "release $TAG has no $ASSET; skipping"; exit 0; }
 
 echo "updating $CUR -> $TAG ($ARCH)"
+status updating "Downloading and installing" "$CUR" "$TAG"
 TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
+trap 'rc=$?; rm -rf "$TMP"; [ $rc -ne 0 ] && [ -z "${REPORTED:-}" ] && status failed "The update failed (exit $rc); the current version keeps running" "$CUR" "$TAG"' EXIT
 URL="https://github.com/${REPO}/releases/download/${TAG}/${ASSET}"
 curl -fsSL --retry 3 --max-time 300 -o "$TMP/$ASSET" "$URL"
 curl -fsSL --retry 3 --max-time 60 -o "$TMP/$ASSET.sha256" "$URL.sha256"
@@ -90,4 +124,10 @@ if [ -d "$NEW" ]; then
   fi
 fi
 
-"$D/install-bin.sh" "$TMP/livemasjid/livemasjid" "$TAG"
+if "$D/install-bin.sh" "$TMP/livemasjid/livemasjid" "$TAG" && [ "$(cat "$D/VERSION" 2>/dev/null)" = "$TAG" ]; then
+  status updated "Updated" "$CUR" "$TAG"
+else
+  status failed "The new version didn't start properly, so the previous one was restored" "$CUR" "$TAG"
+  REPORTED=1
+  exit 1
+fi
