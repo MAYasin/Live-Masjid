@@ -11,6 +11,7 @@ mod buffer;
 mod decode;
 mod edge;
 mod ogg;
+pub mod local;
 pub mod recording;
 
 pub use decode::Codec;
@@ -190,6 +191,7 @@ impl Pipeline {
             }),
             paused: None,
             position_ms: None,
+            position_base_ms: 0,
         };
         let decoder = std::thread::Builder::new()
             .name("decoder".into())

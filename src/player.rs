@@ -30,16 +30,94 @@ struct Rec {
     /// Was the selected masjid already live when the recording started? Only a broadcast
     /// that starts *during* the recording interrupts it.
     live_at_start: bool,
+    /// Quran: the surah playing (a recording otherwise).
+    surah: Option<u16>,
+    /// Quran: length of the surah, once known.
+    duration_ms: Arc<std::sync::atomic::AtomicU64>,
 }
 
 fn recording_status(r: &Rec) -> crate::state::RecordingStatus {
+    let known = r.duration_ms.load(Ordering::Relaxed);
     crate::state::RecordingStatus {
         mount: r.mount.clone(),
         title: r.title.clone(),
         position_s: r.position_ms.load(Ordering::Relaxed) / 1000,
-        duration_s: r.duration_s,
+        duration_s: r.duration_s.or((known > 0).then_some(known / 1000)),
         paused: r.paused.load(Ordering::Relaxed),
+        kind: if r.surah.is_some() { "quran" } else { "recording" },
+        surah: r.surah,
     }
+}
+
+/// Start playing Quran surah `n` from `position_ms` (downloading it if needed).
+fn start_quran(
+    app: &App,
+    n: u16,
+    position_ms: u64,
+    paused: bool,
+    live_at_start: bool,
+    token: u64,
+    rec_tx: &tokio::sync::mpsc::UnboundedSender<(u64, crate::stream::recording::RecordingEvent)>,
+) -> Rec {
+    app.quran.request(n);
+    let title = format!("{}. {}", n, crate::quran::name(n));
+    let r = Rec {
+        token,
+        stop: Arc::new(AtomicBool::new(false)),
+        paused: Arc::new(AtomicBool::new(paused)),
+        position_ms: Arc::new(std::sync::atomic::AtomicU64::new(position_ms)),
+        mount: String::new(),
+        title,
+        duration_s: None,
+        live_at_start,
+        surah: Some(n),
+        duration_ms: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+    };
+    let (tx, mut rx) = unbounded_channel();
+    let fwd = rec_tx.clone();
+    tokio::spawn(async move {
+        while let Some(ev) = rx.recv().await {
+            if fwd.send((token, ev)).is_err() {
+                break;
+            }
+        }
+    });
+    let params = crate::stream::local::LocalParams {
+        lib: app.quran.clone(),
+        surah: n,
+        start_ms: position_ms,
+        sink: app.sink.clone(),
+        epoch: app.sink.new_epoch(),
+        stop: r.stop.clone(),
+        paused: r.paused.clone(),
+        position_ms: r.position_ms.clone(),
+        duration_ms: r.duration_ms.clone(),
+        events: tx,
+    };
+    std::thread::Builder::new()
+        .name("quran".into())
+        .spawn(move || crate::stream::local::run(params))
+        .expect("spawn quran thread");
+    app.status.send_modify(|st| {
+        st.recording = Some(recording_status(&r));
+        st.quran_resume = None;
+    });
+    app.set_phase(Phase::Recording);
+    r
+}
+
+/// Remember where the Quran was, to continue after a live broadcast.
+fn quran_resume_of(r: &Rec) -> Option<crate::state::QuranResume> {
+    Some(crate::state::QuranResume {
+        surah: r.surah?,
+        title: r.title.clone(),
+        position_s: r.position_ms.load(Ordering::Relaxed) / 1000,
+        auto: !r.paused.load(Ordering::Relaxed),
+    })
+}
+
+fn is_live_now(app: &App) -> bool {
+    app.settings().mount.as_deref().is_some_and(|m| crate::monitor::is_live(&app.live.read().unwrap(), m))
 }
 
 /// Stop a recording (if any) and clear it from the status.
@@ -58,6 +136,10 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
     let mut rec: Option<Rec> = None;
     let mut active: Option<Active> = None;
     let mut next_token = 0u64;
+    // The Quran, paused for a live broadcast; continues once the broadcast has closed.
+    let mut quran_resume: Option<crate::state::QuranResume> = None;
+    // Since when the broadcast has looked closed (resume waits a little, not on a reconnect).
+    let mut closed_since: Option<Instant> = None;
     // User pressed stop during this broadcast: don't auto-restart until it goes offline.
     let mut suppressed_at: Option<Instant> = None;
     let mut retry_after = Instant::now();
@@ -75,6 +157,11 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
             Some(cmd) = cmd_rx.recv() => match cmd {
                 PlayerCmd::PlayNow => {
                     suppressed_at = None;
+                    // Live now; the Quran (if playing) continues after the broadcast.
+                    if let Some(res) = rec.as_ref().and_then(quran_resume_of) {
+                        quran_resume = Some(res.clone());
+                        app.status.send_modify(|st| st.quran_resume = Some(res));
+                    }
                     stop_recording(&app, &mut rec);
                     if active.is_none() { start = Some("manual"); }
                 }
@@ -94,9 +181,12 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                         mount,
                         title: title.clone(),
                         duration_s,
-                        live_at_start: app.settings().mount.as_deref()
-                            .is_some_and(|m| crate::monitor::is_live(&app.live.read().unwrap(), m)),
+                        live_at_start: is_live_now(&app),
+                        surah: None,
+                        duration_ms: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                     };
+                    quran_resume = None;
+                    app.status.send_modify(|st| st.quran_resume = None);
                     let (tx, mut rx) = unbounded_channel();
                     let fwd = rec_tx.clone();
                     tokio::spawn(async move {
@@ -128,7 +218,39 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                         app.status.send_modify(|st| st.recording = Some(recording_status(r)));
                     }
                 }
+                PlayerCmd::PlayQuran { surah, position_ms } => {
+                    stop_recording(&app, &mut rec);
+                    if let Some(a) = active.as_mut() {
+                        a.stop_reason = Some("recording");
+                        a.stop.store(true, Ordering::Relaxed);
+                    }
+                    quran_resume = None;
+                    next_token += 1;
+                    let r = start_quran(&app, surah, position_ms, false, is_live_now(&app), next_token, &rec_tx);
+                    app.log("info", format!("▶ Quran: {} ({})", r.title, crate::quran::RECITER));
+                    rec = Some(r);
+                }
+                PlayerCmd::QuranSeek(ms) => {
+                    if let Some((n, paused, live)) = rec.as_ref().and_then(|r| Some((r.surah?, r.paused.load(Ordering::Relaxed), r.live_at_start))) {
+                        stop_recording(&app, &mut rec);
+                        next_token += 1;
+                        rec = Some(start_quran(&app, n, ms, paused, live, next_token, &rec_tx));
+                    }
+                }
+                PlayerCmd::QuranStep(by) => {
+                    if let Some((n, live)) = rec.as_ref().and_then(|r| Some((r.surah?, r.live_at_start))) {
+                        let next = (i32::from(n) + by).clamp(1, 114) as u16;
+                        stop_recording(&app, &mut rec);
+                        next_token += 1;
+                        let r = start_quran(&app, next, 0, false, live, next_token, &rec_tx);
+                        app.log("info", format!("▶ Quran: {}", r.title));
+                        rec = Some(r);
+                    }
+                }
                 PlayerCmd::StopRecording => {
+                    if quran_resume.take().is_some() {
+                        app.status.send_modify(|st| st.quran_resume = None);
+                    }
                     if rec.is_some() {
                         stop_recording(&app, &mut rec);
                         app.log("info", "Recording stopped");
@@ -180,8 +302,15 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                     Signal::SseOnline | Signal::PollOnline => {
                         // A broadcast that starts while a recording plays takes priority.
                         if rec.as_ref().is_some_and(|r| !r.live_at_start) && s.autoplay && suppressed_at.is_none() {
+                            if let Some(res) = rec.as_ref().and_then(quran_resume_of) {
+                                app.log("info", format!("Live broadcast started; Quran paused at {}:{:02} (continues when the broadcast ends)",
+                                    res.position_s / 60, res.position_s % 60));
+                                quran_resume = Some(res.clone());
+                                app.status.send_modify(|st| st.quran_resume = Some(res));
+                            } else {
+                                app.log("info", "Live broadcast started; stopping the recording");
+                            }
                             stop_recording(&app, &mut rec);
-                            app.log("info", "Live broadcast started; stopping the recording");
                         }
                         let ok = s.mount.is_some() && s.autoplay && suppressed_at.is_none()
                             && active.is_none() && rec.is_none() && Instant::now() >= retry_after;
@@ -267,6 +396,15 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                     use crate::stream::recording::RecordingEvent;
                     match ev {
                         RecordingEvent::Started => {}
+                        // Quran surah finished: continue with the next one (the playlist).
+                        RecordingEvent::Ended(None) if rec.as_ref().and_then(|r| r.surah).is_some_and(|n| n < 114) => {
+                            let r = rec.take().unwrap();
+                            let next = r.surah.unwrap() + 1;
+                            next_token += 1;
+                            let r = start_quran(&app, next, 0, false, r.live_at_start, next_token, &rec_tx);
+                            app.log("info", format!("▶ Quran: {}", r.title));
+                            rec = Some(r);
+                        }
                         RecordingEvent::Ended(err) => {
                             match err {
                                 Some(e) => app.log("warn", format!("Recording could not be played: {e}")),
@@ -288,6 +426,23 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                 if let Some(r) = &rec {
                     let st = recording_status(r);
                     app.status.send_modify(|s| s.recording = Some(st));
+                }
+                // Continue the Quran once the broadcast that interrupted it has *closed*: no
+                // session (a reconnect keeps its session) and not live (or stopped by the
+                // user), for 15 s in a row.
+                let closed = active.is_none() && rec.is_none() && (suppressed_at.is_some() || !is_live_now(&app));
+                if quran_resume.as_ref().is_some_and(|q| q.auto) && closed {
+                    let since = *closed_since.get_or_insert_with(Instant::now);
+                    if since.elapsed() >= Duration::from_secs(15) {
+                        let q = quran_resume.take().unwrap();
+                        next_token += 1;
+                        let r = start_quran(&app, q.surah, q.position_s * 1000, false, false, next_token, &rec_tx);
+                        app.log("info", format!("Broadcast over; continuing the Quran: {}", r.title));
+                        rec = Some(r);
+                        closed_since = None;
+                    }
+                } else {
+                    closed_since = None;
                 }
                 if let Some(a) = &active {
                     let b = a.buffer_ms.load(Ordering::Relaxed);

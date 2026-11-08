@@ -5,6 +5,7 @@ mod catalog;
 mod config;
 mod history;
 mod integrations;
+mod quran;
 mod monitor;
 mod net;
 mod player;
@@ -95,6 +96,7 @@ async fn run() -> anyhow::Result<()> {
         live_count: 0,
         site_blocked_until_ms: None,
         recording: None,
+        quran_resume: None,
         browser_listening: settings.browser_listening,
         buffer_ms: 0,
     };
@@ -117,6 +119,7 @@ async fn run() -> anyhow::Result<()> {
         hb_player: AtomicU64::new(now_ms()),
         site: site::SiteGuard::load(paths_site),
         integrations: integrations::Integrations::new(&data_dir),
+        quran: quran::Library::new(&data_dir),
     });
 
     {
@@ -150,6 +153,7 @@ async fn run() -> anyhow::Result<()> {
     tokio::spawn(monitor::poll::run(app.clone()));
     tokio::spawn(catalog::run(app.clone()));
     tokio::spawn(bluetooth::run(app.clone()));
+    tokio::spawn(app.quran.clone().run());
     tokio::spawn(watchdog(app.clone()));
 
     let port: u16 = std::env::var("LIVEMASJID_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(80);

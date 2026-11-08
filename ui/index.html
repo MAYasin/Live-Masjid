@@ -29,6 +29,7 @@
       <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
       <symbol id="i-volume" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9.5 9.5 0 0 1 0 13"/></symbol>
       <symbol id="i-headphones" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 18v-6a8 8 0 0 1 16 0v6"/><rect x="3" y="15" width="4" height="6" rx="1.5"/><rect x="17" y="15" width="4" height="6" rx="1.5"/></symbol>
+      <symbol id="i-book" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/></symbol>
       <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
       <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/></symbol>
     </defs>
@@ -39,6 +40,7 @@
     <nav>
       <button data-view="now"><svg><use href="#i-home"/></svg>Now playing</button>
       <button data-view="masjids"><svg><use href="#i-list"/></svg>Masjids</button>
+      <button data-view="quran"><svg><use href="#i-book"/></svg>Quran</button>
       <button data-view="speaker"><svg><use href="#i-speaker"/></svg>Speaker</button>
       <button data-view="history"><svg><use href="#i-clock"/></svg>History</button>
       <button data-view="system"><svg><use href="#i-chip"/></svg>System</button>
@@ -72,6 +74,7 @@
             <div class="text-2 truncate" id="station-location"></div>
             <div class="text-3 small" id="station-detail" style="margin-top:6px"></div>
             <div class="rec-progress" id="rec-progress" hidden><div class="meter"><i id="rec-bar"></i></div><span class="xsmall text-3 tabular" id="rec-time"></span></div>
+            <div class="now-note" id="quran-note" hidden></div>
             <div class="actions now-actions">
               <button class="btn primary" id="play"><svg><use href="#i-play"/></svg>Play now</button>
               <button class="btn primary" id="stop" hidden><svg><use href="#i-stop"/></svg>Stop</button>
@@ -109,7 +112,7 @@
             <label class="switch"><input type="checkbox" id="autoplay" aria-label="Auto-play"><span></span></label>
           </div>
         </div>
-        <div class="section-title" id="salah-title">Salah times <a class="xsmall text-3" id="salah-source" target="_blank" rel="noopener">masjidscreen.co.za</a></div>
+        <div class="section-title" id="salah-title">Salah times <span class="xsmall text-3"><a class="text-3" id="salah-source" target="_blank" rel="noopener">masjidscreen.co.za</a> · <button class="linklike" id="salah-change" type="button">Change</button></span></div>
         <div class="panel salah" id="salah"><div class="empty small">Loading salah times…</div></div>
         <div class="stats">
           <div class="stat"><div class="stat-key"><span class="dot" id="stat-output-dot"></span>Output</div><div class="stat-value truncate" id="stat-output">—</div></div>
@@ -130,6 +133,38 @@
           <button class="btn ghost small" id="rec-refresh">Refresh</button></div>
         <div class="notice" id="rec-notice" hidden></div>
         <div class="list" id="rec-list"><div class="empty"><span class="spinner"></span></div></div>
+      </section>
+
+      <!-- Quran (Al-Sudais, stored on the Pi) -->
+      <section class="view" id="view-quran">
+        <div class="panel quran-player" id="quran-player" hidden>
+          <div class="qp-head">
+            <div class="grow">
+              <div class="qp-title truncate" id="qp-title">—</div>
+              <div class="text-2 small" id="qp-status"></div>
+            </div>
+            <button class="btn small ghost" id="qp-stop"><svg><use href="#i-stop"/></svg>Stop</button>
+          </div>
+          <div class="qp-seekrow" id="qp-seekrow">
+            <span class="xsmall text-3 tabular" id="qp-pos">0:00</span>
+            <input type="range" id="qp-seek" min="0" max="1" value="0" step="1" aria-label="Position">
+            <span class="xsmall text-3 tabular" id="qp-dur">–:––</span>
+          </div>
+          <div class="qp-controls" id="qp-controls">
+            <button class="btn" id="qp-prev" aria-label="Previous surah">Previous</button>
+            <button class="btn primary" id="qp-toggle">Pause</button>
+            <button class="btn" id="qp-next" aria-label="Next surah">Next</button>
+          </div>
+        </div>
+        <div class="section-title" style="margin-top:0">Abdul Rahman Al-Sudais <span class="xsmall text-3" id="quran-store"></span></div>
+        <div class="quran-tools">
+          <input type="search" id="quran-filter" placeholder="Search surah" aria-label="Search surah" autocomplete="off">
+          <button class="btn small" id="quran-all">Download all</button>
+          <button class="btn small ghost" id="quran-delete" hidden>Remove downloads</button>
+        </div>
+        <div class="notice" id="quran-error" hidden></div>
+        <div class="list" id="quran-list"><div class="empty"><span class="spinner"></span></div></div>
+        <div class="xsmall text-3" style="margin-top:12px">A surah downloads to the Pi the first time it plays, then plays from the Pi. A live broadcast pauses the Quran; it continues once the broadcast has ended.</div>
       </section>
 
       <!-- Masjids -->
@@ -277,6 +312,7 @@
   <nav class="tabbar">
     <button data-view="now"><svg><use href="#i-home"/></svg>Now</button>
     <button data-view="masjids"><svg><use href="#i-list"/></svg>Masjids</button>
+    <button data-view="quran"><svg><use href="#i-book"/></svg>Quran</button>
     <button data-view="speaker"><svg><use href="#i-speaker"/></svg>Speaker</button>
     <button data-view="history"><svg><use href="#i-clock"/></svg>History</button>
     <button data-view="system"><svg><use href="#i-chip"/></svg>System</button>
@@ -293,6 +329,22 @@
       <input type="password" id="login-password" placeholder="Password" autocomplete="current-password">
       <div class="form-error" id="login-error"></div>
       <div class="actions"><button class="btn primary" style="width:100%">Continue</button></div>
+    </form>
+  </div>
+
+  <div class="modal" id="salah-modal">
+    <form id="salah-form">
+      <h3>Salah times source</h3>
+      <div class="text-2 small" id="salah-current"></div>
+      <div class="text-2 small">Paste this masjid's board link from masjidboardlive.com. <a href="https://masjidboardlive.com/findmasjid/" target="_blank" rel="noopener">Find your masjid</a></div>
+      <input type="text" id="salah-board-input" placeholder="https://masjidboardlive.com/boards/?id=…" autocomplete="off" spellcheck="false">
+      <div class="actions">
+        <button type="button" class="btn ghost small" id="salah-auto">Automatic</button>
+        <button type="button" class="btn ghost small" id="salah-none">masjidscreen only</button>
+        <span class="grow"></span>
+        <button type="button" class="btn" data-close>Cancel</button>
+        <button class="btn primary">Save</button>
+      </div>
     </form>
   </div>
 

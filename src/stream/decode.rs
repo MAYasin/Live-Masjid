@@ -36,6 +36,8 @@ pub struct DecodeCtx {
     pub paused: Option<Arc<AtomicBool>>,
     /// Recordings only: playback position (ms of audio decoded so far).
     pub position_ms: Option<Arc<AtomicU64>>,
+    /// Position of the first decoded sample (after a seek), in ms.
+    pub position_base_ms: u64,
 }
 
 /// Run a decoder until the buffer is closed and drained, or `stop` is raised.
@@ -81,7 +83,7 @@ impl PcmOut {
         }
         self.frames += (stereo.len() / 2) as u64;
         if let Some(pos) = &self.ctx.position_ms {
-            pos.store(self.frames * 1000 / u64::from(rate.max(1)), Ordering::Relaxed);
+            pos.store(self.ctx.position_base_ms + self.frames * 1000 / u64::from(rate.max(1)), Ordering::Relaxed);
         }
         if let Some(f) = self.first.take() {
             f();

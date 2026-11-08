@@ -10,6 +10,7 @@
 //! Requests go through `curl` (installed on every device by `install.sh`) so HTTPS works
 //! with the system's TLS in every build.
 
+pub mod masjidboard;
 pub mod recordings;
 pub mod salah;
 
@@ -109,6 +110,9 @@ pub struct Integrations {
     pub masjidscreen: SiteGuard,
     pub masjidscreen_gate: OneAtATime,
     pub salah: Cache<salah::SalahTimes>,
+    pub masjidboard: SiteGuard,
+    pub masjidboard_gate: OneAtATime,
+    pub boards: Cache<masjidboard::Lookup>,
     pub livemasjid_gate: OneAtATime,
     pub recordings: Cache<recordings::RecordingList>,
 }
@@ -119,6 +123,9 @@ impl Integrations {
             masjidscreen: SiteGuard::load(data_dir.join("site-masjidscreen.json")),
             masjidscreen_gate: OneAtATime::default(),
             salah: Cache::default(),
+            masjidboard: SiteGuard::load(data_dir.join("site-masjidboard.json")),
+            masjidboard_gate: OneAtATime::default(),
+            boards: Cache::default(),
             livemasjid_gate: OneAtATime::default(),
             recordings: Cache::default(),
         }

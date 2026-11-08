@@ -1,21 +1,23 @@
-// Salah times card on the home screen (data: masjidscreen.co.za via the Pi's cache).
-// Highlights the next salah with a countdown; falls back to a short note when the masjid
-// doesn't publish times or the site can't be reached.
+// Salah times card on the home screen. Data comes from the Pi's cache: masjidboardlive.com
+// (detailed) or masjidscreen.co.za (fallback). Shows today's Gregorian + Hijri date, the five
+// salah with adhān/iqāmah, the next one with a countdown, the other times of the day,
+// Jumu'ah and upcoming changes, compactly. "Change" picks the source per masjid.
 
 import { api } from "../api.js";
-import { $, $$ } from "../dom.js";
+import { $, $$, closeModal, openModal, toast } from "../dom.js";
 import { escapeHtml } from "../format.js";
 
 let data = null;
 let loadedFor = null;
 let retryTimer;
 
+const HIJRI_MONTHS = ["Muharram", "Safar", "Rabīʿ al-Awwal", "Rabīʿ al-Thānī", "Jumādā al-Ūlā", "Jumādā al-Ākhirah",
+  "Rajab", "Shaʿbān", "Ramaḍān", "Shawwāl", "Dhū al-Qaʿdah", "Dhū al-Ḥijjah"];
+
 /** Load (or reload) times for `mount`. The Pi caches, so this is cheap to call. */
 export async function load(mount) {
   if (!mount) {
-    $("#salah").innerHTML = "";
-    $("#salah-title").hidden = true;
-    $("#salah").hidden = true;
+    hide();
     return;
   }
   loadedFor = mount;
@@ -27,7 +29,7 @@ export async function load(mount) {
   if (loadedFor === mount) render();
 }
 
-/** Re-render (countdown) without fetching. */
+/** Re-render (countdown, Hijri date at Maghrib) without fetching. */
 export function tick() {
   if (data && data.status === "ok") render();
 }
@@ -67,18 +69,67 @@ function nextEvent(list) {
   return t ? { index: 0, kind: fajr.athaan ? "athaan" : "jamaat", when: at(t, 1), tomorrow: true } : null;
 }
 
+/** Hijri date (Umm al-Qura, shifted by the masjid's adjustment). The Islamic day begins at Maghrib. */
+function hijri(d) {
+  const maghrib = d.times.find((t) => t.key === "maghrib");
+  const sunset = d.day?.find((m) => m.key === "sunset")?.time || maghrib?.athaan;
+  const date = new Date();
+  const afterMaghrib = sunset && Date.now() >= at(sunset).getTime();
+  date.setDate(date.getDate() + (d.hijri_adjust || 0) + (afterMaghrib ? 1 : 0));
+  for (const cal of ["islamic-umalqura", "islamic-civil", "islamic"]) {
+    try {
+      const parts = new Intl.DateTimeFormat(`en-u-ca-${cal}-nu-latn`, { day: "numeric", month: "numeric", year: "numeric" }).formatToParts(date);
+      const get = (t) => Number(parts.find((p) => p.type === t)?.value);
+      const [day, month, year] = [get("day"), get("month"), parseInt(parts.find((p) => p.type === "year")?.value, 10)];
+      if (day && month >= 1 && month <= 12 && year) return `${day} ${HIJRI_MONTHS[month - 1]} ${year} AH`;
+    } catch { /* calendar not supported here */ }
+  }
+  return "";
+}
+
+/** Other times of the day as compact label/time pairs (Zawāl as a range). */
+function dayTimes(d) {
+  const day = d.day || [];
+  const get = (k) => day.find((m) => m.key === k)?.time;
+  const out = [];
+  for (const m of day) {
+    if (m.key === "istiwaCaution") {
+      const end = get("zawaalEnd");
+      out.push(["Zawāl", end ? `${m.time}–${end}` : m.time]);
+    } else if (m.key === "zawaalEnd") {
+      if (!get("istiwaCaution")) out.push(["Zawāl ends", m.time]);
+    } else if (m.key === "fajrStarts" && get("sehriEnds") === m.time) {
+      // Same moment as "Suhūr ends": shown once.
+    } else if (m.key === "sehriEnds" && get("fajrStarts") === m.time) {
+      out.push(["Suhūr ends · Fajr", m.time]);
+    } else {
+      out.push([m.label, m.time]);
+    }
+  }
+  return out;
+}
+
 function render() {
   const box = $("#salah");
   $("#salah-title").hidden = false;
   box.hidden = false;
   const source = $("#salah-source");
+  const provider = data.provider === "masjidboardlive" ? "masjidboardlive" : "masjidscreen.co.za";
+  source.textContent = provider;
   source.href = data.source || "https://masjidscreen.co.za/";
+  $("#salah-change").hidden = !loadedFor;
+
+  const suggestion = data.suggestion
+    ? `<div class="salah-suggest small">Is <b>${escapeHtml(boardName(data.suggestion))}</b> this masjid's board on masjidboardlive?
+        <span class="actions"><button class="btn small" data-board="${escapeHtml(data.suggestion.id)}">Use it</button>
+        <button class="btn small ghost" data-board="none">No</button></span></div>`
+    : "";
 
   if (data.status !== "ok") {
     // Fallback: the card stays, with a calm one-line explanation (and a retry for errors).
     const retry = data.status === "error" || data.status === "blocked"
       ? ' <button class="btn ghost small" id="salah-retry">Retry</button>' : "";
-    box.innerHTML = `<div class="empty small">${escapeHtml(data.message || "Salah times unavailable")}${retry}</div>`;
+    box.innerHTML = `${suggestion}<div class="empty small">${escapeHtml(data.message || "Salah times unavailable")}${retry}</div>`;
     $("#salah-retry")?.addEventListener("click", () => load(loadedFor));
     clearTimeout(retryTimer);
     if (data.status === "error") retryTimer = setTimeout(() => load(loadedFor), 10 * 60 * 1000);
@@ -88,26 +139,86 @@ function render() {
   const list = todays(data);
   const next = nextEvent(list);
   const now = Date.now();
+  const friday = new Date().getDay() === 5;
   const cells = list.map((s, i) => {
     const last = s.jamaat || s.athaan;
     const past = !next?.tomorrow && last && at(last).getTime() < now;
     const cls = next && next.index === i && !next.tomorrow ? "next" : past ? "past" : "";
-    const jamaat = s.jamaat && s.jamaat !== s.athaan ? `Jamaat ${s.jamaat}` : "&nbsp;";
+    const iqamah = s.jamaat && s.jamaat !== s.athaan ? `Iqāmah ${s.jamaat}` : "&nbsp;";
     return `<div class="salah-cell ${cls}">
       <div class="name">${escapeHtml(s.label)}</div>
       <div class="athaan">${escapeHtml(s.athaan || s.jamaat || "—")}</div>
-      <div class="jamaat">${jamaat}</div>
+      <div class="jamaat">${iqamah}</div>
     </div>`;
   }).join("");
+
   let line = "";
   if (next) {
     const s = list[next.index];
-    const what = next.kind === "jamaat" ? `${s.label} jamaat` : `${s.label} athaan`;
+    const what = next.kind === "jamaat" ? `${s.label} iqāmah` : `${s.label} adhān`;
     line = next.tomorrow
       ? `Next: <b>${escapeHtml(s.label)}</b> tomorrow at ${escapeHtml(s.athaan || s.jamaat)}`
-      : `Next: <b>${escapeHtml(what)}</b> ${inWords(next.when.getTime() - now)} (${next.when.toTimeString().slice(0, 5)})`;
+      : `Next: <b>${escapeHtml(what)}</b> ${inWords(next.when.getTime() - now)} <span class="text-3">(${next.when.toTimeString().slice(0, 5)})</span>`;
   }
-  box.innerHTML = `<div class="salah-grid">${cells}</div><div class="salah-next">${line}</div>`;
+
+  const today = new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long" });
+  const h = hijri(data);
+  const head = `<div class="salah-head"><span>${escapeHtml(today)}</span>${h ? `<span class="text-2">${escapeHtml(h)}</span>` : ""}</div>`;
+
+  const extra = dayTimes(data);
+  const more = extra.length
+    ? `<div class="salah-more">${extra.map(([l, t]) => `<div><span>${escapeHtml(l)}</span><b>${escapeHtml(t)}</b></div>`).join("")}</div>`
+    : "";
+
+  const jt = data.jumuah_times || [];
+  const jumuah = jt.length
+    ? `<div class="salah-line${friday ? " today" : ""}"><span class="key">Jumu'ah</span>
+        <span>${jt.map((m) => `${escapeHtml(m.label)} <b>${escapeHtml(m.time)}</b>`).join(" · ")}${data.khateeb ? ` · <span class="text-3">${escapeHtml(data.khateeb)}</span>` : ""}</span></div>`
+    : "";
+  const changes = (data.changes || []).length
+    ? `<div class="salah-line"><span class="key">Changes</span><span>${data.changes.map((c) =>
+        `${escapeHtml(c.label)} <b>${escapeHtml(c.time)}</b> from ${escapeHtml(c.date)}`).join(" · ")}</span></div>`
+    : "";
+
+  box.innerHTML = `${suggestion}${head}<div class="salah-grid">${cells}</div><div class="salah-next">${line}</div>${more}${jumuah}${changes}`;
+}
+
+function boardName(b) {
+  return b.city ? `${b.name}, ${b.city}` : b.name;
+}
+
+async function choose(board) {
+  if (!loadedFor) return;
+  try {
+    data = await api("salah/board", { mount: loadedFor, board });
+    render();
+    closeModal("salah-modal");
+    toast(board === "none" ? "Using masjidscreen.co.za" : board === "auto" ? "Matching automatically" : `Using ${boardName(data.board || { name: "the board" })}`);
+  } catch (err) {
+    toast(err.message);
+  }
+}
+
+export function init() {
+  $("#salah").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-board]");
+    if (b) choose(b.dataset.board);
+  });
+  $("#salah-change").addEventListener("click", () => {
+    const cur = data?.board && data.manual ? data.board.url : "";
+    $("#salah-board-input").value = cur;
+    $("#salah-current").textContent = data?.provider === "masjidboardlive" && data.board
+      ? `Now: masjidboardlive · ${boardName(data.board)}${data.manual ? "" : " (matched automatically)"}`
+      : `Now: masjidscreen.co.za${data?.manual ? " (chosen)" : ""}`;
+    openModal("salah-modal", "#salah-board-input");
+  });
+  $("#salah-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const v = $("#salah-board-input").value.trim();
+    choose(v || "auto");
+  });
+  $("#salah-auto").addEventListener("click", () => choose("auto"));
+  $("#salah-none").addEventListener("click", () => choose("none"));
 }
 
 export function hide() {

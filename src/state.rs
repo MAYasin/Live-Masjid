@@ -54,6 +54,20 @@ pub struct RecordingStatus {
     pub position_s: u64,
     pub duration_s: Option<u64>,
     pub paused: bool,
+    /// "recording" (a past broadcast) or "quran".
+    pub kind: &'static str,
+    /// Quran: the surah number.
+    pub surah: Option<u16>,
+}
+
+/// The Quran was interrupted by a live broadcast and continues when it closes.
+#[derive(Clone, Debug, Serialize)]
+pub struct QuranResume {
+    pub surah: u16,
+    pub title: String,
+    pub position_s: u64,
+    /// Resume by itself (false if the user had paused it).
+    pub auto: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
@@ -120,6 +134,8 @@ pub struct Status {
     pub site_blocked_until_ms: Option<u64>,
     /// Set while a past recording is playing.
     pub recording: Option<RecordingStatus>,
+    /// Set while the Quran waits for a live broadcast to end.
+    pub quran_resume: Option<QuranResume>,
     /// Visitors may listen on their own device.
     pub browser_listening: bool,
 }
@@ -151,6 +167,12 @@ pub enum PlayerCmd {
     PlayRecording { mount: String, title: String, url: String, duration_s: Option<u64> },
     PauseRecording(bool),
     StopRecording,
+    /// Play a Quran surah (downloading it first if needed) from a position.
+    PlayQuran { surah: u16, position_ms: u64 },
+    /// Seek within the playing surah.
+    QuranSeek(u64),
+    /// Previous (-1) / next (+1) surah.
+    QuranStep(i32),
 }
 
 /// Live/offline evidence for the selected mount.
@@ -184,6 +206,8 @@ pub struct AppState {
     pub site: crate::site::SiteGuard,
     /// Salah times and recordings (caches + per-site guards).
     pub integrations: crate::integrations::Integrations,
+    /// Quran recitation stored on the Pi.
+    pub quran: Arc<crate::quran::Library>,
 }
 
 pub type App = Arc<AppState>;

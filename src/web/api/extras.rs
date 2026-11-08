@@ -28,6 +28,45 @@ pub async fn salah_times(State(app): State<App>, Query(q): Query<MountQuery>) ->
     Ok(Json(salah::get(&app, &mount).await))
 }
 
+#[derive(Deserialize)]
+pub struct BoardChoice {
+    mount: String,
+    /// A masjidboardlive link or id; "auto" to match automatically; "none" for masjidscreen only.
+    board: String,
+}
+
+/// Choose where a masjid's salah times come from. A board is checked before it is saved.
+pub async fn salah_board(State(app): State<App>, Json(c): Json<BoardChoice>) -> ApiResult<Json<salah::SalahTimes>> {
+    use crate::integrations::masjidboard::{self, Lookup};
+    if !valid_mount(&c.mount) {
+        return Err(ApiError::bad("invalid masjid"));
+    }
+    let key = c.mount.strip_suffix(".mp3").unwrap_or(&c.mount).to_ascii_lowercase();
+    let choice = match c.board.trim() {
+        "" | "auto" => None,
+        "none" => Some("none".to_string()),
+        input => {
+            let id = masjidboard::parse_board_ref(input)
+                .ok_or_else(|| ApiError::bad("That doesn't look like a masjidboardlive link"))?;
+            match masjidboard::lookup(&app, &id).await {
+                // Save the board's canonical id (the link may use an alias).
+                Lookup::Found(t) => Some(t.board.map(|b| b.id).filter(|b| !b.is_empty()).unwrap_or(id)),
+                Lookup::NotFound => return Err(ApiError::bad("No masjidboardlive board has that link")),
+                Lookup::Blocked | Lookup::Failed => return Err(ApiError::bad("Couldn't reach masjidboardlive.com; try again later")),
+            }
+        }
+    };
+    app.update_settings(|s| match choice {
+        Some(v) => {
+            s.salah_boards.insert(key.clone(), v);
+        }
+        None => {
+            s.salah_boards.remove(&key);
+        }
+    })?;
+    Ok(Json(salah::get(&app, &c.mount).await))
+}
+
 pub async fn recording_list(State(app): State<App>, Query(q): Query<MountQuery>) -> ApiResult<Json<recordings::RecordingList>> {
     let mount = mount_or_selected(&app, q)?;
     Ok(Json(recordings::list(&app, &mount).await))
