@@ -34,6 +34,22 @@ struct Rec {
     surah: Option<u16>,
     /// Quran: length of the surah, once known.
     duration_ms: Arc<std::sync::atomic::AtomicU64>,
+    /// Quran: the playlist this surah belongs to.
+    playlist: Option<crate::quran::PlaylistCtx>,
+    /// Quran: the library (for download progress).
+    lib: Option<Arc<crate::quran::Library>>,
+}
+
+/// The surah before/after (`by` = -1/+1) the playing one: within its playlist, else in
+/// Quran order. None at the end (a playlist without repeat, or An-Nās).
+fn neighbour(r: &Rec, by: i32) -> Option<(u16, Option<crate::quran::PlaylistCtx>)> {
+    match &r.playlist {
+        Some(p) => p.step(by).map(|q| (q.surah(), Some(q))),
+        None => {
+            let n = i32::from(r.surah?) + by;
+            (1..=114).contains(&n).then(|| (n as u16, None))
+        }
+    }
 }
 
 fn recording_status(r: &Rec) -> crate::state::RecordingStatus {
@@ -46,6 +62,8 @@ fn recording_status(r: &Rec) -> crate::state::RecordingStatus {
         paused: r.paused.load(Ordering::Relaxed),
         kind: if r.surah.is_some() { "quran" } else { "recording" },
         surah: r.surah,
+        playlist: r.playlist.clone(),
+        loaded_pct: r.surah.and_then(|n| r.lib.as_ref()?.progress(n)),
     }
 }
 
@@ -53,6 +71,7 @@ fn recording_status(r: &Rec) -> crate::state::RecordingStatus {
 fn start_quran(
     app: &App,
     n: u16,
+    playlist: Option<crate::quran::PlaylistCtx>,
     position_ms: u64,
     paused: bool,
     live_at_start: bool,
@@ -72,6 +91,8 @@ fn start_quran(
         live_at_start,
         surah: Some(n),
         duration_ms: Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        playlist,
+        lib: Some(app.quran.clone()),
     };
     let (tx, mut rx) = unbounded_channel();
     let fwd = rec_tx.clone();
@@ -113,6 +134,7 @@ fn quran_resume_of(r: &Rec) -> Option<crate::state::QuranResume> {
         title: r.title.clone(),
         position_s: r.position_ms.load(Ordering::Relaxed) / 1000,
         auto: !r.paused.load(Ordering::Relaxed),
+        playlist: r.playlist.clone(),
     })
 }
 
@@ -183,6 +205,8 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                         duration_s,
                         live_at_start: is_live_now(&app),
                         surah: None,
+                        playlist: None,
+                        lib: None,
                         duration_ms: Arc::new(std::sync::atomic::AtomicU64::new(0)),
                     };
                     quran_resume = None;
@@ -218,7 +242,7 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                         app.status.send_modify(|st| st.recording = Some(recording_status(r)));
                     }
                 }
-                PlayerCmd::PlayQuran { surah, position_ms } => {
+                PlayerCmd::PlayQuran { surah, position_ms, playlist } => {
                     stop_recording(&app, &mut rec);
                     if let Some(a) = active.as_mut() {
                         a.stop_reason = Some("recording");
@@ -226,23 +250,22 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                     }
                     quran_resume = None;
                     next_token += 1;
-                    let r = start_quran(&app, surah, position_ms, false, is_live_now(&app), next_token, &rec_tx);
+                    let r = start_quran(&app, surah, playlist, position_ms, false, is_live_now(&app), next_token, &rec_tx);
                     app.log("info", format!("▶ Quran: {} ({})", r.title, crate::quran::RECITER));
                     rec = Some(r);
                 }
                 PlayerCmd::QuranSeek(ms) => {
-                    if let Some((n, paused, live)) = rec.as_ref().and_then(|r| Some((r.surah?, r.paused.load(Ordering::Relaxed), r.live_at_start))) {
+                    if let Some((n, paused, live, pl)) = rec.as_ref().and_then(|r| Some((r.surah?, r.paused.load(Ordering::Relaxed), r.live_at_start, r.playlist.clone()))) {
                         stop_recording(&app, &mut rec);
                         next_token += 1;
-                        rec = Some(start_quran(&app, n, ms, paused, live, next_token, &rec_tx));
+                        rec = Some(start_quran(&app, n, pl, ms, paused, live, next_token, &rec_tx));
                     }
                 }
                 PlayerCmd::QuranStep(by) => {
-                    if let Some((n, live)) = rec.as_ref().and_then(|r| Some((r.surah?, r.live_at_start))) {
-                        let next = (i32::from(n) + by).clamp(1, 114) as u16;
+                    if let Some(((next, pl), live)) = rec.as_ref().and_then(|r| Some((neighbour(r, by)?, r.live_at_start))) {
                         stop_recording(&app, &mut rec);
                         next_token += 1;
-                        let r = start_quran(&app, next, 0, false, live, next_token, &rec_tx);
+                        let r = start_quran(&app, next, pl, 0, false, live, next_token, &rec_tx);
                         app.log("info", format!("▶ Quran: {}", r.title));
                         rec = Some(r);
                     }
@@ -397,11 +420,12 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                     match ev {
                         RecordingEvent::Started => {}
                         // Quran surah finished: continue with the next one (the playlist).
-                        RecordingEvent::Ended(None) if rec.as_ref().and_then(|r| r.surah).is_some_and(|n| n < 114) => {
+                        // (Next in the playlist; past its end only with repeat.)
+                        RecordingEvent::Ended(None) if rec.as_ref().and_then(|r| neighbour(r, 1)).is_some() => {
                             let r = rec.take().unwrap();
-                            let next = r.surah.unwrap() + 1;
+                            let (next, pl) = neighbour(&r, 1).unwrap();
                             next_token += 1;
-                            let r = start_quran(&app, next, 0, false, r.live_at_start, next_token, &rec_tx);
+                            let r = start_quran(&app, next, pl, 0, false, r.live_at_start, next_token, &rec_tx);
                             app.log("info", format!("▶ Quran: {}", r.title));
                             rec = Some(r);
                         }
@@ -436,7 +460,7 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                     if since.elapsed() >= Duration::from_secs(15) {
                         let q = quran_resume.take().unwrap();
                         next_token += 1;
-                        let r = start_quran(&app, q.surah, q.position_s * 1000, false, false, next_token, &rec_tx);
+                        let r = start_quran(&app, q.surah, q.playlist, q.position_s * 1000, false, false, next_token, &rec_tx);
                         app.log("info", format!("Broadcast over; continuing the Quran: {}", r.title));
                         rec = Some(r);
                         closed_since = None;

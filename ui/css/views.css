@@ -105,13 +105,6 @@
 @media (max-width: 480px) { .local-bar { padding: 10px 16px; } }
 
 /* Quran */
-.quran-player { padding: 16px 20px; margin-bottom: 20px; }
-.qp-head { display: flex; align-items: flex-start; gap: 12px; }
-.qp-title { font-size: 17px; font-weight: 600; }
-.qp-seekrow { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
-.qp-seekrow input { flex: 1; min-width: 0; accent-color: var(--primary); }
-.qp-controls { display: flex; justify-content: center; gap: 8px; margin-top: 12px; }
-.qp-controls .btn { min-width: 88px; justify-content: center; }
 .quran-tools { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .quran-tools input { flex: 1 1 180px; min-width: 0; }
 .q-row .q-num { flex: none; width: 28px; color: var(--text-3); font-size: 12px; }
@@ -119,4 +112,47 @@
 .q-row.current .item-title { font-weight: 600; }
 .q-ready { display: inline-flex; align-items: center; gap: 4px; }
 .q-ready svg { width: 12px; height: 12px; }
-.now-note { margin-top: 10px; font-size: 13px; color: var(--text-2); }
+.pl-row.current { background: var(--hover); }
+.pl-row.current .item-title { font-weight: 600; }
+.pl-rep { width: 13px; height: 13px; margin-left: 4px; vertical-align: -2px; color: var(--text-3); }
+
+/* The speaker's other player (Quran / recording): a quiet card, one filled control. */
+.mp-panel { margin-top: 12px; padding: 14px 16px 12px; }
+#view-quran .mp-panel { margin: 0 0 20px; }
+.mp-source { font-size: 12px; color: var(--text-2); }
+.mp-title { margin-top: 2px; font-size: 16px; font-weight: 600; }
+.mp-note { margin-top: 4px; font-size: 12px; color: var(--text-2); }
+.mp-seek { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 11px; color: var(--text-3); }
+.mp-seek span { min-width: 36px; }
+.mp-seek span:last-child { text-align: right; }
+.mp-seek input { flex: 1; min-width: 0; margin: 0; accent-color: var(--primary); }
+.mp-seek input:disabled { opacity: .5; }
+.mp-controls { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 6px; }
+.mp-resume { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+
+.icon-btn { display: inline-grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--text-2); cursor: pointer; }
+.icon-btn svg { width: 20px; height: 20px; }
+.icon-btn:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.icon-btn:disabled { opacity: .35; cursor: default; }
+.icon-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.icon-btn.play { width: 48px; height: 48px; border-radius: 50%; background: var(--primary); color: var(--on-primary); }
+.icon-btn.play:hover { background: var(--primary); color: var(--on-primary); opacity: .9; }
+.icon-btn.play svg { width: 22px; height: 22px; }
+.icon-btn.sm { width: 30px; height: 30px; }
+.icon-btn.sm svg { width: 16px; height: 16px; }
+
+/* Playlist editor */
+#playlist-modal form { max-width: 420px; max-height: calc(100dvh - 32px); overflow-y: auto; }
+.pl-chosen { margin-top: 12px; border: 1px solid var(--border); border-radius: var(--radius); max-height: 40dvh; overflow-y: auto; }
+.pl-chosen .empty { padding: 14px; }
+.pl-item { display: flex; align-items: center; gap: 4px; padding: 4px 6px 4px 10px; border-top: 1px solid var(--border); font-size: 13px; min-width: 0; }
+.pl-item:first-child { border-top: 0; }
+.pl-item .q-num { width: 26px; }
+.pl-add { display: flex; gap: 8px; margin-top: 10px; }
+.pl-add select { flex: 1; min-width: 0; }
+.pl-repeat { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+
+/* Install guide */
+.install-steps { margin: 12px 0; padding-left: 20px; font-size: 14px; line-height: 1.7; }
+#install-body p { margin: 8px 0 0; }
+#install-body .btn { margin-top: 12px; }

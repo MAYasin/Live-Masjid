@@ -54,8 +54,32 @@
   font-size: 11px;
   font-weight: 500;
 }
-.tabbar button.active { color: var(--text); }
+.tabbar button.active, .tabbar button[aria-expanded="true"] { color: var(--text); }
 .tabbar svg { width: 20px; height: 20px; }
+
+/* "More" sheet: rises from the tab bar, which stays visible so More toggles it. */
+.sheet { position: fixed; inset: 0; z-index: 25; }
+.sheet-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, .35); opacity: 0; transition: opacity .16s; }
+.sheet-panel {
+  position: absolute; left: 8px; right: 8px; bottom: calc(62px + env(safe-area-inset-bottom));
+  max-width: 520px; margin: 0 auto; padding: 4px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  opacity: 0; transform: translateY(8px); transition: opacity .16s, transform .16s;
+}
+.sheet.open .sheet-backdrop { opacity: 1; }
+.sheet.open .sheet-panel { opacity: 1; transform: none; }
+.sheet-row {
+  display: flex; align-items: center; gap: 14px; width: 100%; min-height: 56px; padding: 8px 12px;
+  border: 0; border-radius: var(--radius); background: none; color: var(--text); text-align: left; cursor: pointer;
+}
+.sheet-row + .sheet-row { border-top: 1px solid var(--border); border-radius: 0; }
+.sheet-row:hover, .sheet-row.active { background: var(--hover); }
+.sheet-row > svg { flex: none; width: 20px; height: 20px; color: var(--text-2); }
+.sheet-row .chev { width: 16px; height: 16px; color: var(--text-3); }
+.sheet-row b { display: block; font-size: 14px; font-weight: 600; }
+.sheet-row .grow > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-2); }
+.sheet-row .grow { min-width: 0; }
+@media (prefers-reduced-motion: reduce) { .sheet-backdrop, .sheet-panel { transition: none; } }
 
 .view { display: none; }
 .view.active { display: block; }
@@ -94,6 +118,6 @@
   .main { margin-left: var(--sidebar); }
   .topbar .brand { display: none; }
   .page-title { display: block; }
-  .tabbar { display: none; }
+  .tabbar, .sheet { display: none; }
   .content { padding: 28px 32px 48px; }
 }
