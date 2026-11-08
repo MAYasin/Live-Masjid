@@ -39,6 +39,8 @@ pub struct Settings {
     /// Salah times source per masjid (mount → masjidboardlive board id, or "none" for
     /// masjidscreen only). Masjids not listed are matched automatically.
     pub salah_boards: std::collections::BTreeMap<String, String>,
+    /// Default Quran recitation (mp3quran key); playlists may pin their own.
+    pub quran_reciter: String,
     /// Salted, iterated SHA-256 of the UI password; `None` = no password set.
     pub password_hash: Option<String>,
     /// Random secret used to derive session cookies.
@@ -62,6 +64,7 @@ impl Default for Settings {
             browser_listening: false,
             poll_secs: 20,
             salah_boards: Default::default(),
+            quran_reciter: crate::quran::DEFAULT_RECITER.into(),
             password_hash: None,
             secret: random_hex(32),
         }
@@ -101,6 +104,9 @@ impl Settings {
         self.volume = self.volume.min(100);
         self.poll_secs = self.poll_secs.clamp(10, 300);
         self.live_delay_s = self.live_delay_s.clamp(2, 30);
+        if !crate::quran::valid_key(&self.quran_reciter) {
+            self.quran_reciter = crate::quran::DEFAULT_RECITER.into();
+        }
         // "low" was removed: on some speakers its SBC bitpool cannot sustain real time (choppy audio).
         if !matches!(self.bt_quality.as_str(), "medium" | "high") {
             self.bt_quality = "high".into();

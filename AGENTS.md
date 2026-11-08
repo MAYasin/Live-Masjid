@@ -20,6 +20,9 @@ that aren't obvious from the code.
 - **Audio: keep Bluetooth and wired both supported.** The owner currently has only a Bluetooth speaker, so Bluetooth must be rock-solid.
 - **UI style.** Minimal and neutral, like a FAANG product: grayscale plus one dark primary colour, green only for "live",
   6 px radii, flat 1 px borders, no gradients or glows. It must not scroll sideways at 375 px. The sidebar appears at 900 px and wider.
+- **UX cleanup (2026-11-08, chosen by the owner):** home has no status tiles or recent broadcasts, and shows one warning only when
+  something is wrong (`alertFor`). Settings and Speaker keep set-and-forget options under a collapsed "Advanced". A masjid row opens a
+  sheet (Listen / Follow / Recordings) and addresses are shortened (`shortPlace`). History drops the repeated name and shows a total per day.
 - **Phone navigation** (2026-11-08): four tabs (Now, Masjids, Quran, More). More opens a sheet with Speaker, History, System, Settings and
   "Install on this phone", each with a one-line live status. The masjid card on Now always shows the broadcast; the Quran or a recording
   has its own player card under it (`ui/js/miniplayer.js`, also at the top of the Quran page) with icon buttons.
@@ -119,7 +122,15 @@ that aren't obvious from the code.
   - The 5 salah with adhān and iqāmah; the next one gets a countdown.
   - Other day times in a compact grid; Zawāl is shown as a range, and Suhūr/Fajr are merged when they're equal.
   - Jumu'ah and changes on one line each. Jumu'ah replaces Zuhr on Fridays.
-- **Quran** (`quran.rs` library, `stream/local.rs` playback, `views/quran.js`): Al-Sudais from
+- **Reciters** (2026-11-08): the catalogue `https://www.mp3quran.net/api/v3/reciters?language=eng` has 244 reciters and 299 recitations
+  ("moshaf"), fetched monthly into `<data>/quran/reciters.json`. Each recitation is keyed by its server path (`abdulrahman-sudais-r1`).
+  Only https `*.mp3quran.net` servers are accepted, some recitations lack surahs (`surah_list`), and popular reciters sort first (`POPULAR`).
+  Files live in `<data>/quran/<key>/`. On first start, the old `quran/sudais` folder is renamed (downloads survive; there is no rollback link,
+  as the owner said the app isn't officially released). `Settings::quran_reciter` is the default; a playlist may pin `reciter`.
+- **Scheduled playlists:** `Playlist.days` (0 = Sunday) + `time` "HH:MM". `schedule.rs` reads `date +%w %H:%M %F` every 20 s and fires
+  once per day per playlist. The player starts it at once, or, if live is playing or about to, waits up to 2 h for the broadcast to end
+  (`quran_pending`), then skips it. Verified: a playlist due one minute later fired and played.
+- **Quran** (`quran.rs` library, `stream/local.rs` playback, `views/quran.js`): Al-Sudais (the default) from
   `https://cdn.mp3quran.net/audio/abdulrahman-sudais/r1/NNN.mp3` (from `mp3quran.net/api/v3/reciters`, id 54). The files are 128 kbps CBR
   MP3 with an ID3 tag, from 0.4 MB (114) to 90 MB (2, 1:33:58).
   - **Storage:** `<data>/quran/sudais/NNN.mp3` (`.part` while downloading).
@@ -201,6 +212,15 @@ that aren't obvious from the code.
   193 KB/s at about 0% CPU. **Always verify any output path at real time (192 KB/s, 48 kHz stereo s16).**
 - **Latency cap:** if the buffer exceeds the live delay + max(3 s, delay/2) (after a drop-out, the missed audio refills it), the pump trims
   back to the delay (`ByteQueue::trim_front` drops whole Ogg pages). It waits 8 s after joining, because the estimate needs time to settle.
+- **SIGSEGV at start-up from axum `.nest()` (2026-11-08).** One build crashed 17 ms after start while matchit 0.8.4 (pinned by axum 0.8.9)
+  formatted "Invalid route \"/{*__private__axum_fallback}\": Insertion failed due to conflict…" with a null route string. It was
+  layout-dependent: the same source built with symbols kept didn't crash. Fix: the `/api` routes are registered with full paths and
+  `merge`d instead of `nest`ed, so no catch-all fallback is inserted. Diagnose such crashes with gdb on the Pi (`gdb -batch -ex run -ex bt`),
+  then read the buffer behind `x0` to see what was being written.
+- **Range sliders paint their fill on the `<input>` background** (`--fill`), not on `::-webkit-slider-runnable-track`: Safari doesn't repaint
+  the track pseudo-element when the custom property changes (the Quran seek bar looked stuck at 50%).
+- **`node --check` isn't a reliable syntax check for the UI's ES modules here** (it passed a broken string). Check in the browser
+  (console errors) after deploying.
 - **UI assets use content-hash ETags** (FNV-1a of the file). Version-based ETags served stale JS after dev deploys, because every dev build
   from one commit shares the label `dev-<sha>-dirty`.
 - **The service is sandboxed (`ProtectSystem=full`)**, so `/etc` is read-only even for `sudo` children. Root actions that write `/etc` must go
@@ -269,7 +289,7 @@ that aren't obvious from the code.
 - `bluetooth/` `mod.rs` supervisor · `adapter.rs` power, rfkill and controller reset · `devices.rs` pair, use, forget, re-pair · `speaker.rs` audio-ready state machine · `agent.rs` persistent agent · `ctl.rs` bluetoothctl · `outputs.rs` ALSA targets
 - `sysinfo.rs` device, Wi-Fi, Bluetooth and app health for the System page
 - `integrations/` `mod.rs` curl fetch, caches and guards · `salah.rs` source choice + masjidscreen · `masjidboard.rs` masjidboardlive · `recordings.rs` RSS feed · `stream/recording.rs` playback
-- `quran.rs` Quran library and downloader · `stream/local.rs` file playback with seek (growing files) · `web/api/quran.rs`
+- `quran.rs` Quran reciters, library, playlists and downloader · `schedule.rs` scheduled playlists · `stream/local.rs` file playback with seek (growing files) · `web/api/quran.rs`
 - `catalog.rs` directory scrape, cache and seed · `history.rs` JSONL sessions · `net.rs` raw Icecast HTTP and endpoints
 - `web/` `mod.rs` router and `ApiError` · `auth.rs` · `assets.rs` (embedded UI, ETag) · `api/{status,stations,player,speaker,system}.rs`
 - Device setup: `setup.sh` (wizard), `deploy.sh` (dev loop) · `deploy/install.sh` (generic installer) · `deploy/update.sh` (`--check`, `--force`) · `docs/SETUP.md`

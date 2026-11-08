@@ -156,3 +156,32 @@
 .install-steps { margin: 12px 0; padding-left: 20px; font-size: 14px; line-height: 1.7; }
 #install-body p { margin: 8px 0 0; }
 #install-body .btn { margin-top: 12px; }
+.mp-volume { display: flex; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.mp-volume svg { flex: none; width: 18px; height: 18px; color: var(--text-2); }
+.mp-volume output { min-width: 24px; text-align: right; font-size: 12px; color: var(--text-2); }
+
+/* Reciters and schedules */
+.reciter-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 70%; padding: 2px 6px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text); font-size: 12px; cursor: pointer; }
+.reciter-chip b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.reciter-chip svg { flex: none; width: 14px; height: 14px; color: var(--text-3); }
+.reciter-chip:hover { background: var(--hover); }
+#reciter-modal form { max-width: 420px; display: flex; flex-direction: column; max-height: calc(100dvh - 32px); }
+.reciter-list { margin-top: 10px; overflow-y: auto; min-height: 120px; border: 1px solid var(--border); border-radius: var(--radius); }
+.reciter-list .group-label { padding: 8px 12px 4px; }
+.reciter-opt { display: flex; align-items: center; gap: 10px; width: 100%; padding: 9px 12px; border: 0; border-top: 1px solid var(--border); background: none; color: var(--text); text-align: left; font-size: 13px; cursor: pointer; }
+.reciter-opt:hover { background: var(--hover); }
+.reciter-opt .grow { min-width: 0; }
+.reciter-opt small { display: block; color: var(--text-3); font-size: 11px; }
+.reciter-opt svg { flex: none; width: 16px; height: 16px; visibility: hidden; }
+.reciter-opt[aria-selected="true"] { font-weight: 600; }
+.reciter-opt[aria-selected="true"] svg { visibility: visible; }
+.pl-schedule { margin-top: 10px; display: grid; gap: 10px; }
+.day-chips { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.day-chips button { height: 32px; padding: 0; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text-2); font-size: 12px; cursor: pointer; }
+.day-chips button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.pl-time { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+.pl-time input { width: auto; margin: 0; }
+.q-row.unavailable { opacity: .45; }
+.ms-actions { display: grid; gap: 8px; margin-top: 16px; }
+.ms-actions .btn { justify-content: center; width: 100%; }
+.history-day { display: flex; justify-content: space-between; gap: 12px; }
