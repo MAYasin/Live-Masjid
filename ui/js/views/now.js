@@ -158,32 +158,32 @@ function paintTiles(s, active) {
   const sig = s.signals;
   // Speaker
   if (out.open) {
-    const battery = out.kind === "bluetooth" && s.bt.battery != null ? `, ${s.bt.battery}%` : "";
+    const battery = out.kind === "bluetooth" && s.bt.battery != null ? ` · ${s.bt.battery}%` : "";
     setStat("stat-output", `${out.label}${battery}`, "ok");
   } else if (s.bt.needs_repair) {
-    setStat("stat-output", "Needs pairing again", "err");
+    setStat("stat-output", "Re-pair", "err");
   } else {
-    setStat("stat-output", out.error ? "Not connected" : "Ready", out.error ? "err" : "");
+    setStat("stat-output", out.error ? "Off" : "Ready", out.error ? "err" : "");
   }
   // Live signal: how the Pi hears that the masjid went live
-  if (s.site_blocked_until_ms) setStat("stat-signal", "Paused by the website", "warn");
-  else if (!s.mount) setStat("stat-signal", "Choose a masjid");
+  if (s.site_blocked_until_ms) setStat("stat-signal", "Paused", "warn");
+  else if (!s.mount) setStat("stat-signal", "—");
   else if (["playing", "reconnecting", "connecting"].includes(s.phase)) setStat("stat-signal", "On air", "ok");
-  else if (sig.sse_connected) setStat("stat-signal", "Listening for broadcasts", "ok");
-  else if (!sig.poll_last_ms) setStat("stat-signal", "Starting…");
-  else setStat("stat-signal", sig.poll_ok ? "Checking every few seconds" : "Waiting for internet", sig.poll_ok ? "ok" : "warn");
+  else if (sig.sse_connected) setStat("stat-signal", "Listening", "ok");
+  else if (!sig.poll_last_ms) setStat("stat-signal", "Starting");
+  else setStat("stat-signal", sig.poll_ok ? "Checking" : "Offline", sig.poll_ok ? "ok" : "warn");
   // Internet: the latest check against the stream servers (neutral until the first one ran)
-  if (!sig.poll_last_ms) setStat("stat-poll", "Checking…");
-  else setStat("stat-poll", sig.poll_ok ? `OK, checked ${lowerFirst(timeAgo(sig.poll_last_ms))}` : "Can't reach the servers", sig.poll_ok ? "ok" : "err");
+  if (!sig.poll_last_ms) setStat("stat-poll", "Checking");
+  else setStat("stat-poll", sig.poll_ok ? "OK" : "Down", sig.poll_ok ? "ok" : "err");
   // Fourth tile: the buffer while live, otherwise how many masjids are live
   if (active) {
     const secs = Math.round(s.buffer_ms / 1000);
     $("#stat-extra-key").textContent = "Buffer";
-    setStat("stat-extra", s.phase === "reconnecting" ? `${secs} s left, reconnecting` : `${secs} s of audio`, s.phase === "reconnecting" ? "warn" : "ok");
+    setStat("stat-extra", s.phase === "reconnecting" ? "Reconnecting" : `${secs} s`, s.phase === "reconnecting" ? "warn" : "ok");
     $("#stat-extra-btn").dataset.go = "system";
   } else {
     $("#stat-extra-key").textContent = "Live now";
-    setStat("stat-extra", sig.poll_live ? `Yours + ${Math.max(0, s.live_count - 1)} more` : `${s.live_count} masjids`, sig.poll_live ? "ok" : "");
+    setStat("stat-extra", sig.poll_live ? "Yours" : String(s.live_count), sig.poll_live ? "ok" : "");
     $("#stat-extra-btn").dataset.go = "masjids";
   }
 }
