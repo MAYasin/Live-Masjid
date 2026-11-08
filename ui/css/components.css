@@ -193,3 +193,13 @@ details.advanced > summary::before { content: ""; width: 6px; height: 6px; borde
 details.advanced[open] > summary::before { transform: rotate(45deg); }
 details.advanced > summary:hover { color: var(--text); }
 @media (prefers-reduced-motion: reduce) { details.advanced > summary::before { transition: none; } }
+
+/* Home status tiles: each opens the page with the details. */
+.stats.health { margin-top: 12px; }
+.stats.health .stat { display: block; width: 100%; border-top: 0; border-right: 0; border-bottom: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.stats.health .stat:first-child { border-radius: var(--radius) 0 0 var(--radius); }
+.stats.health .stat:hover { background: var(--hover); }
+.stats.health .stat:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.stats.health .stat-key, .stats.health .stat-value { display: flex; }
+.stats.health .stat-value { display: block; font-size: 13px; }
+@media (max-width: 640px) { .stats.health .stat:nth-child(3) { border-left: 0; } .stats.health .stat:nth-child(n+3) { border-top: 1px solid var(--border); } }
