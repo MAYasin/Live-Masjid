@@ -105,6 +105,19 @@ jobs:
           path: dist
           merge-multiple: true
 
+      - name: Sign assets
+        env:
+          SIGNING_KEY: ${{ secrets.RELEASE_SIGNING_KEY }}
+        run: |
+          [ -n "$SIGNING_KEY" ] || { echo "RELEASE_SIGNING_KEY secret is not set" >&2; exit 1; }
+          key=$(mktemp)
+          printf '%s\n' "$SIGNING_KEY" > "$key"
+          for f in dist/*.tar.gz; do
+            openssl pkeyutl -sign -inkey "$key" -rawin -in "$f" -out "$f.sig"
+            openssl pkeyutl -verify -pubin -inkey deploy/release.pub -rawin -in "$f" -sigfile "$f.sig"
+          done
+          rm -f "$key"
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}

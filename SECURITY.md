@@ -21,4 +21,4 @@ Only the latest release is supported. Devices update themselves from it.
 ## Notes for deployers
 
 - The UI is meant for a trusted LAN. Set a password under Settings, and do not expose port 80 to the internet.
-- Updates are verified against a SHA-256 checksum published with each release.
+- Each release asset is signed with an Ed25519 key (`.sig` next to the `.tar.gz`). The public key is `deploy/release.pub`; a device stores it in `/etc/livemasjid/release.pub` on first install and `update.sh` refuses any update whose signature does not verify. A SHA-256 checksum is checked as well.

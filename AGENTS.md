@@ -301,3 +301,12 @@ that aren't obvious from the code.
 - Device setup: `setup.sh` (wizard), `deploy.sh` (dev loop) · `deploy/install.sh` (generic installer) · `deploy/update.sh` (`--check`, `--force`) · `docs/SETUP.md`
 - `ui/` `index.html` markup only · `miniplayer.js` Quran/recording player card · `install.js` install guide · `icons/` PNG app icons · · `css/{base,layout,components,views}.css` · `js/` ES modules: `main.js` router, `store.js` live status,
   `api.js`, `dom.js`, `format.js`, `views/{now,masjids,quran,speaker,history,settings,system,recordings,salah}.js`. New UI files must be added to `FILES` in `web/assets.rs`.
+
+## Signed releases
+
+- CI signs every `livemasjid-<arch>-linux.tar.gz` with Ed25519 (`openssl pkeyutl -sign -rawin`) using the repo secret `RELEASE_SIGNING_KEY`,
+  and publishes `<asset>.sig`. The release job fails if the secret is missing. The private key lives only in that secret and in the owner's backup.
+- `deploy/release.pub` is the public key. `install.sh` copies it to `/etc/livemasjid/release.pub` **only if absent** (trust on first use), so a
+  later release can't swap the key. `update.sh` verifies the signature when that file exists and refuses unsigned or invalid releases.
+  Devices without the key skip the check once (with a warning) and get the key on their next config update (`CONFIG_VERSION` 6).
+- Verify by hand: `openssl pkeyutl -verify -pubin -inkey deploy/release.pub -rawin -in <asset> -sigfile <asset>.sig`.
