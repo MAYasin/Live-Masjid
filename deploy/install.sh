@@ -174,6 +174,8 @@ for g in audio bluetooth; do getent group "$g" >/dev/null && usermod -aG "$g" li
 install -d -m 755 "$D" "$D/bin" /etc/livemasjid
 install -m 755 "$HERE/update.sh" "$HERE/install-bin.sh" "$HERE/netwatch.sh" "$HERE/bt-recover.sh" "$HERE/bt-audio.sh" "$D/"
 install -m 644 "$HERE"/livemasjid*.service "$HERE"/livemasjid*.timer /etc/systemd/system/
+# Release-signing public key: installed once and never overwritten by a later release (trust on first use).
+[ -f /etc/livemasjid/release.pub ] || { [ -f "$HERE/release.pub" ] && install -m 644 "$HERE/release.pub" /etc/livemasjid/release.pub; }
 [ -f /etc/default/livemasjid ] || echo 'LIVEMASJID_PORT=80' > /etc/default/livemasjid
 if [ -n "$WIFI_IF" ]; then echo "IFACE=$WIFI_IF" > /etc/livemasjid/netwatch.conf; fi
 if [ -n "$REPO" ]; then
