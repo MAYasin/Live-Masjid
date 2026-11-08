@@ -20,8 +20,9 @@ that aren't obvious from the code.
 - **Audio: keep Bluetooth and wired both supported.** The owner currently has only a Bluetooth speaker, so Bluetooth must be rock-solid.
 - **UI style.** Minimal and neutral, like a FAANG product: grayscale plus one dark primary colour, green only for "live",
   6 px radii, flat 1 px borders, no gradients or glows. It must not scroll sideways at 375 px. The sidebar appears at 900 px and wider.
-- **UX cleanup (2026-11-08, chosen by the owner):** home has no status tiles or recent broadcasts, and shows one warning only when
-  something is wrong (`alertFor`). Settings and Speaker keep set-and-forget options under a collapsed "Advanced". A masjid row opens a
+- **UX cleanup (2026-11-08, chosen by the owner):** home has no recent broadcasts, and shows one warning only when something is wrong
+  (`alertFor`). The owner missed the status tiles, so they came back as one compact row under the masjid card (`paintTiles`): plain-language
+  values (Speaker, Live signal, Internet, then Buffer while live or "Live now"), each tile a button that opens Speaker/System/Masjids. Settings and Speaker keep set-and-forget options under a collapsed "Advanced". A masjid row opens a
   sheet (Listen / Follow / Recordings) and addresses are shortened (`shortPlace`). History drops the repeated name and shows a total per day.
 - **Phone navigation** (2026-11-08): four tabs (Now, Masjids, Quran, More). More opens a sheet with Speaker, History, System, Settings and
   "Install on this phone", each with a one-line live status. The masjid card on Now always shows the broadcast; the Quran or a recording

@@ -123,6 +123,12 @@
             <label class="switch"><input type="checkbox" id="autoplay" aria-label="Auto-play"><span></span></label>
           </div>
         </div>
+        <div class="stats health" aria-label="Status">
+          <button class="stat" data-go="speaker" title="Speaker details"><span class="stat-key"><span class="dot" id="stat-output-dot"></span>Speaker</span><span class="stat-value truncate" id="stat-output">—</span></button>
+          <button class="stat" data-go="system" title="How the Pi hears about broadcasts"><span class="stat-key"><span class="dot" id="stat-signal-dot"></span>Live signal</span><span class="stat-value truncate" id="stat-signal">—</span></button>
+          <button class="stat" data-go="system" title="Network details"><span class="stat-key"><span class="dot" id="stat-poll-dot"></span>Internet</span><span class="stat-value truncate" id="stat-poll">—</span></button>
+          <button class="stat" data-go="masjids" id="stat-extra-btn"><span class="stat-key"><span class="dot" id="stat-extra-dot"></span><span id="stat-extra-key">Live now</span></span><span class="stat-value truncate" id="stat-extra">—</span></button>
+        </div>
         <div class="panel mp-panel" id="now-player" hidden></div>
         <div class="section-title" id="salah-title">Salah times <span class="xsmall text-3"><a class="text-3" id="salah-source" target="_blank" rel="noopener">masjidscreen.co.za</a> · <button class="linklike" id="salah-change" type="button">Change</button></span></div>
         <div class="panel salah" id="salah"><div class="empty small">Loading salah times…</div></div>
