@@ -33,6 +33,7 @@ static FILES: &[(&str, &str, &str)] = embed![
     "js/views/system.js",
     "js/views/salah.js",
     "js/views/recordings.js",
+    "js/views/quran.js",
 ];
 
 const INDEX: &str = include_str!("../../ui/index.html");

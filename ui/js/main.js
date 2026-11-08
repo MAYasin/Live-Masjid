@@ -7,6 +7,7 @@ import * as store from "./store.js";
 import * as historyView from "./views/history.js";
 import * as masjids from "./views/masjids.js";
 import * as now from "./views/now.js";
+import * as quran from "./views/quran.js";
 import * as recordings from "./views/recordings.js";
 import * as settings from "./views/settings.js";
 import * as speaker from "./views/speaker.js";
@@ -15,6 +16,7 @@ import * as system from "./views/system.js";
 const VIEWS = {
   now: { title: "Now playing", module: now },
   masjids: { title: "Masjids", module: masjids },
+  quran: { title: "Quran", module: quran },
   speaker: { title: "Speaker", module: speaker },
   history: { title: "History", module: historyView },
   settings: { title: "Settings", module: settings },

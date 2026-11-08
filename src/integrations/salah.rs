@@ -1,8 +1,17 @@
-//! Salah (prayer) times from masjidscreen.co.za, for masjids that publish them there.
-//! API: `https://masjidscreen.co.za/<mount>/api/prayertimes.php` → JSON with
-//! `masjid{name,timezone,…}`, `date`, `salaah_times{fajr,zuhr,asr,maghrib,esha,jummah…}{athaan,jamaat}`.
-//! Unknown masjids return 404 `{"error":"Masjid not found"}`.
+//! Salah (prayer) times for the selected masjid, from the best source available:
+//!
+//! 1. **masjidboardlive.com** ([`super::masjidboard`]): detailed (day times, Jumu'ah,
+//!    upcoming changes, Hijri adjustment). Used automatically when a board names this
+//!    livemasjid stream, or when the user picked a board.
+//! 2. **masjidscreen.co.za** (below): the fallback.
+//!    API: `https://masjidscreen.co.za/<mount>/api/prayertimes.php` → JSON with
+//!    `masjid{name,timezone,…}`, `date`, `salaah_times{fajr,zuhr,asr,maghrib,esha,jummah…}{athaan,jamaat}`.
+//!    Unknown masjids return 404 `{"error":"Masjid not found"}`.
+//!
+//! A board that only *might* be this masjid (loose id match) is returned as `suggestion`
+//! for the user to confirm; it is never used silently.
 
+use super::masjidboard::{self, Lookup};
 use super::{Fetched, fetch, valid_mount};
 use crate::state::App;
 use serde::Serialize;
@@ -19,11 +28,40 @@ pub struct Salah {
     pub jamaat: Option<String>,
 }
 
+/// A named time of day ("Sunrise 05:14").
+#[derive(Clone, Debug, Serialize)]
+pub struct Moment {
+    pub key: String,
+    pub label: String,
+    pub time: String,
+}
+
+/// An upcoming change of a salah time ("Fajr → 04:20 from Sun 15 Nov").
+#[derive(Clone, Debug, Serialize)]
+pub struct Change {
+    pub label: String,
+    pub date: String,
+    pub time: String,
+}
+
+/// A masjidboardlive board.
+#[derive(Clone, Debug, Serialize)]
+pub struct Board {
+    pub id: String,
+    pub name: String,
+    pub city: Option<String>,
+    pub url: String,
+    /// The livemasjid mount the board links to, if any.
+    pub stream: Option<String>,
+}
+
 #[derive(Clone, Debug, Serialize, Default)]
 pub struct SalahTimes {
     /// "ok" | "not_listed" | "blocked" | "error"
     pub status: String,
     pub message: Option<String>,
+    /// "masjidboardlive" | "masjidscreen"
+    pub provider: String,
     pub masjid: Option<String>,
     pub timezone: Option<String>,
     /// "YYYY-MM-DD" the times apply to.
@@ -31,13 +69,79 @@ pub struct SalahTimes {
     pub times: Vec<Salah>,
     pub jummah: Option<Salah>,
     pub source: String,
+    /// Jumu'ah schedule (Adhān, Sunan, Khutbah …) and khateeb.
+    pub jumuah_times: Vec<Moment>,
+    pub khateeb: Option<String>,
+    /// Other times of the day (sunrise, zawāl, sunset …).
+    pub day: Vec<Moment>,
+    /// Upcoming salah time changes.
+    pub changes: Vec<Change>,
+    /// Days to add to the computed Hijri date (the masjid's moon sighting).
+    pub hijri_adjust: i32,
+    pub updated: Option<String>,
+    /// The masjidboardlive board in use.
+    pub board: Option<Board>,
+    /// A board that may be this masjid's, for the user to confirm.
+    pub suggestion: Option<Board>,
+    /// The user chose the source for this masjid (board or "masjidscreen only").
+    pub manual: bool,
 }
 
+/// Times for `mount`, from the source chosen for it (see the module docs).
 pub async fn get(app: &App, mount: &str) -> SalahTimes {
-    let source = format!("https://masjidscreen.co.za/{mount}/");
     if !valid_mount(mount) {
-        return SalahTimes { status: "error".into(), message: Some("invalid masjid".into()), source, ..Default::default() };
+        return failure("error", "invalid masjid", "");
     }
+    let base = mount.strip_suffix(".mp3").unwrap_or(mount).to_ascii_lowercase();
+    let choice = app.settings().salah_boards.get(&base).cloned();
+    match choice.as_deref() {
+        Some("none") => {
+            let mut t = masjidscreen(app, mount).await;
+            t.manual = true;
+            return t;
+        }
+        Some(id) => match masjidboard::lookup(app, id).await {
+            Lookup::Found(t) => return SalahTimes { manual: true, ..*t },
+            other => {
+                // Chosen board unavailable right now: masjidscreen, with a note.
+                let mut t = masjidscreen(app, mount).await;
+                t.manual = true;
+                if t.status != "ok" {
+                    let why = match other {
+                        Lookup::NotFound => "The chosen masjidboardlive board no longer exists",
+                        Lookup::Blocked => "masjidboardlive.com is not answering requests from this network right now",
+                        _ => "Couldn't reach masjidboardlive.com",
+                    };
+                    t.message = Some(why.into());
+                    t.status = "error".into();
+                }
+                return t;
+            }
+        },
+        None => {}
+    }
+    // Automatic: a board whose own livemasjid link is this mount.
+    let mut suggestion = None;
+    if masjidboard::valid_id(&base) {
+        if let Lookup::Found(t) = masjidboard::lookup(app, &base).await {
+            let board = t.board.clone();
+            match board.as_ref().and_then(|b| b.stream.as_deref()) {
+                Some(s) if s == base => return *t,
+                // The board names a different stream: it belongs to another masjid.
+                Some(_) => {}
+                // No stream named: maybe this masjid's board; let the user confirm.
+                None => suggestion = board,
+            }
+        }
+    }
+    let mut t = masjidscreen(app, mount).await;
+    t.suggestion = suggestion;
+    t
+}
+
+/// Times from masjidscreen.co.za (cached).
+async fn masjidscreen(app: &App, mount: &str) -> SalahTimes {
+    let source = format!("https://masjidscreen.co.za/{mount}/");
     let it = &app.integrations;
     if let Some(hit) = it.salah.get(mount) {
         if hit.status != "ok" || hit.date.as_deref() == Some(&today()) {
@@ -71,14 +175,23 @@ pub async fn get(app: &App, mount: &str) -> SalahTimes {
 }
 
 fn failure(status: &str, message: &str, source: &str) -> SalahTimes {
-    SalahTimes { status: status.into(), message: Some(message.into()), source: source.into(), ..Default::default() }
+    SalahTimes { status: status.into(), message: Some(message.into()), source: source.into(), provider: "masjidscreen".into(), ..Default::default() }
+}
+
+fn date_fmt(fmt: &str) -> String {
+    // The Pi's clock and zone are what the user lives by; both sites' times are local too.
+    let out = std::process::Command::new("date").arg(fmt).output();
+    out.ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
 }
 
 /// Today's date in the device's local time zone, "YYYY-MM-DD".
-fn today() -> String {
-    // The Pi's clock and zone are what the user lives by; masjidscreen dates are local too.
-    let out = std::process::Command::new("date").arg("+%F").output();
-    out.ok().map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
+pub fn today() -> String {
+    date_fmt("+%F")
+}
+
+/// Day of the week, 0 = Sunday.
+pub fn weekday() -> u32 {
+    date_fmt("+%w").parse().unwrap_or(9)
 }
 
 fn hhmm(v: Option<&serde_json::Value>) -> Option<String> {
@@ -102,13 +215,13 @@ pub fn parse(body: &str) -> Option<SalahTimes> {
     let masjid = v.get("masjid");
     Some(SalahTimes {
         status: "ok".into(),
-        message: None,
+        provider: "masjidscreen".into(),
         masjid: masjid.and_then(|m| m.get("name")).and_then(|n| n.as_str()).map(str::to_owned),
         timezone: masjid.and_then(|m| m.get("timezone")).and_then(|n| n.as_str()).map(str::to_owned),
         date: v.get("date").and_then(|d| d.as_str()).map(str::to_owned),
         jummah: entry("jummah", "Jumu'ah"),
         times,
-        source: String::new(),
+        ..Default::default()
     })
 }
 

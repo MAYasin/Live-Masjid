@@ -2,7 +2,7 @@
 
 import { api } from "../api.js";
 import { $, runAction, setStat } from "../dom.js";
-import { clockTime, duration, lowerFirst, timeAgo } from "../format.js";
+import { clockTime, duration, escapeHtml, lowerFirst, timeAgo } from "../format.js";
 import { getStatus, subscribe } from "../store.js";
 import { historyRow } from "./history.js";
 import * as local from "../local.js";
@@ -48,6 +48,7 @@ export function init() {
   });
   local.onChange(() => { const s = getStatus(); if (s) render(s); });
   subscribe(render);
+  salah.init();
   // Countdown to the next salah, and a periodic refresh (the Pi serves it from cache).
   setInterval(salah.tick, 30 * 1000);
   setInterval(() => salah.load(salahMount), 30 * 60 * 1000);
@@ -108,12 +109,24 @@ function render(s) {
   $("#station-name").textContent = rec ? rec.title : (s.station_name || s.mount || "—");
   $("#station-location").textContent = s.station_location ?? "";
   $("#station-location").hidden = !s.station_location || Boolean(s.recording);
-  $("#station-detail").textContent = rec ? `Recording · ${rec.paused ? "paused" : "playing on the speaker"}` : detailLine(s);
+  const quranNow = rec?.kind === "quran";
+  const kind = quranNow ? "Quran · Al-Sudais" : "Recording";
+  $("#phase").textContent = quranNow ? "Quran" : PHASES[s.phase] ?? s.phase;
+  $("#station-detail").textContent = rec ? `${kind} · ${rec.paused ? "paused" : "playing on the speaker"}` : detailLine(s);
   $("#play").hidden = active || Boolean(rec);
   $("#stop").hidden = !active;
   $("#rec-pause").hidden = !rec;
   $("#rec-stop").hidden = !rec;
+  $("#rec-stop").lastChild.textContent = quranNow ? "Stop Quran" : "Back to live radio";
   $("#rec-progress").hidden = !rec;
+  // The Quran waits for the live broadcast to end.
+  const resume = s.quran_resume;
+  $("#quran-note").hidden = !resume;
+  if (resume) {
+    $("#quran-note").innerHTML = resume.auto
+      ? `Quran paused for the broadcast: <b>${escapeHtml(resume.title)}</b> continues at ${clock(resume.position_s)} when it ends. <a href="#quran">Open</a>`
+      : `Quran paused: <b>${escapeHtml(resume.title)}</b> at ${clock(resume.position_s)}. <a href="#quran">Open</a>`;
+  }
   // The Pi mirrors whatever it plays (live or a recording) to the browser, in sync.
   const onAir = s.signals.poll_live || ["playing", "reconnecting", "recording"].includes(s.phase);
   $("#listen-here").hidden = !s.browser_listening || !onAir || local.isPlaying();

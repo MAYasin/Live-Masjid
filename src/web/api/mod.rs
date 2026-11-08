@@ -2,6 +2,7 @@
 
 pub mod extras;
 pub mod player;
+pub mod quran;
 pub mod speaker;
 pub mod stations;
 pub mod status;

@@ -36,6 +36,9 @@ pub struct Settings {
     /// Icecast status poll interval in seconds (backup to the server-sent events).
     /// Kept polite: the livemasjid.com page itself polls every 60 s.
     pub poll_secs: u64,
+    /// Salah times source per masjid (mount → masjidboardlive board id, or "none" for
+    /// masjidscreen only). Masjids not listed are matched automatically.
+    pub salah_boards: std::collections::BTreeMap<String, String>,
     /// Salted, iterated SHA-256 of the UI password; `None` = no password set.
     pub password_hash: Option<String>,
     /// Random secret used to derive session cookies.
@@ -58,6 +61,7 @@ impl Default for Settings {
             bt_quality: "high".into(),
             browser_listening: false,
             poll_secs: 20,
+            salah_boards: Default::default(),
             password_hash: None,
             secret: random_hex(32),
         }

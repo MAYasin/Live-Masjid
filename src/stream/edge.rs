@@ -38,7 +38,7 @@ pub fn opus_pages(pages: Vec<Vec<u8>>, delay: Duration) -> Vec<Vec<u8>> {
 }
 
 /// One MP3 frame header: (frame length in bytes, duration in µs).
-fn mp3_frame(h: &[u8]) -> Option<(usize, u64)> {
+pub(crate) fn mp3_frame(h: &[u8]) -> Option<(usize, u64)> {
     if h.len() < 4 || h[0] != 0xFF || h[1] & 0xE0 != 0xE0 {
         return None;
     }

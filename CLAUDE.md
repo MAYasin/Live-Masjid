@@ -94,10 +94,39 @@ that aren't obvious from the code.
 
 - **All fetching happens on the Pi, through `curl`** (system TLS works in every build), with an honest User-Agent, one request per site
   at a time and TTL caches. Browsing the UI therefore never adds load to the sites. A 403/429 trips that site's `SiteGuard`
-  (persisted: `site.json` for livemasjid, `site-masjidscreen.json`).
-- **Salah times:** `https://masjidscreen.co.za/<mount>/api/prayertimes.php` returns `salaah_times.{fajr,zuhr,asr,maghrib,esha,jummah}.{athaan,jamaat}`.
+  (persisted: `site.json` for livemasjid, `site-masjidscreen.json`, `site-masjidboard.json`).
+- **Salah times, primary source: masjidboardlive.com** (`integrations/masjidboard.rs`; the owner found masjidscreen's times inaccurate,
+  2026-11-08). Its JSON API is `https://masjidboardlive.com/boards/api/board.php?id=<board>` → `{"ok":true,"data":{…,"meta":{…}}}`.
+  It has every time, Jumu'ah (`jumuahTime1..3` with `jumuahHeadings` "0,3,6", meaning Adhān/Sunan/Khutbah, codes 0–10 in
+  `JUMUAH_HEADINGS`), `jumuah_khateeb`, `{fajr,asr,esha}Next{Date,Time}` changes, `islamicDateAdjust`, `liveStreamURL` and `meta.web_url`.
+  An unknown id gives `{"ok":false,"error":"not_found"}`. Placeholders `~~~~`/`#N/A`/`00:00`/`&nbsp;` mean "none". The board page polls every 30 s; we cache 1 h.
+  - **Board ids ≠ mounts, and the API matches ids loosely.** `lakewood` → board `lakewood-kauthar`; `medina` → an unrelated Hercules masjid;
+    `greenside` → a board whose stream is `greensidemasjid`. Rule: use a board automatically only when its `liveStreamURL` equals the mount;
+    if it names no stream, offer it as `suggestion`; if it names another stream, ignore it. The user can paste a board link
+    (`parse_board_ref`: `?id=`, `?<id>`, premium `?mid=`), which is saved per mount in `Settings::salah_boards` ("none" = masjidscreen only).
+  - The directory (`findmasjid/list.php`) loads through an obfuscated POST (`assets/php/live_page.php`); we don't scrape it.
+- **Salah times, fallback: masjidscreen** `https://masjidscreen.co.za/<mount>/api/prayertimes.php` returns `salaah_times.{fajr,zuhr,asr,maghrib,esha,jummah}.{athaan,jamaat}`.
   Unknown masjids return 404, which shows as "not_listed" (cached 24 h). Successes are cached 6 h and re-fetched when the date changes.
-  The UI highlights the next athaan or jamaat with a countdown, and shows Jumu'ah instead of Zuhr on Fridays.
+- **Salah card UI** (`views/salah.js`):
+  - Gregorian date plus the Hijri date (`Intl` `islamic-umalqura`, shifted by `hijri_adjust`, moving on at sunset/Maghrib).
+  - The 5 salah with adhān and iqāmah; the next one gets a countdown.
+  - Other day times in a compact grid; Zawāl is shown as a range, and Suhūr/Fajr are merged when they're equal.
+  - Jumu'ah and changes on one line each. Jumu'ah replaces Zuhr on Fridays.
+- **Quran** (`quran.rs` library, `stream/local.rs` playback, `views/quran.js`): Al-Sudais from
+  `https://cdn.mp3quran.net/audio/abdulrahman-sudais/r1/NNN.mp3` (from `mp3quran.net/api/v3/reciters`, id 54). The files are 128 kbps CBR
+  MP3 with an ID3 tag, from 0.4 MB (114) to 90 MB (2, 1:33:58).
+  - **Storage:** `<data>/quran/sudais/NNN.mp3` (`.part` while downloading).
+  - **Downloads:** one at a time, `curl --limit-rate 400K -C -` (resumable; the rate is gentle on the Wi-Fi/Bluetooth chip).
+    Playing a surah puts it first and pauses any other download. "Download all" works through the rest in order. Failures back off from 15 s to 10 min.
+  - **Playing while downloading:** `Growing` reader waits for the file to grow, and gives up after 90 s with no growth.
+  - **Seeking:** byte offset = ID3 length + time × bitrate, then the next frame confirmed by the frame after it. It waits until that
+    part is downloaded. `DecodeCtx::position_base_ms` keeps the position right after a seek.
+  - Surahs play in order (end → next surah).
+  - **Live precedence** (player): a broadcast that starts during the Quran stops it and saves `quran_resume` (surah and position;
+    `auto` = it wasn't paused by the user). "Play now" also saves it. The Quran continues once the broadcast has **closed**: no
+    session, not live (or stopped by the user), for 15 s straight, checked on the 5 s tick. A reconnect keeps its session, so it never
+    triggers a resume. Verified: interrupted at 0:10 → live attempt ended → resumed at 0:10 about 15 s later.
+  - Verified on the Pi: An-Nās downloaded in under 2 s; Al-Baqarah started within 8 s while downloading; seek to 2:00 → 2:09; pause held; next; stop.
 - **Recordings:** the RSS feed at `https://www.livemasjid.com/api/get_mountrecordings.php?mountname=<m>&feeditems=40` (iso-8859-1,
   single-quoted `enclosure url=` on `cdn.livemasjid.com` .mp3, no durations), cached 15 min. Override it with `LIVEMASJID_RECORDINGS_FEED`
   (`{mount}`, `{n}`) for testing. **The livemasjid IP block was lifted by 2026-11-07 15:40** (the feed returns 200 again).
@@ -229,9 +258,10 @@ that aren't obvious from the code.
 - `monitor/` `sse.rs` live push · `poll.rs` Icecast status · `site.rs` website back-off guard
 - `bluetooth/` `mod.rs` supervisor · `adapter.rs` power, rfkill and controller reset · `devices.rs` pair, use, forget, re-pair · `speaker.rs` audio-ready state machine · `agent.rs` persistent agent · `ctl.rs` bluetoothctl · `outputs.rs` ALSA targets
 - `sysinfo.rs` device, Wi-Fi, Bluetooth and app health for the System page
-- `integrations/` `mod.rs` curl fetch, caches and guards · `salah.rs` masjidscreen · `recordings.rs` RSS feed · `stream/recording.rs` playback
+- `integrations/` `mod.rs` curl fetch, caches and guards · `salah.rs` source choice + masjidscreen · `masjidboard.rs` masjidboardlive · `recordings.rs` RSS feed · `stream/recording.rs` playback
+- `quran.rs` Quran library and downloader · `stream/local.rs` file playback with seek (growing files) · `web/api/quran.rs`
 - `catalog.rs` directory scrape, cache and seed · `history.rs` JSONL sessions · `net.rs` raw Icecast HTTP and endpoints
 - `web/` `mod.rs` router and `ApiError` · `auth.rs` · `assets.rs` (embedded UI, ETag) · `api/{status,stations,player,speaker,system}.rs`
 - Device setup: `setup.sh` (wizard), `deploy.sh` (dev loop) · `deploy/install.sh` (generic installer) · `deploy/update.sh` (`--check`, `--force`) · `docs/SETUP.md`
 - `ui/` `index.html` markup only · `css/{base,layout,components,views}.css` · `js/` ES modules: `main.js` router, `store.js` live status,
-  `api.js`, `dom.js`, `format.js`, `views/{now,masjids,speaker,history,settings,system,recordings,salah}.js`. New UI files must be added to `FILES` in `web/assets.rs`.
+  `api.js`, `dom.js`, `format.js`, `views/{now,masjids,quran,speaker,history,settings,system,recordings,salah}.js`. New UI files must be added to `FILES` in `web/assets.rs`.
