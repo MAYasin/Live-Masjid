@@ -305,10 +305,19 @@
         <div class="panel">
           <dl class="kv" id="sys-app"></dl>
           <div class="field">
+            <div class="field-label"><b>Automatic updates</b><span>Installs a new version within an hour of its release</span></div>
+            <label class="switch"><input type="checkbox" id="auto-update" aria-label="Automatic updates"><span></span></label>
+          </div>
+          <div class="field">
+            <div class="field-label"><b>Version <span class="tabular" id="upd-version"></span></b><span id="upd-info">—</span></div>
             <div class="actions">
               <button class="btn" id="check-updates">Check for updates</button>
-              <button class="btn danger" id="restart">Restart service</button>
+              <button class="btn primary" id="update-now" hidden>Update now</button>
             </div>
+          </div>
+          <div class="field">
+            <div class="field-label"><b>Restart</b><span>Restarts the player; playback resumes by itself</span></div>
+            <button class="btn danger" id="restart">Restart</button>
           </div>
         </div>
         <div class="section-title">Activity <button class="btn ghost small" id="refresh-logs">Refresh</button></div>

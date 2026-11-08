@@ -39,6 +39,8 @@ pub struct Settings {
     /// Salah times source per masjid (mount → masjidboardlive board id, or "none" for
     /// masjidscreen only). Masjids not listed are matched automatically.
     pub salah_boards: std::collections::BTreeMap<String, String>,
+    /// Install new releases automatically (the hourly timer; "Update now" works either way).
+    pub auto_update: bool,
     /// Default Quran recitation (mp3quran key); playlists may pin their own.
     pub quran_reciter: String,
     /// Salted, iterated SHA-256 of the UI password; `None` = no password set.
@@ -65,6 +67,7 @@ impl Default for Settings {
             poll_secs: 20,
             salah_boards: Default::default(),
             quran_reciter: crate::quran::DEFAULT_RECITER.into(),
+            auto_update: true,
             password_hash: None,
             secret: random_hex(32),
         }
