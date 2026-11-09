@@ -185,3 +185,7 @@
 .ms-actions { display: grid; gap: 8px; margin-top: 16px; }
 .ms-actions .btn { justify-content: center; width: 100%; }
 .history-day { display: flex; justify-content: space-between; gap: 12px; }
+.speed-btn { min-width: 44px; height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius); background: none; color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; }
+.speed-btn:hover { background: var(--hover); color: var(--text); }
+.speed-btn.on { border-color: var(--text); color: var(--text); }
+.speed-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }

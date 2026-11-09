@@ -13,6 +13,7 @@ mod edge;
 mod ogg;
 pub mod local;
 pub mod recording;
+mod stretch;
 
 pub use decode::Codec;
 
@@ -192,6 +193,8 @@ impl Pipeline {
             paused: None,
             position_ms: None,
             position_base_ms: 0,
+            speed: None,
+            gain: None,
         };
         let decoder = std::thread::Builder::new()
             .name("decoder".into())

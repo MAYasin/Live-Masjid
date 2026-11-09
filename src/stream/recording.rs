@@ -87,6 +87,8 @@ pub fn run(p: RecordingParams) {
         paused: Some(p.paused.clone()),
         position_ms: Some(p.position_ms.clone()),
         position_base_ms: 0,
+        speed: None,
+        gain: None,
     };
     decode::run(codec_for(&p.url), ctx);
 

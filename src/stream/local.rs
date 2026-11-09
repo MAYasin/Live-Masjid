@@ -30,8 +30,13 @@ pub struct LocalParams {
     pub position_ms: Arc<AtomicU64>,
     /// Set once the file header has been read.
     pub duration_ms: Arc<AtomicU64>,
+    /// Playback speed (f32 bits); can change while playing.
+    pub speed: Arc<std::sync::atomic::AtomicU32>,
     pub events: UnboundedSender<RecordingEvent>,
 }
+
+/// The Quran's own volume, in percent of the main volume (setting `quran_volume`).
+pub static QURAN_VOLUME: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(100);
 
 /// Give up when a download makes no progress for this long.
 const STALL: Duration = Duration::from_secs(90);
@@ -231,6 +236,8 @@ pub fn run(p: LocalParams) {
         paused: Some(p.paused.clone()),
         position_ms: Some(p.position_ms.clone()),
         position_base_ms: base,
+        speed: Some(p.speed.clone()),
+        gain: Some(&QURAN_VOLUME),
     };
     decode::run(Codec::Mp3, ctx);
     queue.close();

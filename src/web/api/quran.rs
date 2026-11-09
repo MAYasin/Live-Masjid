@@ -63,23 +63,26 @@ pub struct PlayReq {
     position_s: u64,
     /// Recitation (default: the playlist's, else the app's).
     reciter: Option<String>,
+    /// Speed (default: the playlist's, else the app's).
+    speed: Option<f32>,
 }
 
 pub async fn play(State(app): State<App>, Json(r): Json<PlayReq>) -> ApiResult {
-    let (n, playlist, pinned) = match (&r.playlist, r.surah) {
+    let (n, playlist, pinned, pinned_speed) = match (&r.playlist, r.surah) {
         (Some(id), _) => {
             let p = app.quran.playlist(id).ok_or_else(|| ApiError::bad("That playlist no longer exists"))?;
             let ctx = quran::PlaylistCtx::new(&p, r.index);
-            (ctx.surah(), Some(ctx), p.reciter)
+            (ctx.surah(), Some(ctx), p.reciter, p.speed)
         }
-        (None, Some(n)) => (surah(n)?, None, None),
+        (None, Some(n)) => (surah(n)?, None, None, None),
         (None, None) => return Err(ApiError::bad("choose a surah or a playlist")),
     };
     let key = reciter_key(&app, r.reciter.as_deref().or(pinned.as_deref()));
     if !app.quran.resolve(Some(&key)).has(n) {
         return Err(ApiError::bad(format!("This reciter doesn't have {}", quran::name(n))));
     }
-    let _ = app.player_tx.send(PlayerCmd::PlayQuran { surah: n, position_ms: r.position_s * 1000, playlist, reciter: key });
+    let speed = r.speed.or(pinned_speed).unwrap_or_else(|| app.settings().quran_speed).clamp(0.5, 2.0);
+    let _ = app.player_tx.send(PlayerCmd::PlayQuran { surah: n, position_ms: r.position_s * 1000, playlist, reciter: key, speed });
     ok()
 }
 
@@ -98,6 +101,7 @@ pub struct SavePlaylist {
     #[serde(default)]
     days: Vec<u8>,
     time: Option<String>,
+    speed: Option<f32>,
 }
 
 pub async fn save_playlist(State(app): State<App>, Json(r): Json<SavePlaylist>) -> ApiResult<Json<Playlist>> {
@@ -109,6 +113,7 @@ pub async fn save_playlist(State(app): State<App>, Json(r): Json<SavePlaylist>) 
         reciter: r.reciter.filter(|k| !k.is_empty()),
         days: r.days,
         time: r.time.filter(|t| !t.is_empty()),
+        speed: r.speed,
     };
     app.quran.save_playlist(p).map(Json).map_err(ApiError::bad)
 }
@@ -180,4 +185,24 @@ pub async fn delete(State(app): State<App>, Json(r): Json<DeleteReq>) -> ApiResu
     let lib = app.quran.clone();
     let removed = tokio::task::spawn_blocking(move || lib.delete(what, playing)).await.map_err(ApiError::bad)?;
     Ok(Json(json!({ "ok": true, "removed": removed })))
+}
+
+#[derive(Deserialize)]
+pub struct SpeedReq {
+    speed: f32,
+}
+
+/// Change the playing Quran's speed. It also becomes the default speed, unless the playing
+/// playlist has its own.
+pub async fn speed(State(app): State<App>, Json(r): Json<SpeedReq>) -> ApiResult {
+    if !r.speed.is_finite() || !(0.5..=2.0).contains(&r.speed) {
+        return Err(ApiError::bad("Speed must be between 0.5× and 2×"));
+    }
+    let playlist = app.status.borrow().recording.as_ref().and_then(|x| x.playlist.as_ref().map(|p| p.id.clone()));
+    let pinned = playlist.and_then(|id| app.quran.playlist(&id)).is_some_and(|p| p.speed.is_some());
+    if !pinned {
+        app.update_settings(|s| s.quran_speed = r.speed)?;
+    }
+    let _ = app.player_tx.send(PlayerCmd::QuranSpeed(r.speed));
+    ok()
 }

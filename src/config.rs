@@ -41,6 +41,10 @@ pub struct Settings {
     pub salah_boards: std::collections::BTreeMap<String, String>,
     /// Install new releases automatically (the hourly timer; "Update now" works either way).
     pub auto_update: bool,
+    /// Quran volume, in percent of the main volume (recitations are mastered louder than broadcasts).
+    pub quran_volume: u8,
+    /// Default Quran playback speed (0.5–2.0, pitch kept); playlists may set their own.
+    pub quran_speed: f32,
     /// Default Quran recitation (mp3quran key); playlists may pin their own.
     pub quran_reciter: String,
     /// Salted, iterated SHA-256 of the UI password; `None` = no password set.
@@ -68,6 +72,8 @@ impl Default for Settings {
             salah_boards: Default::default(),
             quran_reciter: crate::quran::DEFAULT_RECITER.into(),
             auto_update: true,
+            quran_volume: 100,
+            quran_speed: 1.0,
             password_hash: None,
             secret: random_hex(32),
         }
@@ -107,6 +113,8 @@ impl Settings {
         self.volume = self.volume.min(100);
         self.poll_secs = self.poll_secs.clamp(10, 300);
         self.live_delay_s = self.live_delay_s.clamp(2, 30);
+        self.quran_volume = self.quran_volume.min(100);
+        self.quran_speed = if self.quran_speed.is_finite() { self.quran_speed.clamp(0.5, 2.0) } else { 1.0 };
         if !crate::quran::valid_key(&self.quran_reciter) {
             self.quran_reciter = crate::quran::DEFAULT_RECITER.into();
         }

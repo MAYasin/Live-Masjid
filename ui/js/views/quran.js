@@ -61,7 +61,7 @@ function renderPlaylists() {
   $("#pl-list").innerHTML = playlists.length
     ? playlists.map((p) => {
       const names = p.surahs.slice(0, 3).map(surahName).join(", ") + (p.surahs.length > 3 ? ` +${p.surahs.length - 3}` : "");
-      const meta = [scheduleText(p), p.reciter ? reciterOf(p.reciter)?.name : "", names].filter(Boolean).join(" · ");
+      const meta = [scheduleText(p), p.reciter ? reciterOf(p.reciter)?.name : "", p.speed && p.speed !== 1 ? `${p.speed}×` : "", names].filter(Boolean).join(" · ");
       return `<div class="item pl-row${p.id === now ? " current" : ""}">
         <div class="grow">
           <div class="item-title truncate">${escapeHtml(p.name)}${p.repeat ? ' <svg class="pl-rep" aria-label="Repeats"><use href="#i-repeat"/></svg>' : ""}</div>
@@ -197,6 +197,7 @@ function openEditor(p) {
   $("#pl-heading").textContent = p ? "Edit playlist" : "New playlist";
   $("#pl-name").value = p?.name ?? "";
   $("#pl-repeat").checked = Boolean(p?.repeat);
+  $("#pl-speed").value = p?.speed != null ? String(p.speed) : "";
   $("#pl-delete").hidden = !p;
   $("#pl-scheduled").checked = Boolean(p?.time);
   $("#pl-time").value = p?.time ?? "11:00";
@@ -223,6 +224,7 @@ async function saveDraft(e) {
       surahs: draft.surahs,
       repeat: $("#pl-repeat").checked,
       reciter: draft.reciter,
+      speed: $("#pl-speed").value ? Number($("#pl-speed").value) : null,
       days: scheduled ? days : [],
       time: scheduled ? $("#pl-time").value : null,
     });

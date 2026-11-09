@@ -4,7 +4,7 @@ use super::buffer::{ByteQueue, QueueReader};
 use crate::sink::{RATE, SinkHandle};
 use std::io::Read;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -38,6 +38,10 @@ pub struct DecodeCtx {
     pub position_ms: Option<Arc<AtomicU64>>,
     /// Position of the first decoded sample (after a seek), in ms.
     pub position_base_ms: u64,
+    /// Quran only: playback speed (f32 bits), applied without changing pitch.
+    pub speed: Option<Arc<AtomicU32>>,
+    /// Quran only: its own volume, in percent of the main volume.
+    pub gain: Option<&'static AtomicU8>,
 }
 
 /// Run a decoder until the buffer is closed and drained, or `stop` is raised.
@@ -62,12 +66,13 @@ struct PcmOut {
     first: Option<Box<dyn FnOnce() + Send>>,
     frames: u64,
     last_stat: Instant,
+    stretch: Option<super::stretch::Stretch>,
 }
 
 impl PcmOut {
     fn new(mut ctx: DecodeCtx) -> Self {
         let first = Some(std::mem::replace(&mut ctx.on_first_audio, Box::new(|| {})));
-        Self { ctx, first, frames: 0, last_stat: Instant::now() }
+        Self { ctx, first, frames: 0, last_stat: Instant::now(), stretch: None }
     }
 
     fn stopped(&self) -> bool {
@@ -98,6 +103,29 @@ impl PcmOut {
                 let ms = self.ctx.queue.buffered() as f64 / bps.max(1.0) * 1000.0;
                 self.ctx.buffer_ms.store(ms as u64 + self.ctx.sink.queued_ms(), Ordering::Relaxed);
             }
+        }
+        // Quran: speed (time-stretched, pitch kept) and its own volume. Position stays in
+        // recitation time (counted above), whatever the speed.
+        let mut stereo = stereo;
+        if let Some(sp) = &self.ctx.speed {
+            let speed = f32::from_bits(sp.load(Ordering::Relaxed));
+            if (speed - 1.0).abs() > 0.01 {
+                let st = self.stretch.get_or_insert_with(|| super::stretch::Stretch::new(rate));
+                stereo = st.process(&stereo, speed);
+            } else {
+                self.stretch = None;
+            }
+        }
+        if let Some(g) = self.ctx.gain {
+            let g = i32::from(g.load(Ordering::Relaxed).min(100));
+            if g < 100 {
+                for v in &mut stereo {
+                    *v = (i32::from(*v) * g / 100) as i16;
+                }
+            }
+        }
+        if stereo.is_empty() {
+            return true; // the stretcher is still collecting a segment
         }
         self.ctx.sink.send_pcm(self.ctx.epoch, rate, stereo)
     }

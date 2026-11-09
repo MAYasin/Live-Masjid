@@ -57,6 +57,7 @@ pub fn router(app: App) -> Router {
         .route("/api/quran/playlists", get(api::quran::playlists).post(api::quran::save_playlist))
         .route("/api/quran/playlists/remove", post(api::quran::delete_playlist))
         .route("/api/quran/seek", post(api::quran::seek))
+        .route("/api/quran/speed", post(api::quran::speed))
         .route("/api/quran/step", post(api::quran::step))
         .route("/api/quran/download", post(api::quran::download))
         .route("/api/quran/delete", post(api::quran::delete))

@@ -13,6 +13,10 @@ import { runAction, toast } from "./dom.js";
 const icon = (id) => `<svg aria-hidden="true"><use href="#i-${id}"/></svg>`;
 /** How long an optimistic change may wait for the Pi to confirm it. */
 const CONFIRM_MS = 4000;
+/** Playback speeds the speed button steps through. */
+const SPEEDS = [1, 1.25, 1.5, 1.75, 2, 0.75];
+const speedLabel = (v) => `${Number(v.toFixed(2))}×`;
+
 /** Every mounted player card (home and Quran page). */
 const boxes = new Set();
 
@@ -60,10 +64,11 @@ export function mount(box) {
       <button class="icon-btn play" data-act="toggle" aria-label="Pause" title="Pause">${icon("pause")}</button>
       <button class="icon-btn" data-act="next" aria-label="Next surah" title="Next">${icon("next")}</button>
       <button class="icon-btn" data-act="stop" aria-label="Stop" title="Stop">${icon("stop")}</button>
+      <button class="speed-btn tabular" data-act="speed" title="Playback speed" aria-label="Playback speed">1×</button>
     </div>
     <div class="mp-volume" data-f="volume" hidden>
       <svg aria-hidden="true"><use href="#i-volume"/></svg>
-      <input type="range" min="0" max="100" aria-label="Volume" data-f="vol">
+      <input type="range" min="0" max="100" aria-label="Quran volume" title="Quran volume (the broadcast keeps its own)" data-f="vol">
       <output class="tabular" data-f="volval">–</output>
     </div>
     <div class="mp-resume" data-f="resume" hidden>
@@ -83,7 +88,7 @@ export function mount(box) {
     paintVolume(f, Number(vol.value));
     clearTimeout(volTimer);
     volTimer = setTimeout(() => {
-      runAction(null, () => api("settings", { volume: Number(vol.value) })).finally(() => { box._volBusy = false; });
+      runAction(null, () => api("settings", { quran_volume: Number(vol.value) })).finally(() => { box._volBusy = false; });
     }, 120);
   });
 
@@ -118,6 +123,13 @@ export function mount(box) {
       case "stop":
         optimistic(box, { stopped: true }, api("recordings/stop", {}));
         break;
+      case "speed": {
+        if (!r) break;
+        const cur = r.speed || 1;
+        const next = SPEEDS[(SPEEDS.findIndex((v) => Math.abs(v - cur) < 0.01) + 1) % SPEEDS.length] ?? 1;
+        optimistic(box, { speed: next }, api("quran/speed", { speed: next }));
+        break;
+      }
       case "dismiss":
         optimistic(box, { stopped: true }, api("recordings/stop", {}));
         break;
@@ -134,7 +146,7 @@ export function mount(box) {
   box._timer = setInterval(() => {
     if (box.hidden || box._seeking || !box._clock?.running) return;
     const c = box._clock;
-    paintPosition(box, Math.min(c.dur || Infinity, c.pos + (Date.now() - c.at) / 1000));
+    paintPosition(box, Math.min(c.dur || Infinity, c.pos + ((Date.now() - c.at) / 1000) * (c.rate || 1)));
   }, 500);
 }
 
@@ -168,6 +180,7 @@ function effective(box) {
   const confirmed = o.stopped ? !r
     : o.stepping ? r && r.surah !== o.from
     : !r ? false
+    : "speed" in o ? Math.abs((r.speed || 1) - o.speed) < 0.01
     : ("paused" in o && !("position" in o)) ? r.paused === o.paused
     : "position" in o ? Math.abs(r.position_s - o.position) < 4
     : true;
@@ -177,6 +190,7 @@ function effective(box) {
   }
   if (!r || o.stopped) return null;
   if ("paused" in o) r.paused = o.paused;
+  if ("speed" in o) r.speed = o.speed;
   if ("position" in o) r.position_s = o.position;
   if (o.stepping) {
     r.title = o.stepping > 0 ? "Next surah…" : "Previous surah…";
@@ -220,10 +234,12 @@ function render(box) {
     box._clock = null;
     return;
   }
-  f("volume").hidden = !box._volume || (!r && !q);
-  if (box._volume && !box._volBusy && s) {
-    f("vol").value = String(s.volume);
-    paintVolume(f, s.volume);
+  // The Quran has its own volume (recitations are louder than broadcasts).
+  const quranOn = (r && r.kind === "quran") || (!r && q);
+  f("volume").hidden = !quranOn;
+  if (quranOn && !box._volBusy && s) {
+    f("vol").value = String(s.quran_volume ?? 100);
+    paintVolume(f, s.quran_volume ?? 100);
   }
   if (!r && !q) {
     // Only a scheduled playlist waiting for the broadcast.
@@ -254,13 +270,16 @@ function render(box) {
     seek.max = String(Math.max(1, dur));
     seek.disabled = !quran || !dur;
     f("dur").textContent = dur ? clock(dur) : "–:––";
-    box._clock = { pos: r.position_s, at: Date.now(), running: !r.paused && !box._opt?.stepping && !r.starting, dur };
+    box._clock = { pos: r.position_s, at: Date.now(), running: !r.paused && !box._opt?.stepping && !r.starting, dur, rate: r.speed || 1 };
     if (!box._seeking) paintPosition(box, Math.min(r.position_s, dur || r.position_s));
     const toggle = box.querySelector('[data-act="toggle"]');
     toggle.innerHTML = icon(r.paused ? "play" : "pause");
     toggle.setAttribute("aria-label", r.paused ? "Play" : "Pause");
     toggle.title = r.paused ? "Play" : "Pause";
-    for (const act of ["prev", "next"]) box.querySelector(`[data-act="${act}"]`).hidden = !quran;
+    for (const act of ["prev", "next", "speed"]) box.querySelector(`[data-act="${act}"]`).hidden = !quran;
+    const sp = box.querySelector('[data-act="speed"]');
+    sp.textContent = speedLabel(r.speed || 1);
+    sp.classList.toggle("on", Math.abs((r.speed || 1) - 1) > 0.01);
     f("seekrow").hidden = false;
     f("controls").hidden = false;
     f("resume").hidden = true;

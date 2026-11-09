@@ -66,6 +66,8 @@ pub struct RecordingStatus {
     pub reciter: Option<String>,
     /// Quran: the recitation key.
     pub reciter_key: Option<String>,
+    /// Quran: playback speed.
+    pub speed: f32,
 }
 
 /// The Quran was interrupted by a live broadcast and continues when it closes.
@@ -79,6 +81,7 @@ pub struct QuranResume {
     pub playlist: Option<crate::quran::PlaylistCtx>,
     /// Recitation key.
     pub reciter: String,
+    pub speed: f32,
 }
 
 #[derive(Clone, Debug, Serialize, Default)]
@@ -149,6 +152,8 @@ pub struct Status {
     pub quran_resume: Option<QuranResume>,
     /// A scheduled playlist waiting for the live broadcast to end (its name).
     pub quran_pending: Option<String>,
+    /// The Quran's own volume (percent of the main volume).
+    pub quran_volume: u8,
     /// Visitors may listen on their own device.
     pub browser_listening: bool,
 }
@@ -181,7 +186,9 @@ pub enum PlayerCmd {
     PauseRecording(bool),
     StopRecording,
     /// Play a Quran surah (downloading it first if needed) from a position.
-    PlayQuran { surah: u16, position_ms: u64, playlist: Option<crate::quran::PlaylistCtx>, reciter: String },
+    PlayQuran { surah: u16, position_ms: u64, playlist: Option<crate::quran::PlaylistCtx>, reciter: String, speed: f32 },
+    /// Change the playing Quran's speed.
+    QuranSpeed(f32),
     /// A playlist's scheduled time has come (playlist id).
     ScheduledPlaylist(String),
     /// Seek within the playing surah.
@@ -256,11 +263,13 @@ impl AppState {
             s.clone()
         };
         self.volume.store(snapshot.volume, Ordering::Relaxed);
+        crate::stream::local::QURAN_VOLUME.store(snapshot.quran_volume, Ordering::Relaxed);
         self.sink.set_keep_awake(snapshot.keep_awake);
         let (loc, last) = self.station_meta(snapshot.mount.as_deref());
         self.status.send_modify(|st| {
             st.autoplay = snapshot.autoplay;
             st.volume = snapshot.volume;
+            st.quran_volume = snapshot.quran_volume;
             st.keep_awake = snapshot.keep_awake;
             st.password_set = snapshot.password_hash.is_some();
             st.browser_listening = snapshot.browser_listening;

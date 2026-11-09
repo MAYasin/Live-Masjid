@@ -189,6 +189,9 @@ pub struct Playlist {
     pub days: Vec<u8>,
     #[serde(default)]
     pub time: Option<String>,
+    /// Playback speed (None = the app's default).
+    #[serde(default)]
+    pub speed: Option<f32>,
 }
 
 impl Playlist {
@@ -502,6 +505,9 @@ impl Library {
         if p.reciter.as_deref().is_some_and(|k| self.reciter(k).is_none()) {
             return Err("Unknown reciter".into());
         }
+        if p.speed.is_some_and(|v| !(0.5..=2.0).contains(&v)) {
+            return Err("Speed must be between 0.5× and 2×".into());
+        }
         p.days.retain(|d| *d <= 6);
         p.days.sort_unstable();
         p.days.dedup();
@@ -708,7 +714,7 @@ mod tests {
 
     #[test]
     fn playlist_steps() {
-        let p = Playlist { id: "a".into(), name: "Morning".into(), surahs: vec![1, 2, 36], repeat: false, reciter: None, days: vec![], time: None };
+        let p = Playlist { id: "a".into(), name: "Morning".into(), surahs: vec![1, 2, 36], repeat: false, reciter: None, days: vec![], time: None, speed: None };
         let c = PlaylistCtx::new(&p, 0);
         assert_eq!(c.step(1).unwrap().surah(), 2);
         assert_eq!(c.step(-1).unwrap().surah(), 1); // stays at the start

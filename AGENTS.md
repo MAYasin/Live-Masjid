@@ -228,6 +228,12 @@ that aren't obvious from the code.
   `miniplayer.js` applies the expected state at once (`optimistic()`, confirmed by the live status or dropped after 4 s or on error), ticks
   the clock locally between pushes, and `starting(title)` shows a card the moment a Play button (surah, playlist, recording) is tapped.
   The home Play/Stop swap at once too (`liveAction`). Keep spinners for slow, failure-prone actions (Bluetooth, downloads, updates).
+- **Quran speed and volume (2026-11-09).** Speed 0.75–2× without a pitch change: `stream/stretch.rs` (streaming WSOLA: 30 ms segments,
+  10 ms crossfade, ±8 ms best-match search on every second sample) runs in `PcmOut::send` for Quran playback only; positions stay in
+  recitation time. One speed value (`qspeed` in the player) is shared by every surah, so seek/next/resume keep it; a play sets it from the
+  request, the playlist's `speed`, or `Settings::quran_speed`. Changing it in the card saves the default unless the playing playlist has its
+  own. Measured on the Pi: 1.5× advanced 30 s in 20 s, ~11% of one core. The Quran has its own volume (`Settings::quran_volume`, percent of
+  the main volume, `local::QURAN_VOLUME`) because recitations are mastered louder than broadcasts; the player card's slider controls it.
 - **Quran pause is instant:** pausing drops the ~2 s already queued for the speaker (`sink.new_epoch()`) and stores the *heard* position
   (`heard_ms` = decoded − `queued_ms` − `OUTPUT_LAG_MS` 700); resume restarts from the file at that position. Status positions are heard positions.
 - **Signed-release failures** (missing signature, bad signature, checksum mismatch) are reported in `update-status.json` with the reason.

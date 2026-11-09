@@ -65,6 +65,7 @@ async fn run() -> anyhow::Result<()> {
     let paths_site = paths.site.clone();
     let data_dir = paths.site.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
     let settings = config::Settings::load(&paths.settings);
+    stream::local::QURAN_VOLUME.store(settings.quran_volume, std::sync::atomic::Ordering::Relaxed);
     stream::LIVE_DELAY_MS.store(u64::from(settings.live_delay_s) * 1000, std::sync::atomic::Ordering::Relaxed);
     settings.save(&paths.settings)?; // persist generated secret / migrated defaults
     tracing::info!("livemasjid {VERSION} starting; data in {:?}", paths.settings.parent());
@@ -99,6 +100,7 @@ async fn run() -> anyhow::Result<()> {
         recording: None,
         quran_resume: None,
         quran_pending: None,
+        quran_volume: settings.quran_volume,
         browser_listening: settings.browser_listening,
         buffer_ms: 0,
     };
