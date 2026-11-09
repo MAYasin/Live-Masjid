@@ -2,7 +2,7 @@
 # Pull the latest GitHub release and install it if it differs from what's running.
 # Run hourly by livemasjid-update.timer (as root); also triggerable from the web UI.
 #
-#   update.sh            normal update (skips a dev build deployed < 12 h ago)
+#   update.sh            normal update (keeps a test build up to 12 h, unless the release is newer)
 #   update.sh --force    update even over a recent dev build
 #   update.sh --check    report current/latest version and asset availability; change nothing
 #
@@ -75,12 +75,29 @@ if [ "$MODE" = "--check" ]; then
   exit 0
 fi
 
-# A build pushed by deploy.ps1 is left alone for 12 h so development isn't overwritten.
+# A test build from deploy.sh (dev-<commit>[-dirty]) is left alone for up to 12 h so development
+# isn't overwritten, unless the release already has newer commits than the one it was built
+# from: then the test build is out of date and the release replaces it at once.
 if [[ "$CUR" == dev-* ]] && [ "$MODE" != "--force" ] && \
    [ $(( $(date +%s) - $(stat -c %Y "$D/VERSION") )) -lt 43200 ]; then
-  echo "dev build $CUR installed recently; skipping (use --force)"
-  status skipped "A test build is installed; automatic updates resume within 12 hours" "$CUR" "$TAG"
-  exit 0
+  BASE="${CUR#dev-}"; BASE="${BASE%-dirty}"
+  TARGET="$(printf '%s' "$JSON" | grep -m1 '"target_commitish"' | sed -E 's/.*: *"([^"]+)".*/\1/')"
+  CMP=""
+  if [[ "$BASE" =~ ^[0-9a-f]{7,40}$ ]] && [ -n "$TARGET" ]; then
+    # Read the whole answer first (a reader that stops early makes curl fail under pipefail).
+    CJSON="$(curl -fsSL --max-time 20 -H 'Accept: application/vnd.github+json' \
+      "https://api.github.com/repos/${REPO}/compare/${BASE}...${TARGET}")" || CJSON=""
+    # The first "status" is the comparison's own (per-file statuses come at the end).
+    [[ "$CJSON" =~ \"status\":\ *\"([a-z]+)\" ]] && CMP="${BASH_REMATCH[1]}"
+  fi
+  # "identical" is only the same code when the test build had no uncommitted changes.
+  if [ "$CMP" = "ahead" ] || { [ "$CMP" = "identical" ] && [[ "$CUR" != *-dirty ]]; }; then
+    echo "release $TAG includes test build $CUR ($CMP); replacing it"
+  else
+    echo "dev build $CUR installed recently; skipping (use --force)"
+    status skipped "A test build is installed; automatic updates resume when a newer release is published, or within 12 hours" "$CUR" "$TAG"
+    exit 0
+  fi
 fi
 if [ "$TAG" = "$CUR" ]; then
   echo "up to date ($CUR)"

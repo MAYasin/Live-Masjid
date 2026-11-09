@@ -62,7 +62,10 @@ that aren't obvious from the code.
 - **Deploy:** `./deploy.sh` (dev loop; picks the target from the device's `uname -m`) or `./deploy.sh --setup --repo MAYasin/Live-Masjid`
   (idempotent full install). The PowerShell scripts were replaced by these on 2026-11-07.
   - Dev builds are labelled `dev-<sha>`.
-  - `update.sh` won't replace a dev build for 12 hours unless run with `--force`.
+  - `update.sh` keeps a dev build for up to 12 hours (unless `--force`), **but replaces it at once when the latest release is newer**:
+    it compares the build's commit with the release's `target_commitish` through the GitHub compare API (`ahead`, or `identical` for a
+    clean build). This is why the Pi skipped v0.2.0-20 on 2026-11-08: a test build held updates, and the next run went straight to -21.
+    Read compare responses whole before matching: `grep -m1` closing the pipe made `curl` fail (23) under `pipefail`.
   - **Updates from the UI** (System → App): "Check for updates" runs `update.sh --check` as the app user (GitHub API) and shows the
     answer; "Update now" writes `<data>/update-request` and starts `livemasjid-update.service`, and `update.sh` treats that run as `--force`.
     The "Automatic updates" switch is `Settings::auto_update`; timer runs grep `settings.json` for `"auto_update": false` and skip.
