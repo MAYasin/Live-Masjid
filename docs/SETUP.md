@@ -149,6 +149,7 @@ asks for the Pi password once. A plain `./deploy.sh` never needs it.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Wizard can't reach the device | Still booting, wrong name, SSH not enabled | Wait 3 min; use the IP from your router; re-flash with SSH enabled |
+| *"REMOTE HOST IDENTIFICATION HAS CHANGED"* | The card was re-flashed, so the device has a new SSH identity | The wizard offers to forget the old one. By hand: `ssh-keygen -R <device>` (only if you really re-flashed it) |
 | Speaker page: *"Your speaker has forgotten this Pi"* | The speaker lost the pairing key (e.g. after pairing with a phone). It accepts the link but refuses audio | Put the speaker in pairing mode and tap **Re-pair**. The Pi also re-pairs by itself when it sees the speaker in pairing mode |
 | Speaker connects only sometimes | The speaker is off or sleeping, or out of range | Keep **Keep speaker awake** on, and move the speaker closer. The Pi reconnects automatically |
 | Scan finds no devices, or the speaker keeps dropping | The Bluetooth chip is half-hung: it still says "on" but every command times out | Automatic: the network watchdog spots the timeouts in the kernel log within ~1 min and resets the chip. Keep the system updated (re-run `./setup.sh`) |

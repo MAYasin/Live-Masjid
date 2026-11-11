@@ -114,6 +114,25 @@ until reachable; do
 done
 good "$DEVICE answers on SSH"
 
+# A re-flashed card gives the device a new SSH identity (host key), and SSH then refuses to connect
+# ("REMOTE HOST IDENTIFICATION HAS CHANGED"). That is expected after re-flashing; otherwise it could
+# mean someone is impersonating the device, so ask before forgetting the old key.
+changed_host() {
+  ssh $SSH_OPTS -o BatchMode=yes "$TARGET" true 2>&1 | grep -q "REMOTE HOST IDENTIFICATION HAS CHANGED"
+}
+if changed_host; then
+  warn "$DEVICE has a new identity (SSH host key). That's normal right after re-flashing its SD card."
+  info "If you did NOT just re-flash it, stop here: another machine may be pretending to be it."
+  [ "$YES" = 1 ] && die "the device's SSH identity changed; run 'ssh-keygen -R $DEVICE' if it was re-flashed"
+  ask_yes "Did you just re-flash this device? Forget its old key" n || die "stopped: the device's identity changed"
+  # Forget the name and its address (SSH checks both).
+  for h in "$DEVICE" $(ssh $SSH_OPTS -o BatchMode=yes "$TARGET" true 2>&1 | sed -n 's/.*Host key for \([^ ]*\) has changed.*/\1/p'); do
+    ssh-keygen -R "$h" >/dev/null 2>&1 || true
+  done
+  changed_host && die "the old key is still on file; run: ssh-keygen -R $DEVICE"
+  good "Old key forgotten; the new one is saved on the next connection"
+fi
+
 # ----------------------------------------------------------------------------- 3. key login
 step 3 "Password-less login"
 if ! remote true; then
