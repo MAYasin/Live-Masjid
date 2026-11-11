@@ -95,6 +95,7 @@ Open the address shown at the end (e.g. `http://masjid-radio.local/` or `http://
 ## 4. Lock it down (recommended, once)
 
 A fresh Raspberry Pi OS is set up for convenience, not safety:
+
 - the `pi` account can run any command as the administrator ("root") without typing a password;
 - the Pi accepts SSH password logins;
 - nothing filters network connections;
