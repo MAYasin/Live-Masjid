@@ -84,7 +84,12 @@ function paint() {
   $("#upd-version").textContent = installed;
   $("#auto-update").checked = auto_update;
   const newer = latest && latest.tag !== installed && latest.available;
-  $("#update-now").hidden = !newer || Boolean(updating);
+  // A Docker install is updated by pulling a new image, not from here.
+  const docker = updates.platform === "container";
+  $("#auto-update").closest(".field").hidden = docker;
+  $("#update-now").hidden = docker || !newer || Boolean(updating);
   $("#update-now").textContent = newer ? `Update to ${latest.tag}` : "Update now";
-  $("#upd-info").textContent = describe(updates);
+  $("#upd-info").textContent = docker
+    ? `${newer ? `${latest.tag} is available. ` : latest ? "Up to date. " : ""}Update with: ${updates.docker_update}`
+    : describe(updates);
 }

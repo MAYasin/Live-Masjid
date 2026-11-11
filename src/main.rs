@@ -10,6 +10,7 @@ mod salah_match;
 mod schedule;
 mod monitor;
 mod net;
+mod platform;
 mod player;
 mod sink;
 mod site;
@@ -79,6 +80,7 @@ async fn run() -> anyhow::Result<()> {
 
     let status = Status {
         version: VERSION,
+        platform: platform::get().as_str(),
         phase: if settings.mount.is_some() { Phase::Waiting } else { Phase::Idle },
         mount: settings.mount.clone(),
         station_name: settings.station_name.clone(),
@@ -157,7 +159,11 @@ async fn run() -> anyhow::Result<()> {
     tokio::spawn(monitor::sse::run(app.clone()));
     tokio::spawn(monitor::poll::run(app.clone()));
     tokio::spawn(catalog::run(app.clone()));
-    tokio::spawn(bluetooth::run(app.clone()));
+    if platform::bluetooth_enabled() {
+        tokio::spawn(bluetooth::run(app.clone()));
+    } else {
+        tracing::info!("Bluetooth management is off (container without the host's D-Bus, or LIVEMASJID_BLUETOOTH=off)");
+    }
     tokio::spawn(app.quran.clone().run());
     tokio::spawn(app.quran.clone().refresh_catalog());
     tokio::spawn(schedule::run(app.clone()));

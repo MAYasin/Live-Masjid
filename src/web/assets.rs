@@ -3,6 +3,9 @@
 //! Files are served with an ETag derived from their *content*, so browsers revalidate
 //! cheaply (304) and always pick up a changed file — even between dev builds that share
 //! a version label (an earlier version-based ETag served stale JS after dev deploys).
+//!
+//! Development (`LIVEMASJID_UI_DIR` set, see `platform`): files are read from that folder on every
+//! request, and the page gets a small script that reloads it when any UI file changes.
 
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::response::{IntoResponse, Response};
@@ -68,20 +71,56 @@ fn etag(body: &str) -> String {
     format!("\"{h:016x}\"")
 }
 
-fn serve(headers: &HeaderMap, content_type: &'static str, body: &'static str) -> Response {
+fn serve(headers: &HeaderMap, content_type: &'static str, body: &str) -> Response {
     let tag = etag(body);
     if headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()) == Some(tag.as_str()) {
         return StatusCode::NOT_MODIFIED.into_response();
     }
     (
         [(header::CONTENT_TYPE, content_type), (header::CACHE_CONTROL, "no-cache"), (header::ETAG, tag.as_str())],
-        body,
+        body.to_string(),
     )
         .into_response()
 }
 
+/// Development: a UI file from disk (only the files a release embeds, so a file missing from
+/// `FILES` is noticed during development too).
+fn from_disk(path: &str) -> Option<String> {
+    std::fs::read_to_string(crate::platform::ui_dir()?.join(path)).ok()
+}
+
+/// Development: polls `/__dev/stamp` and reloads the page when it changes.
+const RELOAD_SCRIPT: &str = r#"<script>(() => { let last = null;
+  setInterval(async () => { try { const s = await (await fetch("/__dev/stamp")).text();
+    if (last && s !== last) location.reload(); last = s; } catch {} }, 700); })();</script>"#;
+
 pub async fn index(headers: HeaderMap) -> Response {
-    serve(&headers, "text/html; charset=utf-8", INDEX)
+    match from_disk("index.html") {
+        Some(html) => serve(&headers, "text/html; charset=utf-8", &html.replace("</body>", &format!("{RELOAD_SCRIPT}</body>"))),
+        None => serve(&headers, "text/html; charset=utf-8", INDEX),
+    }
+}
+
+/// Development: the newest modification time under the UI folder (the page reloads when it changes).
+pub async fn dev_stamp() -> Response {
+    fn newest(dir: &std::path::Path) -> u128 {
+        let entries = std::fs::read_dir(dir).into_iter().flatten().flatten();
+        entries
+            .map(|e| {
+                let p = e.path();
+                if p.is_dir() {
+                    return newest(&p);
+                }
+                let modified = e.metadata().and_then(|m| m.modified()).ok();
+                modified.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis())
+            })
+            .max()
+            .unwrap_or(0)
+    }
+    match crate::platform::ui_dir() {
+        Some(dir) => ([(header::CACHE_CONTROL, "no-store")], newest(dir).to_string()).into_response(),
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 /// App icons (PNG) for phones: iOS home screen, Android/Chrome install.
@@ -105,7 +144,7 @@ pub async fn icon(headers: HeaderMap) -> Response {
 
 pub async fn file(headers: HeaderMap, axum::extract::Path(path): axum::extract::Path<String>) -> Response {
     match FILES.iter().find(|(p, _, _)| *p == path) {
-        Some((_, ct, body)) => serve(&headers, ct, body),
+        Some((p, ct, body)) => serve(&headers, ct, &from_disk(p).unwrap_or_else(|| (*body).to_string())),
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }

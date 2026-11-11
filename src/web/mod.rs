@@ -90,6 +90,7 @@ pub fn router(app: App) -> Router {
         .route("/", get(assets::index))
         .route("/manifest.webmanifest", get(assets::manifest))
         .route("/icon.svg", get(assets::icon))
+        .route("/__dev/stamp", get(assets::dev_stamp))
         .route("/icons/{name}", get(assets::png))
         .route("/assets/{*path}", get(assets::file))
         .route("/api/health", get(api::status::health))

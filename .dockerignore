@@ -1,0 +1,10 @@
+target
+.git
+.github
+.claude
+docs
+*.md
+!README.md
+deploy
+setup.sh
+deploy.sh

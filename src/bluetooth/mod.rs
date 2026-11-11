@@ -45,6 +45,7 @@ pub async fn refresh(app: &App) {
 /// Runs as a systemd one-shot unit: the service itself is sandboxed (`ProtectSystem=full`).
 pub async fn set_quality(app: &App, quality: &str) -> anyhow::Result<()> {
     anyhow::ensure!(matches!(quality, "medium" | "high"), "invalid quality");
+    anyhow::ensure!(crate::platform::is_native(), "In Docker, Bluetooth audio quality is set on the host's bluez-alsa");
     let fut = tokio::process::Command::new("sudo")
         .args(["-n", "/usr/bin/systemctl", "start", &format!("livemasjid-bt-audio@{quality}.service")])
         .kill_on_drop(true)

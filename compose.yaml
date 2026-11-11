@@ -1,0 +1,26 @@
+# Live Masjid on a home server or cluster node: `docker compose up -d`, then open http://<host>:8080
+# Update: `docker compose pull && docker compose up -d`. See docs/DOCKER.md.
+# (The Raspberry Pi uses the native install instead: ./setup.sh.)
+
+services:
+  livemasjid:
+    image: ghcr.io/mayasin/live-masjid:latest
+    # Or build it from this repository instead of pulling:
+    # build: .
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      TZ: Africa/Johannesburg # your time zone: salah times, history and schedules use it
+    volumes:
+      - livemasjid-data:/data
+      # Bluetooth speaker: share the host's BlueZ (bluetoothd and bluez-alsa run on the host):
+      # - /run/dbus/system_bus_socket:/run/dbus/system_bus_socket
+    # A wired or USB speaker on this machine:
+    devices:
+      - /dev/snd:/dev/snd
+    group_add:
+      - audio # if the host's audio group has another id, use that number instead
+
+volumes:
+  livemasjid-data:

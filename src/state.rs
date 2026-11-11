@@ -124,6 +124,8 @@ pub struct BtStatus {
 #[derive(Clone, Debug, Serialize)]
 pub struct Status {
     pub version: &'static str,
+    /// "native" (the Pi install) or "container" (Docker): what the Updates page can offer.
+    pub platform: &'static str,
     pub phase: Phase,
     pub mount: Option<String>,
     pub station_name: Option<String>,

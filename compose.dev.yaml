@@ -1,0 +1,39 @@
+# Local development with hot reload: `docker compose -f compose.dev.yaml up`, then open
+# http://localhost:8080
+#
+# * UI files (ui/) are served from disk: save a file and the page reloads by itself.
+# * Rust changes (src/, Cargo.toml) rebuild and restart the app (cargo-watch).
+# * No speaker here: use "Listen on this device" (Settings > Playback > Browser listening).
+# * Tests on Linux: `docker compose -f compose.dev.yaml run --rm dev cargo test`
+#
+# Mind the livemasjid.com request budget (see AGENTS.md): this copy watches the same site as the
+# Pi from the same home IP. Keep one masjid followed, and stop it when you're done.
+
+services:
+  dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/src
+      - cargo-registry:/usr/local/cargo/registry
+      - target:/target # build output stays in the container (fast, and apart from the Pi builds)
+      - data:/data
+    environment:
+      CARGO_TARGET_DIR: /target
+      LIVEMASJID_UI_DIR: /src/ui
+      LIVEMASJID_DATA: /data
+      LIVEMASJID_PORT: "8080"
+      LIVEMASJID_PLATFORM: container
+      LIVEMASJID_BLUETOOTH: "off"
+      LIVEMASJID_BUILD: dev-docker
+      TZ: ${TZ:-Africa/Johannesburg}
+    # --poll: file events from a Windows or macOS host don't always reach the container.
+    command: cargo watch --poll -w src -w Cargo.toml -x run
+
+volumes:
+  cargo-registry:
+  target:
+  data:

@@ -38,6 +38,9 @@ pub async fn action(State(app): State<App>, Path(action): Path<String>) -> ApiRe
                 std::process::exit(0); // systemd restarts us
             });
         }
+        "update" if !crate::platform::is_native() => {
+            return Err(ApiError::bad(format!("This copy runs in Docker. Update it with: {DOCKER_UPDATE}")));
+        }
         "update" => {
             // Marks this run as requested by a person: install even over a test build.
             std::fs::write(data_file(&app, "update-request"), b"1").map_err(ApiError::bad)?;
@@ -63,7 +66,10 @@ pub async fn updates(State(app): State<App>, Query(q): Query<UpdatesQuery>) -> A
         .and_then(|b| serde_json::from_slice(&b).ok())
         .unwrap_or(Value::Null);
     let mut latest = Value::Null;
-    if q.check {
+    if q.check && !crate::platform::is_native() {
+        let tag = latest_release().await?;
+        latest = json!({ "tag": tag, "available": true });
+    } else if q.check {
         let out = tokio::time::timeout(
             Duration::from_secs(45),
             tokio::process::Command::new("/opt/livemasjid/update.sh").arg("--check").kill_on_drop(true).output(),
@@ -84,5 +90,27 @@ pub async fn updates(State(app): State<App>, Query(q): Query<UpdatesQuery>) -> A
         "auto_update": app.settings().auto_update,
         "last": last,
         "latest": latest,
+        "platform": crate::platform::get().as_str(),
+        "docker_update": DOCKER_UPDATE,
     })))
+}
+
+/// How a Docker install is updated (shown on the Updates page).
+const DOCKER_UPDATE: &str = "docker compose pull && docker compose up -d";
+
+/// The newest release tag on GitHub (containers have no `update.sh`). `LIVEMASJID_REPO` overrides the repository.
+async fn latest_release() -> Result<String, ApiError> {
+    let repo = std::env::var("LIVEMASJID_REPO").unwrap_or_else(|_| "MAYasin/Live-Masjid".into());
+    let url = format!("https://api.github.com/repos/{repo}/releases/latest");
+    let out = tokio::process::Command::new("curl")
+        .args(["-sSL", "--fail", "--max-time", "20", "-H", "Accept: application/vnd.github+json"])
+        .args(["-A", crate::integrations::USER_AGENT, &url])
+        .kill_on_drop(true)
+        .output()
+        .await
+        .map_err(|_| ApiError::bad("Couldn't reach GitHub to check for updates"))?;
+    serde_json::from_slice::<Value>(&out.stdout)
+        .ok()
+        .and_then(|v| v.get("tag_name")?.as_str().map(str::to_string))
+        .ok_or_else(|| ApiError::bad("Couldn't reach GitHub to check for updates"))
 }

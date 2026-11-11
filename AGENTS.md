@@ -323,7 +323,7 @@ that aren't obvious from the code.
 
 ## Code map
 
-- `main.rs` wiring and the systemd watchdog · `state.rs` shared state and `Status` · `config.rs` settings and password hashing
+- `main.rs` wiring and the systemd watchdog · `platform.rs` native install vs container, Bluetooth on/off, dev UI folder · `state.rs` shared state and `Status` · `config.rs` settings and password hashing
 - `player/` `mod.rs` the `Player` state machine: one handler per input (commands, signals, live events, on-demand events, tick), live precedence, Quran resume, schedules, probe · `live.rs` `LiveSession`, `Trigger`, `StopReason`, history end labels · `media.rs` on-demand item (recording or surah), heard position, next surah (pure, tested)
 - `stream/` `source.rs` the `Source` trait (every playback kind runs on its own thread via `source::spawn`) and `Events<E>` (events tagged with the session token, so stale ones are ignored) · `mod.rs` live session and reconnect · `buffer.rs` jitter buffer · `ogg.rs` seamless page filter · `decode.rs` Opus and MP3 decoding
 - `sink/` `mod.rs` `SinkHandle` and the output thread (epochs, keep-awake, failover, per-channel volume) · `device.rs` one `aplay` process with a non-blocking writer and stall detection · `pcm.rs` gain, encoding, browser mirror, chime (pure, tested)
@@ -355,3 +355,21 @@ that aren't obvious from the code.
   `stream::Source` (playback kinds), `quran::Fetcher` (downloads), `integrations::salah::Sources` (salah providers).
 - **Behaviour-preserving refactors are checked on the Pi**: the test binary (see Build), then the real paths (Quran play/pause/seek/
   next/stop through the API, a live broadcast, the browser console). Don't deploy while a broadcast is playing: a deploy restarts the service.
+
+## Docker (2026-11-11)
+
+- **Files:** `Dockerfile` (users' image), `compose.yaml` (users), `Dockerfile.dev` + `compose.dev.yaml` (development), `docs/DOCKER.md`.
+- **The image cross-builds on the build machine** (`--platform=$BUILDPLATFORM`): static musl via `rust-lld`, including `x86_64-unknown-linux-musl`
+  (added to `.cargo/config.toml`). QEMU runs only the runtime stage's `apt-get`. A local arm64 + armv7 build took about 7 minutes.
+  There is no `tls` feature (it needs a C cross-compiler); plain HTTP works for every endpoint.
+- **CI:** the `image` job in `release.yml` (after `release`) pushes `ghcr.io/<owner>/live-masjid:{latest,<tag>}` for amd64/arm64/armv7.
+  The package has to be made public once in GitHub's package settings for anonymous `docker compose pull`.
+- **`platform.rs`:** `Native` vs `Container` (`LIVEMASJID_PLATFORM`, else `/.dockerenv`).
+  - In a container: no sudo (adapter recovery is skipped), "Update now" explains `docker compose pull`, and "Check" asks the GitHub
+    releases API directly.
+  - Bluetooth runs only with the host's D-Bus socket mounted (`bluetooth_enabled`). The status and `/api/system/updates` carry `platform`.
+- **Dev hot reload:** `LIVEMASJID_UI_DIR` makes `web/assets.rs` read UI files from disk on each request (still only the paths in `FILES`).
+  It also injects a script that polls `/__dev/stamp` (newest mtime under the folder) and reloads the page. `cargo watch --poll` restarts
+  on Rust changes (measured about 5 s); polling is used because file events from a Windows host don't reliably reach the container.
+- **`docker compose -f compose.dev.yaml run --rm dev cargo test`** runs the tests on Linux x86 (68 passed), with no copy to the Pi.
+- **The dev container adds to the livemasjid.com traffic from the home IP:** stop it after use.

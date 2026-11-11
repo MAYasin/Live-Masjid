@@ -13,7 +13,7 @@ Pick your masjid once. When it goes live, the audio starts on your speaker, with
 ![Rust](https://img.shields.io/badge/rust-static%20binary-111111?style=flat-square&logo=rust)
 ![Platform](https://img.shields.io/badge/raspberry%20pi-zero%20%C2%B7%202%20%C2%B7%203%20%C2%B7%204%20%C2%B7%205-111111?style=flat-square&logo=raspberrypi)
 
-[Set up a device](docs/SETUP.md) · [How it works](#how-it-decides-to-play) · [Features](#features) · [Updates](#updates) · [Security](SECURITY.md)
+[Set up a device](docs/SETUP.md) · [Docker](docs/DOCKER.md) · [How it works](#how-it-decides-to-play) · [Features](#features) · [Updates](#updates) · [Security](SECURITY.md)
 
 </div>
 
@@ -172,6 +172,7 @@ The updater leaves development builds alone for 12 hours, so it won't immediatel
 | Guide | Contents |
 |---|---|
 | [docs/SETUP.md](docs/SETUP.md) | Flashing, the setup wizard, pairing a speaker, troubleshooting |
+| [docs/DOCKER.md](docs/DOCKER.md) | Running it on a home server or cluster with Docker, and local development with hot reload |
 | [SECURITY.md](SECURITY.md) | Reporting a vulnerability, release signing, deployment advice |
 | [AGENTS.md](AGENTS.md) | Design decisions, verified behaviour of livemasjid.com, hardware gotchas and a code map |
 

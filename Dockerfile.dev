@@ -1,0 +1,8 @@
+# Development image: the Rust toolchain plus the tools the app calls, and cargo-watch.
+# Used by compose.dev.yaml; the source is mounted, not copied. See docs/DOCKER.md.
+FROM rust:1-trixie
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends alsa-utils curl ca-certificates tzdata \
+ && rm -rf /var/lib/apt/lists/* \
+ && cargo install cargo-watch --locked
+WORKDIR /src

@@ -44,6 +44,9 @@ pub fn rfkill_blocked() -> bool {
 }
 
 async fn sudo(args: &[&str], timeout: Duration) -> bool {
+    if !crate::platform::is_native() {
+        return false; // in a container, root actions on the controller belong to the host
+    }
     let fut = Command::new("sudo").arg("-n").args(args).kill_on_drop(true).status();
     matches!(tokio::time::timeout(timeout, fut).await, Ok(Ok(s)) if s.success())
 }
