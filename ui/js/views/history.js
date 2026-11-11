@@ -1,19 +1,38 @@
-// "History": the broadcasts heard, for the followed masjid or all masjids, grouped by day with
-// each day's listening time. Each broadcast shows the salah it belonged to ("Esha"), or an
-// estimate for older ones ("around Esha"). The Pi keeps a year of history.
+// "History": the broadcasts heard, for the followed masjid or all masjids. Each shows the salah it
+// belonged to ("Esha"), or an estimate for older ones ("around Esha"). The Pi keeps a year.
+//
+// Filters: a period (7 days / 30 days / Year), a salah, and a calendar where a tapped day or
+// month narrows the list (shown as a removable chip). In the Year view this month is listed in
+// full and earlier months collapse to one summary row each, which opens that month.
 
 import { api } from "../api.js";
-import { emptyState } from "../components.js";
+import { emptyState, icon } from "../components.js";
 import { $, $$, setActive } from "../dom.js";
 import { clockTime, dayHeading, duration, escapeHtml, timeAgo } from "../format.js";
 import { getStatus } from "../store.js";
 
 const PAGE = 150;
-let scope = "selected";
-let limit = PAGE;
+const DAY_MS = 864e5;
+const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
+
+const state = {
+  scope: "selected", // or "all"
+  period: "7", // "7" | "30" | "year"
+  salah: "", // "" = all
+  range: null, // { from, to, label } from the calendar or a month row
+  limit: PAGE,
+  month: firstOfMonth(new Date()), // calendar page
+  days: {}, // "YYYY-MM-DD" → { count, ms }, the whole year (for dots and month rows)
+};
 
 /** The masjid's short name: "Lakewood Estate Masjid, Ormonde, Jhb, RSA" → "Lakewood Estate Masjid". */
 const shortName = (name) => String(name || "").split(",")[0].trim();
+const pad = (n) => String(n).padStart(2, "0");
+const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const monthKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+function firstOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const monthName = (d) => d.toLocaleDateString([], { month: "long", year: "numeric" });
 
 function salahTag(s) {
   if (!s.salah) return "";
@@ -37,50 +56,191 @@ export function historyRow(s, named = true) {
   </div>`;
 }
 
+/** Broadcasts grouped under day headings with each day's total. */
+function dayGroups(sessions, named) {
+  const days = new Map();
+  for (const s of sessions) {
+    const heading = dayHeading(s.start_ms);
+    if (!days.has(heading)) days.set(heading, []);
+    days.get(heading).push(s);
+  }
+  let html = "";
+  for (const [heading, list] of days) {
+    const total = list.reduce((sum, s) => sum + (s.end_ms - s.start_ms), 0);
+    html += `<div class="group-label history-day"><span>${escapeHtml(heading)}</span><span>${list.length} · ${escapeHtml(duration(total))}</span></div>`;
+    html += list.map((s) => historyRow(s, named)).join("");
+  }
+  return html;
+}
+
+/** One collapsed row per month before `before` (newest first), from the per-day totals. */
+function monthRows(before) {
+  const months = new Map();
+  for (const [day, t] of Object.entries(state.days)) {
+    const m = day.slice(0, 7);
+    if (m >= before) continue;
+    const cur = months.get(m) ?? { count: 0, ms: 0 };
+    months.set(m, { count: cur.count + t.count, ms: cur.ms + t.ms });
+  }
+  return [...months.entries()].sort((a, b) => b[0].localeCompare(a[0])).map(([m, t]) => {
+    const d = new Date(Number(m.slice(0, 4)), Number(m.slice(5, 7)) - 1, 1);
+    return `<button class="item clickable h-month" data-month="${m}">
+      <span class="grow item-title">${escapeHtml(monthName(d))}</span>
+      <span class="text-2 small tabular">${t.count} · ${escapeHtml(duration(t.ms))}</span>${icon("chevron")}
+    </button>`;
+  }).join("");
+}
+
+/** The query for the current filters: [from, to] in ms (to may be null). */
+function queryWindow() {
+  if (state.range) return [state.range.from, state.range.to];
+  const now = Date.now();
+  if (state.period === "year") return [firstOfMonth(new Date()).getTime(), null]; // this month in full
+  return [startOfDay(new Date(now - (Number(state.period) - 1) * DAY_MS)).getTime(), null];
+}
+
+function selectRange(from, to, label) {
+  state.range = { from: from.getTime(), to: to.getTime(), label };
+  state.limit = PAGE;
+  load();
+}
+
+function selectMonth(d) {
+  const from = firstOfMonth(d);
+  selectRange(from, new Date(from.getFullYear(), from.getMonth() + 1, 1), monthName(from));
+}
+
+function renderCalendar() {
+  const box = $("#h-cal");
+  if (box.hidden) return;
+  const first = state.month;
+  const today = dayKey(new Date());
+  const oldest = firstOfMonth(new Date(Date.now() - 365 * DAY_MS));
+  const lead = (first.getDay() + 6) % 7; // Monday first
+  const count = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
+  const selected = state.range && state.range.to - state.range.from <= DAY_MS ? dayKey(new Date(state.range.from)) : "";
+  let cells = WEEKDAYS.map((w) => `<span class="h-wd">${w}</span>`).join("");
+  cells += "<span></span>".repeat(lead);
+  for (let n = 1; n <= count; n++) {
+    const d = new Date(first.getFullYear(), first.getMonth(), n);
+    const key = dayKey(d);
+    const t = state.days[key];
+    const cls = [t ? "has" : "", key === today ? "today" : "", key === selected ? "sel" : ""].filter(Boolean).join(" ");
+    const title = t ? `${t.count} broadcast${t.count > 1 ? "s" : ""}, ${duration(t.ms)}` : "";
+    cells += `<button class="h-day ${cls}" data-day="${key}" title="${escapeHtml(title)}" ${key > today ? "disabled" : ""}>${n}</button>`;
+  }
+  box.innerHTML = `<div class="h-cal-head">
+      <button class="icon-btn sm h-prev" data-cal="-1" aria-label="Previous month" ${first <= oldest ? "disabled" : ""}>${icon("chevron")}</button>
+      <button class="linklike" data-cal-month title="Show this month">${escapeHtml(monthName(first))}</button>
+      <button class="icon-btn sm" data-cal="1" aria-label="Next month" ${monthKey(first) >= monthKey(new Date()) ? "disabled" : ""}>${icon("chevron")}</button>
+    </div>
+    <div class="h-grid">${cells}</div>`;
+}
+
 export function init() {
   $("#history-filter").addEventListener("click", (e) => {
     const btn = e.target.closest("button");
     if (!btn) return;
-    scope = btn.dataset.scope;
-    limit = PAGE;
+    state.scope = btn.dataset.scope;
+    state.limit = PAGE;
     setActive($$("#history-filter button"), btn);
-    show();
+    load();
+  });
+  $("#h-period").addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    state.period = btn.dataset.period;
+    state.range = null;
+    state.limit = PAGE;
+    setActive($$("#h-period button"), btn);
+    load();
+  });
+  $("#h-salah").addEventListener("click", (e) => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    state.salah = btn.dataset.salah;
+    state.limit = PAGE;
+    setActive($$("#h-salah button"), btn);
+    load();
+  });
+  $("#h-cal-toggle").addEventListener("click", (e) => {
+    const box = $("#h-cal");
+    box.hidden = !box.hidden;
+    e.currentTarget.setAttribute("aria-expanded", String(!box.hidden));
+    renderCalendar();
+  });
+  $("#h-cal").addEventListener("click", (e) => {
+    const step = e.target.closest("[data-cal]");
+    if (step) {
+      state.month = new Date(state.month.getFullYear(), state.month.getMonth() + Number(step.dataset.cal), 1);
+      renderCalendar();
+      return;
+    }
+    if (e.target.closest("[data-cal-month]")) return selectMonth(state.month);
+    const day = e.target.closest("[data-day]");
+    if (day) {
+      const [y, m, d] = day.dataset.day.split("-").map(Number);
+      const from = new Date(y, m - 1, d);
+      selectRange(from, new Date(y, m - 1, d + 1), dayHeading(from.getTime()));
+    }
+  });
+  $("#h-range-clear").addEventListener("click", () => {
+    state.range = null;
+    state.limit = PAGE;
+    load();
+  });
+  $("#history").addEventListener("click", (e) => {
+    const row = e.target.closest("[data-month]");
+    if (!row) return;
+    const [y, m] = row.dataset.month.split("-").map(Number);
+    selectMonth(new Date(y, m - 1, 1));
   });
   $("#history-more").addEventListener("click", () => {
-    limit += PAGE;
-    show();
+    state.limit += PAGE;
+    load();
   });
 }
 
-export async function show() {
+export function show() {
+  load();
+}
+
+async function load() {
   const status = getStatus();
   const mount = status?.mount;
   // Name the followed masjid instead of "This masjid".
   $("#history-mine").textContent = shortName(status?.station_name) || "This masjid";
-  const filter = scope === "selected" && mount ? `&mount=${encodeURIComponent(mount)}` : "";
+  const [from, to] = queryWindow();
+  const q = new URLSearchParams({ limit: state.limit, from });
+  if (to) q.set("to", to);
+  if (state.scope === "selected" && mount) q.set("mount", mount);
+  if (state.salah) q.set("salah", state.salah);
+  $("#h-range").hidden = !state.range;
+  $("#h-range-label").textContent = state.range?.label ?? "";
   try {
-    const { sessions } = await api(`history?limit=${limit}${filter}`);
-    const week = sessions.filter((s) => s.start_ms > Date.now() - 7 * 864e5);
-    $("#history-last").textContent = sessions.length ? (sessions[0].reason ? timeAgo(sessions[0].end_ms) : "Live now") : "Never";
-    $("#history-count").textContent = week.length;
-    $("#history-time").textContent = duration(week.reduce((sum, s) => sum + (s.end_ms - s.start_ms), 0));
+    const r = await api(`history?${q}`);
+    state.days = r.days || {};
+    renderCalendar();
+    $("#history-last").textContent = !r.last ? "Never" : r.last.live ? "Live now" : timeAgo(r.last.ms);
+    // The Year view's totals cover the whole year, not just the month listed in full.
+    const yearView = state.period === "year" && !state.range;
+    const totals = yearView
+      ? Object.values(state.days).reduce((a, t) => ({ count: a.count + t.count, ms: a.ms + t.ms }), { count: 0, ms: 0 })
+      : { count: r.total, ms: r.listened_ms };
+    $("#history-count").textContent = totals.count;
+    $("#history-time").textContent = duration(totals.ms);
 
-    const named = !(scope === "selected" && mount);
-    const days = new Map();
-    for (const s of sessions) {
-      const heading = dayHeading(s.start_ms);
-      if (!days.has(heading)) days.set(heading, []);
-      days.get(heading).push(s);
+    const named = !(state.scope === "selected" && mount);
+    let html = dayGroups(r.sessions, named);
+    if (yearView) {
+      const months = monthRows(monthKey(new Date()));
+      if (months) html += `<div class="group-label">Earlier this year</div>${months}`;
     }
-    let html = "";
-    for (const [heading, list] of days) {
-      const total = list.reduce((sum, s) => sum + (s.end_ms - s.start_ms), 0);
-      html += `<div class="group-label history-day"><span>${escapeHtml(heading)}</span><span>${escapeHtml(duration(total))}</span></div>`;
-      html += list.map((s) => historyRow(s, named)).join("");
-    }
-    $("#history").innerHTML = html || emptyState("No broadcasts yet. They appear here automatically.");
-    // Fewer than asked for means there is nothing older (the Pi keeps a year).
-    $("#history-more").hidden = sessions.length < limit;
+    const filtered = state.salah || state.range;
+    $("#history").innerHTML = html || emptyState(filtered
+      ? "No broadcasts match these filters."
+      : "No broadcasts yet. They appear here automatically.");
+    $("#history-more").hidden = r.sessions.length >= r.total;
   } catch (err) {
     $("#history").innerHTML = emptyState(err.message);
   }

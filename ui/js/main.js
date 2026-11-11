@@ -6,11 +6,11 @@ import * as install from "./install.js";
 import * as local from "./local.js";
 import * as store from "./store.js";
 import * as historyView from "./views/history.js";
+import * as masjid from "./views/masjid.js";
 import * as masjids from "./views/masjids.js";
 import * as now from "./views/now.js";
 import * as playback from "./views/playback.js";
 import * as quran from "./views/quran.js";
-import * as recordings from "./views/recordings.js";
 import * as security from "./views/security.js";
 import * as settings from "./views/settings.js";
 import * as speaker from "./views/speaker.js";
@@ -29,12 +29,14 @@ const VIEWS = {
   system: { title: "Device & app", module: system, section: "settings" },
   updates: { title: "Updates", module: updates, section: "settings" },
   security: { title: "Password", module: security, section: "settings" },
-  recordings: { title: "Recordings", module: recordings, section: "now" },
+  masjid: { title: "Masjid", module: masjid, section: "masjids" },
 };
 
 function go(route) {
-  // Routes look like "masjids" or "recordings/lakewood" (view + optional argument).
-  const [name, arg] = String(route ?? "").split("/");
+  // Routes look like "masjids" or "masjid/lakewood/recordings" (view + optional argument).
+  const [first, ...rest] = String(route ?? "").split("/");
+  const arg = rest.join("/");
+  const name = first === "recordings" ? "masjid" : first; // old links
   const view = VIEWS[name] ? name : "now";
   const hash = arg ? `${view}/${arg}` : view;
   const section = VIEWS[view].section ?? view;

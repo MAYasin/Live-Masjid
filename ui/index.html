@@ -26,6 +26,7 @@
       <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></symbol>
       <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
       <symbol id="i-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2"/><circle cx="12" cy="14" r="3.5"/><path d="M12 6.5h.01"/></symbol>
+      <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
       <symbol id="i-chip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
       <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
@@ -91,6 +92,7 @@
               <button class="btn primary" id="play"><svg><use href="#i-play"/></svg>Play now</button>
               <button class="btn primary" id="stop" hidden><svg><use href="#i-stop"/></svg>Stop</button>
               <button class="btn" id="listen-here" hidden><svg><use href="#i-headphones"/></svg>Listen on this device</button>
+              <button class="btn" id="now-recordings"><svg><use href="#i-list"/></svg>Recordings</button>
               <button class="btn" data-go="masjids">Change masjid</button>
             </div>
           </div>
@@ -129,18 +131,33 @@
           <button class="stat" data-go="masjids" id="stat-extra-btn"><span class="stat-key"><span class="dot" id="stat-extra-dot"></span><span id="stat-extra-key">Live now</span></span><span class="stat-value truncate" id="stat-extra">—</span></button>
         </div>
         <div class="panel mp-panel" id="now-player" hidden></div>
-        <div class="section-title" id="salah-title">Salah times <span class="xsmall text-3"><a class="text-3" id="salah-source" target="_blank" rel="noopener">masjidscreen.co.za</a> · <button class="linklike" id="salah-change" type="button">Change</button></span></div>
-        <div class="panel salah" id="salah"><div class="empty small">Loading salah times…</div></div>
-        <div class="section-title">Recordings <button class="btn ghost small" id="recordings-all">View all</button></div>
-        <div class="list" id="recordings-latest"><div class="empty small">Loading recordings…</div></div>
+        <div id="now-salah">
+          <div class="section-title salah-title">Salah times <span class="xsmall text-3"><a class="text-3" data-salah-source target="_blank" rel="noopener">masjidscreen.co.za</a> · <button class="linklike" data-salah-change type="button">Change</button></span></div>
+          <div class="panel salah"><div class="empty small">Loading salah times…</div></div>
+        </div>
       </section>
 
 
-      <!-- Recordings (opened from the home screen or a masjid; not in the main navigation) -->
-      <section class="view" id="view-recordings">
-        <div class="section-title" style="margin-top:0"><span id="rec-heading">Recordings</span>
-          <button class="btn ghost small" id="rec-refresh">Refresh</button></div>
-        <div class="notice" id="rec-notice" hidden></div>
+      <!-- One masjid (#masjid/<mount>): follow/listen, salah times and recordings -->
+      <section class="view" id="view-masjid">
+        <button class="back-link" data-go="masjids"><svg><use href="#i-chevron"/></svg>Masjids</button>
+        <div class="panel">
+          <div class="panel-body">
+            <div class="status-line" id="md-status"></div>
+            <h1 class="truncate" id="md-name">—</h1>
+            <div class="text-2 truncate" id="md-place"></div>
+            <div class="actions now-actions">
+              <button class="btn primary" id="md-listen"><svg><use href="#i-play"/></svg>Listen now</button>
+              <button class="btn" id="md-follow">Follow this masjid</button>
+            </div>
+            <div class="xsmall text-3" id="md-following" hidden>You're following this masjid. It plays on the speaker whenever they go live.</div>
+          </div>
+        </div>
+        <div id="md-salah">
+          <div class="section-title salah-title">Salah times <span class="xsmall text-3"><a class="text-3" data-salah-source target="_blank" rel="noopener">masjidscreen.co.za</a> · <button class="linklike" data-salah-change type="button">Change</button></span></div>
+          <div class="panel salah"><div class="empty small">Loading salah times…</div></div>
+        </div>
+        <div class="section-title" id="md-recordings-title">Recordings <button class="btn ghost small" id="rec-refresh">Refresh</button></div>
         <div class="list" id="rec-list"><div class="empty"><span class="spinner"></span></div></div>
       </section>
 
@@ -225,13 +242,31 @@
       <section class="view" id="view-history">
         <div class="stats three">
           <div class="stat"><div class="stat-key">Last heard</div><div class="stat-value truncate" id="history-last">—</div></div>
-          <div class="stat"><div class="stat-key">Broadcasts (7d)</div><div class="stat-value" id="history-count">—</div></div>
-          <div class="stat"><div class="stat-key">Listening (7d)</div><div class="stat-value truncate" id="history-time">—</div></div>
+          <div class="stat"><div class="stat-key">Broadcasts</div><div class="stat-value" id="history-count">—</div></div>
+          <div class="stat"><div class="stat-key">Listening</div><div class="stat-value truncate" id="history-time">—</div></div>
         </div>
         <div class="tabs history-filter" id="history-filter">
           <button class="active" data-scope="selected" id="history-mine">This masjid</button>
           <button data-scope="all">All masjids</button>
         </div>
+        <div class="h-controls">
+          <div class="seg" role="group" aria-label="Period" id="h-period">
+            <button data-period="7" class="active">7 days</button>
+            <button data-period="30">30 days</button>
+            <button data-period="year">Year</button>
+          </div>
+          <button class="btn small ghost" id="h-cal-toggle" aria-expanded="false" aria-controls="h-cal"><svg><use href="#i-calendar"/></svg>Calendar</button>
+        </div>
+        <div class="chips" id="h-salah" role="group" aria-label="Salah">
+          <button class="active" data-salah="">All</button>
+          <button data-salah="Fajr">Fajr</button>
+          <button data-salah="Zuhr" title="Zuhr and Jumu'ah">Zuhr</button>
+          <button data-salah="Asr">Asr</button>
+          <button data-salah="Maghrib">Maghrib</button>
+          <button data-salah="Esha">Esha</button>
+        </div>
+        <div class="panel h-cal" id="h-cal" hidden></div>
+        <div class="h-range" id="h-range" hidden><span id="h-range-label"></span><button class="icon-btn sm" id="h-range-clear" aria-label="Show the whole period"><svg><use href="#i-x"/></svg></button></div>
         <div class="list" id="history"><div class="empty">Loading…</div></div>
         <div class="history-footer"><button class="btn small" id="history-more" hidden>Show older</button><span class="xsmall text-3">The Pi keeps a year of history.</span></div>
       </section>
@@ -448,19 +483,6 @@
     </form>
   </div>
 
-  <div class="modal" id="masjid-modal">
-    <form onsubmit="return false">
-      <h3 id="ms-name"></h3>
-      <div class="text-2 small" id="ms-place"></div>
-      <div class="ms-actions">
-        <button type="button" class="btn primary" id="ms-listen"><svg><use href="#i-play"/></svg>Listen now</button>
-        <button type="button" class="btn" id="ms-follow">Follow this masjid</button>
-        <div class="xsmall text-3" id="ms-following" hidden>You're following this masjid. It plays on the speaker whenever they go live.</div>
-        <button type="button" class="btn" id="ms-recordings">Recordings</button>
-      </div>
-      <div class="actions"><button type="button" class="btn ghost" data-close>Cancel</button></div>
-    </form>
-  </div>
 
   <div class="modal" id="install-modal">
     <form onsubmit="return false">

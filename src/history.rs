@@ -28,7 +28,8 @@ pub struct Session {
     pub salah: Option<String>,
 }
 
-const KEEP: usize = 2000;
+/// At most this many sessions (a year of five broadcasts a day is about 1,800).
+const KEEP: usize = 4000;
 /// Sessions older than this are dropped.
 const KEEP_MS: u64 = 365 * 24 * 3600 * 1000;
 
@@ -171,5 +172,108 @@ impl History {
             }
             let _ = crate::config::write_atomic(&self.path, &buf);
         }
+    }
+}
+
+// ---------------------------------------------------------------- views of the history
+
+/// Listening on one day.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize)]
+pub struct DayTotal {
+    pub count: u32,
+    pub ms: u64,
+}
+
+/// Local calendar date ("YYYY-MM-DD") of `ts_ms`, for a zone `offset_s` east of UTC.
+pub fn local_date(ts_ms: u64, offset_s: i64) -> String {
+    #[allow(clippy::cast_possible_wrap)]
+    let secs = (ts_ms / 1000) as i64 + offset_s;
+    let (y, m, d) = civil_from_days(secs.div_euclid(86_400));
+    format!("{y:04}-{m:02}-{d:02}")
+}
+
+/// Days since 1970-01-01 → (year, month, day), proleptic Gregorian (H. Hinnant's algorithm).
+fn civil_from_days(z: i64) -> (i64, u32, u32) {
+    let z = z + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    (yoe + era * 400 + i64::from(m <= 2), m as u32, d as u32)
+}
+
+/// Does a broadcast's salah label match a filter? "Zuhr" includes Jumu'ah; "other" means no label.
+pub fn salah_matches(label: Option<&str>, filter: &str) -> bool {
+    match (label, filter) {
+        (None, "other") => true,
+        (Some(l), "Zuhr") => l == "Zuhr" || l == "Jumu'ah",
+        (Some(l), f) => l == f,
+        (None, _) => false,
+    }
+}
+
+/// Count and listening time per local day.
+pub fn per_day<'a>(sessions: impl IntoIterator<Item = &'a Session>, offset_s: i64) -> std::collections::BTreeMap<String, DayTotal> {
+    let mut days = std::collections::BTreeMap::<String, DayTotal>::new();
+    for s in sessions {
+        let d = days.entry(local_date(s.start_ms, offset_s)).or_default();
+        d.count += 1;
+        d.ms += s.end_ms.saturating_sub(s.start_ms);
+    }
+    days
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn session(start_ms: u64, mins: u64) -> Session {
+        Session {
+            id: start_ms,
+            mount: "m".into(),
+            name: "M".into(),
+            start_ms,
+            end_ms: start_ms + mins * 60_000,
+            codec: "opus".into(),
+            trigger: "poll".into(),
+            reason: "ended".into(),
+            reconnects: 0,
+            salah: None,
+        }
+    }
+
+    #[test]
+    fn local_dates() {
+        assert_eq!(local_date(0, 0), "1970-01-01");
+        // 2026-11-11 22:30 UTC is already the 12th in Johannesburg (UTC+2), still the 11th in UTC.
+        let t = 1_794_436_200_000;
+        assert_eq!(local_date(t, 0), "2026-11-11");
+        assert_eq!(local_date(t, 7200), "2026-11-12");
+        assert_eq!(local_date(t, -5 * 3600), "2026-11-11");
+        assert_eq!(local_date(951_782_400_000, 0), "2000-02-29", "leap day");
+    }
+
+    #[test]
+    fn salah_filters() {
+        assert!(salah_matches(Some("Zuhr"), "Zuhr"));
+        assert!(salah_matches(Some("Jumu'ah"), "Zuhr"), "Jumu'ah counts as Zuhr");
+        assert!(!salah_matches(Some("Asr"), "Zuhr"));
+        assert!(salah_matches(None, "other"));
+        assert!(!salah_matches(Some("Esha"), "other"));
+        assert!(!salah_matches(None, "Fajr"));
+    }
+
+    #[test]
+    fn totals_per_day() {
+        let day = 86_400_000;
+        let list = [session(10 * day, 20), session(10 * day + 3_600_000, 15), session(11 * day, 5)];
+        let days = per_day(&list, 0);
+        assert_eq!(days.len(), 2);
+        assert_eq!(days["1970-01-11"], DayTotal { count: 2, ms: 35 * 60_000 });
+        assert_eq!(days["1970-01-12"], DayTotal { count: 1, ms: 5 * 60_000 });
     }
 }

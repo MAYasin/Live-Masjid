@@ -51,35 +51,63 @@ pub async fn events(State(app): State<App>) -> Sse<impl Stream<Item = Result<Eve
 pub struct HistoryQuery {
     limit: Option<usize>,
     mount: Option<String>,
+    /// Only broadcasts that started in [from, to) (ms).
+    from: Option<u64>,
+    to: Option<u64>,
+    /// "Fajr" | "Zuhr" (incl. Jumu'ah) | "Asr" | "Maghrib" | "Esha" | "other" (no label).
+    salah: Option<String>,
 }
 
-/// Recent sessions, newest first. Sessions recorded before salah labels existed get an estimate
-/// from the followed masjid's current times (`salah_estimated`).
+/// Broadcasts, newest first, filtered by masjid, salah and time range; with the range's totals and
+/// per-day totals for the whole retained year (calendar dots, month summaries). Sessions recorded
+/// before salah labels existed get an estimate from the followed masjid's current times
+/// (`salah_estimated`).
 pub async fn history(State(app): State<App>, Query(q): Query<HistoryQuery>) -> Json<Value> {
-    let sessions = app.history.lock().unwrap().recent(q.limit.unwrap_or(200).min(2000), q.mount.as_deref());
+    use crate::history::{per_day, salah_matches};
+    let all = app.history.lock().unwrap().recent(usize::MAX, q.mount.as_deref());
+    let last = all.first().map(|s| json!({ "ms": s.end_ms, "live": s.reason.is_empty() }));
     let followed = app.settings().mount;
-    let needs_estimate = sessions.iter().any(|s| s.salah.is_none() && Some(&s.mount) == followed.as_ref());
+    let needs_estimate = all.iter().any(|s| s.salah.is_none() && Some(&s.mount) == followed.as_ref());
     let times = match (&followed, needs_estimate) {
         (Some(m), true) => Some(crate::integrations::salah::get(&app, m).await).filter(|t| t.status == "ok"),
         _ => None,
     };
     let offset = crate::salah_match::utc_offset_s();
-    let out: Vec<Value> = sessions
+    // Each session with its label: recorded, or estimated.
+    let labelled: Vec<(crate::history::Session, bool)> = all
         .into_iter()
-        .map(|s| {
-            let mut v = serde_json::to_value(&s).unwrap_or(Value::Null);
-            if s.salah.is_none() && Some(&s.mount) == followed.as_ref()
-                && let Some(t) = &times {
-                    let (weekday, minute) = crate::salah_match::local_day_minute(s.start_ms, offset);
-                    if let Some(label) = crate::salah_match::salah_for(t, weekday, minute) {
-                        v["salah"] = json!(label);
-                        v["salah_estimated"] = json!(true);
-                    }
-                }
+        .map(|mut s| {
+            let mut estimated = false;
+            if s.salah.is_none()
+                && Some(&s.mount) == followed.as_ref()
+                && let Some(t) = &times
+            {
+                let (weekday, minute) = crate::salah_match::local_day_minute(s.start_ms, offset);
+                s.salah = crate::salah_match::salah_for(t, weekday, minute);
+                estimated = s.salah.is_some();
+            }
+            (s, estimated)
+        })
+        .filter(|(s, _)| q.salah.as_deref().is_none_or(|f| salah_matches(s.salah.as_deref(), f)))
+        .collect();
+    let days = per_day(labelled.iter().map(|(s, _)| s), offset);
+    let in_range: Vec<&(crate::history::Session, bool)> = labelled
+        .iter()
+        .filter(|(s, _)| q.from.is_none_or(|f| s.start_ms >= f) && q.to.is_none_or(|t| s.start_ms < t))
+        .collect();
+    let listened_ms: u64 = in_range.iter().map(|(s, _)| s.end_ms.saturating_sub(s.start_ms)).sum();
+    let sessions: Vec<Value> = in_range
+        .iter()
+        .take(q.limit.unwrap_or(150).min(5000))
+        .map(|(s, estimated)| {
+            let mut v = serde_json::to_value(s).unwrap_or(Value::Null);
+            if *estimated {
+                v["salah_estimated"] = json!(true);
+            }
             v
         })
         .collect();
-    Json(json!({ "sessions": out }))
+    Json(json!({ "sessions": sessions, "total": in_range.len(), "listened_ms": listened_ms, "days": days, "last": last }))
 }
 
 pub async fn logs(State(app): State<App>) -> Json<Value> {

@@ -1,38 +1,20 @@
-// Salah times card on the home screen. Data comes from the Pi's cache: masjidboardlive.com
-// (detailed) or masjidscreen.co.za (fallback). Shows today's Gregorian + Hijri date, the five
-// salah with adhān/iqāmah, the next one with a countdown, the other times of the day,
-// Jumu'ah and upcoming changes, compactly. "Change" picks the source per masjid.
+// Salah times card, used on the home screen and on each masjid's page (one `SalahCard` per
+// card). Data comes from the Pi's cache: masjidboardlive.com (detailed) or masjidscreen.co.za
+// (fallback). Shows today's Gregorian + Hijri date, the five salah with adhān/iqāmah, the next one
+// with a countdown, the other times of the day, Jumu'ah and upcoming changes, compactly.
+// "Change" picks the source per masjid (one shared dialog).
 
 import { api } from "../api.js";
-import { $, $$, closeModal, openModal, toast } from "../dom.js";
+import { emptyState } from "../components.js";
+import { $, closeModal, openModal, toast } from "../dom.js";
 import { escapeHtml } from "../format.js";
-
-let data = null;
-let loadedFor = null;
-let retryTimer;
 
 const HIJRI_MONTHS = ["Muharram", "Safar", "Rabīʿ al-Awwal", "Rabīʿ al-Thānī", "Jumādā al-Ūlā", "Jumādā al-Ākhirah",
   "Rajab", "Shaʿbān", "Ramaḍān", "Shawwāl", "Dhū al-Qaʿdah", "Dhū al-Ḥijjah"];
 
-/** Load (or reload) times for `mount`. The Pi caches, so this is cheap to call. */
-export async function load(mount) {
-  if (!mount) {
-    hide();
-    return;
-  }
-  loadedFor = mount;
-  try {
-    data = await api(`salah?mount=${encodeURIComponent(mount)}`);
-  } catch {
-    data = { status: "error", message: "Couldn't load salah times" };
-  }
-  if (loadedFor === mount) render();
-}
-
-/** Re-render (countdown, Hijri date at Maghrib) without fetching. */
-export function tick() {
-  if (data && data.status === "ok") render();
-}
+/** The card whose source the "Change" dialog is editing. */
+let editing = null;
+const cards = [];
 
 function at(hhmm, dayOffset = 0) {
   const [h, m] = hhmm.split(":").map(Number);
@@ -109,33 +91,19 @@ function dayTimes(d) {
   return out;
 }
 
-function render() {
-  const box = $("#salah");
-  $("#salah-title").hidden = false;
-  box.hidden = false;
-  const source = $("#salah-source");
-  const provider = data.provider === "masjidboardlive" ? "masjidboardlive" : "masjidscreen.co.za";
-  source.textContent = provider;
-  source.href = data.source || "https://masjidscreen.co.za/";
-  $("#salah-change").hidden = !loadedFor;
+const boardName = (b) => (b.city ? `${b.name}, ${b.city}` : b.name);
 
-  const suggestion = data.suggestion
+/** "Is this the masjid's board?" prompt. */
+function suggestionHtml(data) {
+  return data.suggestion
     ? `<div class="salah-suggest small">Is <b>${escapeHtml(boardName(data.suggestion))}</b> this masjid's board on masjidboardlive?
         <span class="actions"><button class="btn small" data-board="${escapeHtml(data.suggestion.id)}">Use it</button>
         <button class="btn small ghost" data-board="none">No</button></span></div>`
     : "";
+}
 
-  if (data.status !== "ok") {
-    // Fallback: the card stays, with a calm one-line explanation (and a retry for errors).
-    const retry = data.status === "error" || data.status === "blocked"
-      ? ' <button class="btn ghost small" id="salah-retry">Retry</button>' : "";
-    box.innerHTML = `${suggestion}<div class="empty small">${escapeHtml(data.message || "Salah times unavailable")}${retry}</div>`;
-    $("#salah-retry")?.addEventListener("click", () => load(loadedFor));
-    clearTimeout(retryTimer);
-    if (data.status === "error") retryTimer = setTimeout(() => load(loadedFor), 10 * 60 * 1000);
-    return;
-  }
-
+/** The card's body for times that loaded. */
+function timesHtml(data) {
   const list = todays(data);
   const next = nextEvent(list);
   const now = Date.now();
@@ -180,47 +148,111 @@ function render() {
         `${escapeHtml(c.label)} <b>${escapeHtml(c.time)}</b> from ${escapeHtml(c.date)}`).join(" · ")}</span></div>`
     : "";
 
-  box.innerHTML = `${suggestion}${head}<div class="salah-grid">${cells}</div><div class="salah-next">${line}</div>${more}${jumuah}${changes}`;
+  return `${suggestionHtml(data)}${head}<div class="salah-grid">${cells}</div><div class="salah-next">${line}</div>${more}${jumuah}${changes}`;
 }
 
-function boardName(b) {
-  return b.city ? `${b.name}, ${b.city}` : b.name;
-}
+/**
+ * One salah card. `root` holds a `.salah-title` (with a `[data-salah-source]` link and a
+ * `[data-salah-change]` button) and a `.salah` box.
+ */
+export class SalahCard {
+  constructor(root) {
+    this.title = root.querySelector(".salah-title");
+    this.box = root.querySelector(".salah");
+    this.source = root.querySelector("[data-salah-source]");
+    this.change = root.querySelector("[data-salah-change]");
+    this.data = null;
+    this.mount = null;
+    this.retryTimer = null;
+    this.box.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-board]");
+      if (b) this.choose(b.dataset.board);
+      if (e.target.closest("[data-salah-retry]")) this.load(this.mount);
+    });
+    this.change.addEventListener("click", () => openChooser(this));
+    cards.push(this);
+  }
 
-async function choose(board) {
-  if (!loadedFor) return;
-  try {
-    data = await api("salah/board", { mount: loadedFor, board });
-    render();
-    closeModal("salah-modal");
-    toast(board === "none" ? "Using masjidscreen.co.za" : board === "auto" ? "Matching automatically" : `Using ${boardName(data.board || { name: "the board" })}`);
-  } catch (err) {
-    toast(err.message);
+  /** Load (or reload) times for `mount`. The Pi caches, so this is cheap to call. */
+  async load(mount) {
+    if (!mount) return this.hide();
+    this.mount = mount;
+    let data;
+    try {
+      data = await api(`salah?mount=${encodeURIComponent(mount)}`);
+    } catch {
+      data = { status: "error", message: "Couldn't load salah times" };
+    }
+    if (this.mount !== mount) return; // another masjid was chosen meanwhile
+    this.data = data;
+    this.render();
+  }
+
+  /** Re-render (countdown, Hijri date at Maghrib) without fetching. */
+  tick() {
+    if (this.data?.status === "ok" && !this.box.hidden) this.render();
+  }
+
+  hide() {
+    this.mount = null;
+    this.title.hidden = true;
+    this.box.hidden = true;
+  }
+
+  render() {
+    const data = this.data;
+    this.title.hidden = false;
+    this.box.hidden = false;
+    this.source.textContent = data.provider === "masjidboardlive" ? "masjidboardlive" : "masjidscreen.co.za";
+    this.source.href = data.source || "https://masjidscreen.co.za/";
+    this.change.hidden = !this.mount;
+    clearTimeout(this.retryTimer);
+    if (data.status === "ok") {
+      this.box.innerHTML = timesHtml(data);
+      return;
+    }
+    // Fallback: the card stays, with a calm one-line explanation (and a retry for errors).
+    const retry = data.status === "error" || data.status === "blocked"
+      ? ' <button class="btn ghost small" data-salah-retry>Retry</button>' : "";
+    this.box.innerHTML = suggestionHtml(data)
+      + emptyState(data.message || "Salah times unavailable", { small: true }).replace(/<\/div>$/, `${retry}</div>`);
+    if (data.status === "error") this.retryTimer = setTimeout(() => this.load(this.mount), 10 * 60 * 1000);
+  }
+
+  async choose(board) {
+    if (!this.mount) return;
+    try {
+      this.data = await api("salah/board", { mount: this.mount, board });
+      this.render();
+      closeModal("salah-modal");
+      toast(board === "none" ? "Using masjidscreen.co.za" : board === "auto" ? "Matching automatically" : `Using ${boardName(this.data.board || { name: "the board" })}`);
+      // Other cards showing the same masjid follow the new choice.
+      for (const c of cards) if (c !== this && c.mount === this.mount) c.load(c.mount);
+    } catch (err) {
+      toast(err.message);
+    }
   }
 }
 
-export function init() {
-  $("#salah").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-board]");
-    if (b) choose(b.dataset.board);
-  });
-  $("#salah-change").addEventListener("click", () => {
-    const cur = data?.board && data.manual ? data.board.url : "";
-    $("#salah-board-input").value = cur;
-    $("#salah-current").textContent = data?.provider === "masjidboardlive" && data.board
-      ? `Now: masjidboardlive · ${boardName(data.board)}${data.manual ? "" : " (matched automatically)"}`
-      : `Now: masjidscreen.co.za${data?.manual ? " (chosen)" : ""}`;
-    openModal("salah-modal", "#salah-board-input");
-  });
-  $("#salah-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const v = $("#salah-board-input").value.trim();
-    choose(v || "auto");
-  });
-  $("#salah-auto").addEventListener("click", () => choose("auto"));
-  $("#salah-none").addEventListener("click", () => choose("none"));
+function openChooser(card) {
+  editing = card;
+  const data = card.data;
+  $("#salah-board-input").value = data?.board && data.manual ? data.board.url : "";
+  $("#salah-current").textContent = data?.provider === "masjidboardlive" && data.board
+    ? `Now: masjidboardlive · ${boardName(data.board)}${data.manual ? "" : " (matched automatically)"}`
+    : `Now: masjidscreen.co.za${data?.manual ? " (chosen)" : ""}`;
+  openModal("salah-modal", "#salah-board-input");
 }
 
-export function hide() {
-  for (const el of $$("#salah, #salah-title")) el.hidden = true;
+/** Wire the shared "Change source" dialog and the countdown. Once, at start-up. */
+export function init() {
+  $("#salah-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    editing?.choose($("#salah-board-input").value.trim() || "auto");
+  });
+  $("#salah-auto").addEventListener("click", () => editing?.choose("auto"));
+  $("#salah-none").addEventListener("click", () => editing?.choose("none"));
+  // Countdown to the next salah, and a periodic refresh (the Pi serves it from cache).
+  setInterval(() => cards.forEach((c) => c.tick()), 30 * 1000);
+  setInterval(() => cards.forEach((c) => c.mount && c.load(c.mount)), 30 * 60 * 1000);
 }

@@ -1,13 +1,12 @@
-// "Now playing": selected masjid, playback controls, volume, health stats, recent broadcasts.
+// "Now playing": selected masjid, playback controls, volume, health stats and salah times.
+// Recordings are on the masjid's own page; the card links there.
 
 import { api } from "../api.js";
-import { emptyState } from "../components.js";
 import { $, runAction, setStat, toast } from "../dom.js";
 import { clockTime, duration, lowerFirst, timeAgo } from "../format.js";
 import { getStatus, subscribe } from "../store.js";
 import * as local from "../local.js";
 import * as miniplayer from "../miniplayer.js";
-import * as recordings from "./recordings.js";
 import * as salah from "./salah.js";
 
 const PHASES = {
@@ -22,8 +21,11 @@ const PHASES = {
 
 let volumeTimer;
 let salahMount = null;
+let salahCard;
+let navigate = () => {};
 
-export function init() {
+export function init(go) {
+  navigate = go;
   // Optimistic: the card changes on the tap; the live status confirms it (or puts it back).
   $("#play").addEventListener("click", () => liveAction("Connecting", true, api("player/play", {})));
   $("#stop").addEventListener("click", () => liveAction("Stopped", false, api("player/stop", {}), "Stopped until the next broadcast"));
@@ -35,35 +37,22 @@ export function init() {
     volumeTimer = setTimeout(() => runAction(null, () => api("settings", { volume: Number($("#volume").value) })), 120);
   });
   miniplayer.mount($("#now-player"));
-  $("#recordings-all").addEventListener("click", () => { location.hash = `recordings/${getStatus()?.mount ?? ""}`; });
-  $("#recordings-latest").addEventListener("click", recordings.onPlayClick);
+  $("#now-recordings").addEventListener("click", () => {
+    const mount = getStatus()?.mount;
+    if (mount) navigate(`masjid/${mount}/recordings`);
+  });
   $("#listen-here").addEventListener("click", (e) => {
     const s = getStatus();
     runAction(e.currentTarget, () => local.playLive(s?.mount, s?.recording?.title ?? s?.station_name));
   });
   local.onChange(() => { const s = getStatus(); if (s) render(s); });
-  subscribe(render);
   salah.init();
-  // Countdown to the next salah, and a periodic refresh (the Pi serves it from cache).
-  setInterval(salah.tick, 30 * 1000);
-  setInterval(() => salah.load(salahMount), 30 * 60 * 1000);
+  salahCard = new salah.SalahCard($("#now-salah"));
+  subscribe(render); // renders at once, so the card above must exist
 }
 
 export function show() {
-  loadRecordings();
-  salah.load(getStatus()?.mount);
-}
-
-async function loadRecordings() {
-  const mount = getStatus()?.mount;
-  const box = $("#recordings-latest");
-  if (!mount) { box.innerHTML = emptyState("Choose a masjid to see its recordings.", { small: true }); return; }
-  try {
-    const list = await api(`recordings?mount=${encodeURIComponent(mount)}`);
-    box.innerHTML = list.status === "ok" ? recordings.rows(list, 3) : recordings.fallback(list);
-  } catch (err) {
-    box.innerHTML = recordings.fallback({ message: err.message });
-  }
+  salahCard.load(getStatus()?.mount);
 }
 
 function paintVolume() {
@@ -93,8 +82,7 @@ function render(s) {
   const rec = s.recording;
   if (s.mount !== salahMount) {
     salahMount = s.mount;
-    salah.load(s.mount);
-    loadRecordings();
+    salahCard.load(s.mount);
   }
   $("#no-selection").hidden = Boolean(s.mount);
   $("#now-panel").hidden = !s.mount;

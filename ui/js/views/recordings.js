@@ -1,15 +1,13 @@
-// Recordings: the selected masjid's latest on the home screen, and a full list per masjid
-// (#recordings/<mount>). Tapping one plays it on the Pi speaker.
+// Recording list pieces, used on each masjid's page: rows with "Play on speaker" (and "Play here"
+// when browser listening is on), the fallback text, and the click handler.
 
 import { api } from "../api.js";
 import { emptyState } from "../components.js";
-import { $, runAction, toast } from "../dom.js";
+import { runAction, toast } from "../dom.js";
 import { duration, escapeHtml, fileSize, shortDate } from "../format.js";
 import { getStatus } from "../store.js";
 import * as local from "../local.js";
 import * as miniplayer from "../miniplayer.js";
-
-let currentMount = null;
 
 function meta(r) {
   const parts = [];
@@ -60,37 +58,4 @@ export function onPlayClick(e) {
   miniplayer.starting(title, "recording");
   api("recordings/play", { mount: btn.dataset.mount, id: btn.dataset.playRecording })
     .catch((err) => { miniplayer.cancelStarting(); toast(err.message); });
-}
-
-export function init() {
-  $("#rec-list").addEventListener("click", onPlayClick);
-  $("#rec-refresh").addEventListener("click", () => show(currentMount));
-}
-
-export async function show(mount) {
-  currentMount = mount || getStatus()?.mount || null;
-  const heading = $("#rec-heading");
-  if (!currentMount) {
-    heading.textContent = "Recordings";
-    $("#rec-list").innerHTML = emptyState("Choose a masjid first.");
-    return;
-  }
-  heading.textContent = `Recordings · ${currentMount}`;
-  $("#rec-list").innerHTML = '<div class="empty"><span class="spinner"></span></div>';
-  $("#rec-notice").hidden = true;
-  try {
-    const [list, stations] = await Promise.all([
-      api(`recordings?mount=${encodeURIComponent(currentMount)}`),
-      api("stations").catch(() => null),
-    ]);
-    const name = stations?.stations.find((s) => s.mount === currentMount)?.name;
-    if (name) heading.textContent = `Recordings · ${name}`;
-    if (list.status === "ok") {
-      $("#rec-list").innerHTML = rows(list);
-    } else {
-      $("#rec-list").innerHTML = fallback(list);
-    }
-  } catch (err) {
-    $("#rec-list").innerHTML = fallback({ message: err.message });
-  }
 }

@@ -182,8 +182,6 @@
 .pl-time { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
 .pl-time input { width: auto; margin: 0; }
 .q-row.unavailable { opacity: .45; }
-.ms-actions { display: grid; gap: 8px; margin-top: 16px; }
-.ms-actions .btn { justify-content: center; width: 100%; }
 .history-day { display: flex; justify-content: space-between; gap: 12px; }
 .speed-btn { min-width: 44px; height: 32px; padding: 0 8px; border: 1px solid var(--border); border-radius: var(--radius); background: none; color: var(--text-2); font-size: 12px; font-weight: 600; cursor: pointer; }
 .speed-btn:hover { background: var(--hover); color: var(--text); }
@@ -213,3 +211,31 @@
 .back-link:hover { background: var(--hover); color: var(--text); }
 @media (min-width: 900px) { .back-link { display: none; } }
 .log-tools { display: flex; justify-content: flex-end; margin-bottom: 6px; }
+
+/* Masjid list rows open the masjid's page */
+.item > .chev { flex: none; width: 16px; height: 16px; color: var(--text-3); }
+
+/* History filters */
+.h-controls { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.chips button { height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-2); font-size: 12px; font-weight: 500; }
+.chips button:hover { color: var(--text); }
+.chips button.active { border-color: var(--text); color: var(--text); }
+.h-range { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 12px; padding: 2px 4px 2px 10px; border: 1px solid var(--text); border-radius: 999px; font-size: 12px; font-weight: 500; }
+.h-cal { max-width: 360px; margin-bottom: 12px; padding: 10px; }
+.h-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.h-cal-head .linklike { font-weight: 600; color: var(--text); }
+.h-cal-head .h-prev svg { transform: rotate(180deg); }
+.h-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+.h-wd { font-size: 11px; color: var(--text-3); padding: 2px 0; }
+.h-day { position: relative; height: 34px; border: 1px solid transparent; border-radius: var(--radius); background: none; color: var(--text-2); font-size: 13px; }
+.h-day:hover:not(:disabled) { background: var(--hover); }
+.h-day:disabled { color: var(--text-3); opacity: .5; }
+.h-day.has { color: var(--text); font-weight: 600; }
+.h-day.has::after { content: ""; position: absolute; left: 50%; bottom: 4px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--text); }
+.h-day.today { border-color: var(--border); }
+.h-day.sel { background: var(--text); color: var(--bg); }
+.h-day.sel::after { background: var(--bg); }
+.h-month { width: 100%; border: 0; border-top: 1px solid var(--border); background: none; color: inherit; font: inherit; text-align: left; }
+.h-month:hover { background: var(--hover); }
+.h-month svg { flex: none; width: 16px; height: 16px; color: var(--text-3); }

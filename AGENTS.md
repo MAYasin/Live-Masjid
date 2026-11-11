@@ -14,7 +14,9 @@ that aren't obvious from the code.
   - GitHub Actions builds a release on every push to `main`.
   - The Pi pulls releases hourly through `livemasjid-update.timer`, health-checks them and rolls back on failure.
   - `deploy.sh` is the local development loop.
-- **No Docker anywhere.** The owner explicitly rejected it.
+- **Docker (changed 2026-11-11):** first rejected, now wanted for two uses only: local development (`docker compose` with hot reload)
+  and users running it on a home cluster (an image + compose; audio to an ALSA/USB speaker on that node, Bluetooth only via the host's BlueZ).
+  **The Pi keeps the native install** (`setup.sh`/`install.sh`); never move the Pi to Docker.
 - **Setup of new devices** is a bash wizard, `setup.sh` (macOS, Linux, Windows via Git Bash/WSL; bash 3.2-compatible for macOS), driving the generic `deploy/install.sh` over SSH, with a guide in `docs/SETUP.md`.
   It targets any Pi on Pi OS plus Debian-based ARM boards, 64-bit and 32-bit (aarch64, armv7, armv6).
 - **Audio: keep Bluetooth and wired both supported.** The owner currently has only a Bluetooth speaker, so Bluetooth must be rock-solid.
@@ -23,7 +25,11 @@ that aren't obvious from the code.
 - **UX cleanup (2026-11-08, chosen by the owner):** home has no recent broadcasts, and shows one warning only when something is wrong
   (`alertFor`). The status tiles are one compact row under the masjid card (`paintTiles`): plain-language values (Speaker, Live signal,
   Internet, then Buffer while live or "Live now"), each tile a button that opens Speaker/Device & app/Masjids. Pages keep set-and-forget
-  options under a collapsed "Advanced". A masjid row opens a sheet (Listen / Follow / Recordings) and addresses are shortened (`shortPlace`).
+  options under a collapsed "Advanced". Addresses are shortened (`shortPlace`).
+- **Masjid page (2026-11-11, chosen by the owner):** a masjid row opens `#masjid/<mount>` (`views/masjid.js`): Listen / Follow, that
+  masjid's salah times and all its recordings (no popup). The Now page has no recordings list, only a "Recordings" button on the card
+  (`#masjid/<mount>/recordings` scrolls to them). Old `#recordings/<mount>` links redirect. The salah card is a component (`SalahCard`
+  in `views/salah.js`, one per card; `salah.init()` wires the shared "Change source" dialog once, from `now.js`).
 - **Navigation (2026-11-11, chosen by the owner):** five items in the phone tab bar and the sidebar: Now, Masjids, Quran, History, Settings.
   There is no More sheet. Settings is a hub (`views/settings.js`, one row per sub-page with a one-line live status) for Speaker, Playback
   (`views/playback.js`), Device & app (`views/system.js`: the app's own CPU, memory, uptime and Quran storage first, then the Pi, then
@@ -35,7 +41,11 @@ that aren't obvious from the code.
   gets a salah label (`Session.salah`) shortly after it starts: `salah_match::salah_for` matches the start against that day's times
   (60 min before the adhān to 60 min after the iqāmah, closest wins, Zuhr on a Friday is Jumu'ah). Older sessions of the followed masjid
   without a label get an estimate from today's times (`salah_estimated`, shown as a dashed "around X" tag). The page shows the masjid's
-  short name, day headers with totals, and "Show older" in pages of 150.
+  short name, day headers with count and total, and "Show older" in pages of 150. Filters: masjid scope, period chips (7 days / 30 days /
+  Year), salah chips (Zuhr includes Jumu'ah) and a month calendar (dots on days with broadcasts; a tapped day or month becomes a removable
+  range chip). The Year view lists this month in full and earlier months as summary rows. `/api/history` takes `from`, `to`, `salah`,
+  `mount`, `limit` and returns `sessions`, `total`, `listened_ms`, `last` and `days` (per local day, whole year: `history::per_day`).
+  `KEEP` is 4000 sessions so a busy year fits.
 - **Phone install over plain HTTP:** iPhone Safari "Add to Home Screen" gives a full-screen app (apple-touch-icon and meta tags). Chrome
   installs a real app only on HTTPS, so Android gets a shortcut. The owner chose "best effort on http" for now; HTTPS (own domain with
   DNS-01, or Tailscale) is the way to a real Android install. Home-screen widgets need native apps. PNG icons are drawn by a small Node

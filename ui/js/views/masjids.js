@@ -1,8 +1,8 @@
-// "Masjids": searchable directory with live badges; choosing one starts following it.
+// "Masjids": searchable directory with live badges. A masjid opens its own page (masjid.js).
 
 import { api } from "../api.js";
 import { emptyState } from "../components.js";
-import { $, $$, closeModal, openModal, setActive, toast } from "../dom.js";
+import { $, $$, setActive } from "../dom.js";
 import { escapeHtml, lowerFirst, timeAgo } from "../format.js";
 
 const GENRES = ["Masjid", "Institution", "Aalim"];
@@ -10,7 +10,6 @@ let stations = [];
 let filter = "all";
 let searchTimer;
 let navigate = () => {};
-let chosen = null;
 
 // Provinces/states and countries that add length but not meaning to a place line.
 const NOISE = /^(south africa|gauteng|kwa-?zulu[- ]?natal|kzn|western cape|eastern cape|northern cape|free state|limpopo|mpumalanga|north west|rsa|united kingdom|uk|canada|usa|united states|saudi arabia|mozambique|ontario|north america)$/i;
@@ -37,18 +36,11 @@ export function init(go) {
   });
   $("#stations").addEventListener("click", (e) => {
     const row = e.target.closest(".item[data-mount]");
-    if (row) openActions(row.dataset.mount);
+    if (row) navigate(`masjid/${row.dataset.mount}`);
   });
   $("#stations").addEventListener("keydown", (e) => {
     const row = e.target.closest(".item[data-mount]");
-    if (row && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openActions(row.dataset.mount); }
-  });
-  $("#ms-follow").addEventListener("click", () => chosen && choose(chosen.mount, false));
-  $("#ms-listen").addEventListener("click", () => chosen && choose(chosen.mount, true));
-  $("#ms-recordings").addEventListener("click", () => {
-    if (!chosen) return;
-    closeModal("masjid-modal");
-    location.hash = `recordings/${chosen.mount}`;
+    if (row && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); navigate(`masjid/${row.dataset.mount}`); }
   });
   // "/" jumps to search, like most directory UIs.
   document.addEventListener("keydown", (e) => {
@@ -95,19 +87,8 @@ function row(s) {
     </div>
     ${s.live ? '<span class="live-tag">LIVE</span>' : ""}
     ${s.selected ? '<svg class="check"><use href="#i-check"/></svg>' : ""}
+    <svg class="chev"><use href="#i-chevron"/></svg>
   </div>`;
-}
-
-function openActions(mount) {
-  chosen = stations.find((s) => s.mount === mount);
-  if (!chosen) return;
-  $("#ms-name").textContent = chosen.name;
-  $("#ms-place").textContent = [chosen.live ? "Live now" : "", shortPlace(chosen.location) || chosen.genre].filter(Boolean).join(" · ");
-  $("#ms-follow").hidden = chosen.selected;
-  $("#ms-listen").hidden = !chosen.live;
-  $("#ms-listen").lastChild.textContent = chosen.selected ? "Listen now" : "Follow and listen now";
-  $("#ms-following").hidden = !chosen.selected;
-  openModal("masjid-modal");
 }
 
 function render() {
@@ -118,17 +99,3 @@ function render() {
   $("#stations").innerHTML = list.length ? list.map(row).join("") : emptyState("No masjids match your search.");
 }
 
-async function choose(mount, listen) {
-  const station = stations.find((s) => s.mount === mount);
-  if (!station) return;
-  closeModal("masjid-modal");
-  try {
-    if (!station.selected) await api("select", { mount });
-    for (const s of stations) s.selected = s.mount === mount;
-    if (listen) await api("player/play", {});
-    toast(listen ? `Playing ${station.name}` : `Following ${station.name}. It plays when they go live.`);
-    navigate("now");
-  } catch (err) {
-    toast(err.message);
-  }
-}
