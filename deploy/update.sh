@@ -23,6 +23,15 @@ as_app() {
   if [ "$(id -u)" = 0 ]; then runuser -u livemasjid -- "$@"; else "$@"; fi
 }
 
+# One update at a time. On a fresh install the installer runs this script while systemd starts the
+# never-run update timer, which fires at once: two copies wrote the same files and both failed
+# ("install: cannot create regular file … File exists"). The second copy now waits, then finds the
+# release already installed. (--check changes nothing and needs no lock.)
+if [ "$MODE" != "--check" ] && [ "$(id -u)" = 0 ]; then
+  exec 9>/run/lock/livemasjid-update.lock
+  flock -w 900 9 || { echo "another update is still running" >&2; exit 1; }
+fi
+
 if [ "$MODE" != "--check" ] && as_app test -f "$DATA/update-request"; then
   as_app rm -f "$DATA/update-request"
   MANUAL=yes
