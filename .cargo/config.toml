@@ -2,9 +2,11 @@
 # No C toolchain, zig or Docker needed. (The optional `tls` feature needs a C compiler.)
 
 # 64-bit: Pi Zero 2 W / 3 / 4 / 5 and other aarch64 boards.
+# Tuned for the Cortex-A53, but WITHOUT the ARMv8 crypto extensions: Broadcom left them out of the
+# Pi Zero 2 W, 3 and 4 chips, and code using them (SHA-256 for the UI password) died with SIGILL.
 [target.aarch64-unknown-linux-musl]
 linker = "rust-lld"
-rustflags = ["-C", "target-cpu=cortex-a53"]
+rustflags = ["-C", "target-cpu=cortex-a53", "-C", "target-feature=-aes,-sha2"]
 
 # 32-bit ARMv7 (Pi 2, many Allwinner/Rockchip boards, 32-bit OS images).
 [target.armv7-unknown-linux-musleabihf]

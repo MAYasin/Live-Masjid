@@ -172,7 +172,7 @@ step "Service user and files"
 id livemasjid >/dev/null 2>&1 || useradd --system --home-dir /var/lib/livemasjid --shell /usr/sbin/nologin livemasjid
 for g in audio bluetooth; do getent group "$g" >/dev/null && usermod -aG "$g" livemasjid; done
 install -d -m 755 "$D" "$D/bin" /etc/livemasjid
-install -m 755 "$HERE/update.sh" "$HERE/install-bin.sh" "$HERE/netwatch.sh" "$HERE/bt-recover.sh" "$HERE/bt-audio.sh" "$D/"
+install -m 755 -o root -g root "$HERE/update.sh" "$HERE/install-bin.sh" "$HERE/netwatch.sh" "$HERE/bt-recover.sh" "$HERE/bt-audio.sh" "$HERE/harden.sh" "$D/"
 install -m 644 "$HERE"/livemasjid*.service "$HERE"/livemasjid*.timer /etc/systemd/system/
 # Release-signing public key: installed once and never overwritten by a later release (trust on first use).
 [ -f /etc/livemasjid/release.pub ] || { [ -f "$HERE/release.pub" ] && install -m 644 "$HERE/release.pub" /etc/livemasjid/release.pub; }

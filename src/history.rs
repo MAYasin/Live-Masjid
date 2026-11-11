@@ -72,6 +72,13 @@ impl History {
         }
     }
 
+    /// Forget every broadcast (Settings › Clear history).
+    pub fn clear(&mut self) {
+        self.sessions.clear();
+        self.last_heard.clear();
+        let _ = crate::config::write_atomic(&self.path, b"");
+    }
+
     pub fn last_heard(&self, mount: &str) -> Option<u64> {
         self.last_heard.get(mount).copied()
     }

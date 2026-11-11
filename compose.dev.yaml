@@ -31,7 +31,8 @@ services:
       LIVEMASJID_BUILD: dev-docker
       TZ: ${TZ:-Africa/Johannesburg}
     # --poll: file events from a Windows or macOS host don't always reach the container.
-    command: cargo watch --poll -w src -w Cargo.toml -x run
+    # The loop restarts the app after Settings › Restart or Reset (a clean exit), as systemd does on the Pi.
+    command: cargo watch --poll -w src -w Cargo.toml -s "while cargo run; do echo restarting; done"
 
 volumes:
   cargo-registry:

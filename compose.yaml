@@ -12,6 +12,8 @@ services:
       - "8080:8080"
     environment:
       TZ: Africa/Johannesburg # your time zone: salah times, history and schedules use it
+      # Names other than an IP address or a .local name that you open it by (e.g. a reverse proxy):
+      # LIVEMASJID_ALLOWED_HOSTS: masjid.example.org
     volumes:
       - livemasjid-data:/data
       # Bluetooth speaker: share the host's BlueZ (bluetoothd and bluez-alsa run on the host):

@@ -3,6 +3,7 @@
 mod api;
 mod assets;
 mod auth;
+mod guard;
 
 use crate::state::App;
 use axum::Router;
@@ -99,5 +100,7 @@ pub fn router(app: App) -> Router {
         // fallback route, and matchit 0.8.4 (pinned by axum 0.8) crashed while checking it
         // for conflicts in one build (SIGSEGV formatting a null route string).
         .merge(protected)
+        // Outermost: every request (assets too) must name the Pi, and changes must come from this page.
+        .layer(middleware::from_fn(guard::check))
         .with_state(app)
 }

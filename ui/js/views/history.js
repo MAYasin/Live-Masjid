@@ -1,9 +1,9 @@
 // "History": the broadcasts heard, for the followed masjid or all masjids. Each shows the salah it
 // belonged to ("Esha"), or an estimate for older ones ("around Esha"). The Pi keeps a year.
 //
-// Filters: a period (7 days / 30 days / Year), a salah, and a calendar where a tapped day or
-// month narrows the list (shown as a removable chip). In the Year view this month is listed in
-// full and earlier months collapse to one summary row each, which opens that month.
+// Filters: a period (7 days / 30 days / Year) and a salah. In the Year view this month is listed in
+// full and earlier months collapse to one summary row each; tapping one shows that month (as a
+// removable chip).
 
 import { api } from "../api.js";
 import { emptyState, icon } from "../components.js";
@@ -13,22 +13,19 @@ import { getStatus } from "../store.js";
 
 const PAGE = 150;
 const DAY_MS = 864e5;
-const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
 
 const state = {
   scope: "selected", // or "all"
   period: "7", // "7" | "30" | "year"
   salah: "", // "" = all
-  range: null, // { from, to, label } from the calendar or a month row
+  range: null, // { from, to, label } from a month row
   limit: PAGE,
-  month: firstOfMonth(new Date()), // calendar page
-  days: {}, // "YYYY-MM-DD" → { count, ms }, the whole year (for dots and month rows)
+  days: {}, // "YYYY-MM-DD" → { count, ms }, the whole year (for the month rows)
 };
 
 /** The masjid's short name: "Lakewood Estate Masjid, Ormonde, Jhb, RSA" → "Lakewood Estate Masjid". */
 const shortName = (name) => String(name || "").split(",")[0].trim();
 const pad = (n) => String(n).padStart(2, "0");
-const dayKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const monthKey = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
 function firstOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
 const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -110,33 +107,6 @@ function selectMonth(d) {
   selectRange(from, new Date(from.getFullYear(), from.getMonth() + 1, 1), monthName(from));
 }
 
-function renderCalendar() {
-  const box = $("#h-cal");
-  if (box.hidden) return;
-  const first = state.month;
-  const today = dayKey(new Date());
-  const oldest = firstOfMonth(new Date(Date.now() - 365 * DAY_MS));
-  const lead = (first.getDay() + 6) % 7; // Monday first
-  const count = new Date(first.getFullYear(), first.getMonth() + 1, 0).getDate();
-  const selected = state.range && state.range.to - state.range.from <= DAY_MS ? dayKey(new Date(state.range.from)) : "";
-  let cells = WEEKDAYS.map((w) => `<span class="h-wd">${w}</span>`).join("");
-  cells += "<span></span>".repeat(lead);
-  for (let n = 1; n <= count; n++) {
-    const d = new Date(first.getFullYear(), first.getMonth(), n);
-    const key = dayKey(d);
-    const t = state.days[key];
-    const cls = [t ? "has" : "", key === today ? "today" : "", key === selected ? "sel" : ""].filter(Boolean).join(" ");
-    const title = t ? `${t.count} broadcast${t.count > 1 ? "s" : ""}, ${duration(t.ms)}` : "";
-    cells += `<button class="h-day ${cls}" data-day="${key}" title="${escapeHtml(title)}" ${key > today ? "disabled" : ""}>${n}</button>`;
-  }
-  box.innerHTML = `<div class="h-cal-head">
-      <button class="icon-btn sm h-prev" data-cal="-1" aria-label="Previous month" ${first <= oldest ? "disabled" : ""}>${icon("chevron")}</button>
-      <button class="linklike" data-cal-month title="Show this month">${escapeHtml(monthName(first))}</button>
-      <button class="icon-btn sm" data-cal="1" aria-label="Next month" ${monthKey(first) >= monthKey(new Date()) ? "disabled" : ""}>${icon("chevron")}</button>
-    </div>
-    <div class="h-grid">${cells}</div>`;
-}
-
 export function init() {
   $("#history-filter").addEventListener("click", (e) => {
     const btn = e.target.closest("button");
@@ -162,27 +132,6 @@ export function init() {
     state.limit = PAGE;
     setActive($$("#h-salah button"), btn);
     load();
-  });
-  $("#h-cal-toggle").addEventListener("click", (e) => {
-    const box = $("#h-cal");
-    box.hidden = !box.hidden;
-    e.currentTarget.setAttribute("aria-expanded", String(!box.hidden));
-    renderCalendar();
-  });
-  $("#h-cal").addEventListener("click", (e) => {
-    const step = e.target.closest("[data-cal]");
-    if (step) {
-      state.month = new Date(state.month.getFullYear(), state.month.getMonth() + Number(step.dataset.cal), 1);
-      renderCalendar();
-      return;
-    }
-    if (e.target.closest("[data-cal-month]")) return selectMonth(state.month);
-    const day = e.target.closest("[data-day]");
-    if (day) {
-      const [y, m, d] = day.dataset.day.split("-").map(Number);
-      const from = new Date(y, m - 1, d);
-      selectRange(from, new Date(y, m - 1, d + 1), dayHeading(from.getTime()));
-    }
   });
   $("#h-range-clear").addEventListener("click", () => {
     state.range = null;
@@ -220,7 +169,6 @@ async function load() {
   try {
     const r = await api(`history?${q}`);
     state.days = r.days || {};
-    renderCalendar();
     $("#history-last").textContent = !r.last ? "Never" : r.last.live ? "Live now" : timeAgo(r.last.ms);
     // The Year view's totals cover the whole year, not just the month listed in full.
     const yearView = state.period === "year" && !state.range;

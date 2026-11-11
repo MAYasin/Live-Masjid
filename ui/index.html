@@ -26,7 +26,6 @@
       <symbol id="i-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V20h14V9.5"/></symbol>
       <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
       <symbol id="i-speaker" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2.5" width="14" height="19" rx="2"/><circle cx="12" cy="14" r="3.5"/><path d="M12 6.5h.01"/></symbol>
-      <symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></symbol>
       <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></symbol>
       <symbol id="i-chip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="1.5"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
       <symbol id="i-sliders" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
@@ -255,7 +254,6 @@
             <button data-period="30">30 days</button>
             <button data-period="year">Year</button>
           </div>
-          <button class="btn small ghost" id="h-cal-toggle" aria-expanded="false" aria-controls="h-cal"><svg><use href="#i-calendar"/></svg>Calendar</button>
         </div>
         <div class="chips" id="h-salah" role="group" aria-label="Salah">
           <button class="active" data-salah="">All</button>
@@ -265,7 +263,6 @@
           <button data-salah="Maghrib">Maghrib</button>
           <button data-salah="Esha">Esha</button>
         </div>
-        <div class="panel h-cal" id="h-cal" hidden></div>
         <div class="h-range" id="h-range" hidden><span id="h-range-label"></span><button class="icon-btn sm" id="h-range-clear" aria-label="Show the whole period"><svg><use href="#i-x"/></svg></button></div>
         <div class="list" id="history"><div class="empty">Loading…</div></div>
         <div class="history-footer"><button class="btn small" id="history-more" hidden>Show older</button><span class="xsmall text-3">The Pi keeps a year of history.</span></div>
@@ -280,6 +277,11 @@
           <button class="hub-row" data-go="updates"><svg><use href="#i-refresh"/></svg><span class="grow"><b>Updates</b><span id="hub-updates">—</span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
           <button class="hub-row" data-go="security"><svg><use href="#i-lock"/></svg><span class="grow"><b>Password</b><span id="hub-security">—</span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
           <button class="hub-row" data-install><svg><use href="#i-plus"/></svg><span class="grow"><b>Install on this phone</b><span>Open Live Masjid from your home screen</span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
+        </div>
+        <div class="section-title">Data</div>
+        <div class="panel hub">
+          <button class="hub-row" id="clear-history"><svg><use href="#i-clock"/></svg><span class="grow"><b>Clear history</b><span>Delete the list of broadcasts heard</span></span></button>
+          <button class="hub-row danger" id="reset-app"><svg><use href="#i-refresh"/></svg><span class="grow"><b>Reset app</b><span>Back to a fresh install. Downloaded Quran recitations are kept.</span></span></button>
         </div>
       </section>
 

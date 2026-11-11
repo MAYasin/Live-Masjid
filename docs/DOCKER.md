@@ -71,6 +71,7 @@ Environment variables the app reads:
 | `LIVEMASJID_PORT` | Web port (default 80; 8080 in the images). |
 | `LIVEMASJID_BLUETOOTH` | `off` disables Bluetooth management. |
 | `LIVEMASJID_UI_DIR` | Development: serve the UI from this folder, with live reload. |
+| `LIVEMASJID_ALLOWED_HOSTS` | Extra names the page may be opened by (comma-separated). IP addresses, `localhost`, `.local` names and the host name on `.lan`/`.home` are always allowed; anything else is refused, to block DNS-rebinding attacks. |
 | `LIVEMASJID_REPO` | GitHub repository checked for new versions in Docker (default `MAYasin/Live-Masjid`). |
 | `LIVEMASJID_LOG` | Log filter, e.g. `livemasjid=debug`. |
 | `TZ` | Time zone. Salah times, history days and schedules use it. |

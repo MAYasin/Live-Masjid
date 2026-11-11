@@ -80,6 +80,24 @@ Open the address shown at the end (e.g. `http://masjid-radio.local/` or `http://
    - **USB/wired:** plug it in; **Fallback output → Automatic** picks it up.
 3. **Settings:** optionally set a password for the page.
 
+### Lock it down (recommended)
+
+Pi OS lets the `pi` user run anything as root without a password, and accepts SSH passwords. Once you can sign in with your SSH key
+(the wizard sets that up), run this on the Pi once:
+
+```sh
+sudo /opt/livemasjid/harden.sh
+```
+
+Afterwards:
+
+- SSH accepts keys only.
+- `sudo` asks for the password, except for installing a new app binary, which the dev loop (`./deploy.sh`) uses.
+- The app's files belong to root.
+
+The app itself never runs as root. It has a few exact sudo rules (rfkill, Bluetooth recovery and the update service).
+Updates are signed releases. Also set a password for the web page under Settings › Password.
+
 ## 4. Updates and the release pipeline
 
 - Every push to `main` runs GitHub Actions (`.github/workflows/release.yml`):

@@ -42,10 +42,14 @@ that aren't obvious from the code.
   (60 min before the adhān to 60 min after the iqāmah, closest wins, Zuhr on a Friday is Jumu'ah). Older sessions of the followed masjid
   without a label get an estimate from today's times (`salah_estimated`, shown as a dashed "around X" tag). The page shows the masjid's
   short name, day headers with count and total, and "Show older" in pages of 150. Filters: masjid scope, period chips (7 days / 30 days /
-  Year), salah chips (Zuhr includes Jumu'ah) and a month calendar (dots on days with broadcasts; a tapped day or month becomes a removable
-  range chip). The Year view lists this month in full and earlier months as summary rows. `/api/history` takes `from`, `to`, `salah`,
+  Year) and salah chips (Zuhr includes Jumu'ah). No calendar: the owner had it removed. The Year view lists this month in full and
+  earlier months as summary rows; tapping one shows that month as a removable range chip. `/api/history` takes `from`, `to`, `salah`,
   `mount`, `limit` and returns `sessions`, `total`, `listened_ms`, `last` and `days` (per local day, whole year: `history::per_day`).
   `KEEP` is 4000 sessions so a busy year fits.
+- **Data (2026-11-11):** Settings › Data has "Clear history" (`/api/system/clear-history`) and "Reset app" (`/api/system/reset`).
+  Reset removes everything in the data folder except `quran/` (`reset_data`, never following symlinks), then exits at once, and
+  systemd or Docker restarts it fresh. BlueZ pairings stay at the OS level; only the app's speaker choice is forgotten.
+  The Masjids search is cleared every time that page opens.
 - **Phone install over plain HTTP:** iPhone Safari "Add to Home Screen" gives a full-screen app (apple-touch-icon and meta tags). Chrome
   installs a real app only on HTTPS, so Android gets a shortcut. The owner chose "best effort on http" for now; HTTPS (own domain with
   DNS-01, or Tailscale) is the way to a real Android install. Home-screen widgets need native apps. PNG icons are drawn by a small Node
@@ -56,7 +60,8 @@ that aren't obvious from the code.
 
 - **Address:** `pi@192.168.1.101` (also `pi.local`).
 - **OS:** Raspberry Pi OS Lite 64-bit Trixie (Debian 13), aarch64, 415 MB RAM.
-- **Access:** SSH key auth from the dev PC (`~/.ssh/id_ed25519`). Passwordless sudo for `pi` was enabled by the owner.
+- **Access:** SSH key auth from the dev PC (`~/.ssh/id_ed25519`), key sign-in only. `pi` has **no blanket passwordless sudo** (removed
+  2026-11-11 by `harden.sh`): only `sudo -n /opt/livemasjid/install-bin.sh` works without a password; anything else asks for it.
 - **Installed layout:**
   - `/opt/livemasjid/{bin/livemasjid,VERSION,update.sh,install-bin.sh,netwatch.sh}`
   - data in `/var/lib/livemasjid`
@@ -88,7 +93,7 @@ that aren't obvious from the code.
     answer; "Update now" writes `<data>/update-request` and starts `livemasjid-update.service`, and `update.sh` treats that run as `--force`.
     The "Automatic updates" switch is `Settings::auto_update`; timer runs grep `settings.json` for `"auto_update": false` and skip.
     `update.sh` writes `<data>/update-status.json` (`checking/updating/updated/up_to_date/skipped/failed`); the page polls it and
-    reloads once the version changes. No new sudo rules were needed. `deploy.sh` now also installs the helper scripts.
+    reloads once the version changes. No new sudo rules were needed. `deploy.sh --scripts` installs the helper scripts (asks for the Pi password).
 - **Over SSH, never run `pkill -f livemasjid`.** It matches the SSH command line and kills your own session. Use `pkill -x livemasjid`.
 - **Shell scripts must keep LF line endings** (`.gitattributes`). `deploy.sh` and `setup.sh` also strip CR on the device as a safety net.
 
@@ -373,3 +378,35 @@ that aren't obvious from the code.
   on Rust changes (measured about 5 s); polling is used because file events from a Windows host don't reliably reach the container.
 - **`docker compose -f compose.dev.yaml run --rm dev cargo test`** runs the tests on Linux x86 (68 passed), with no copy to the Pi.
 - **The dev container adds to the livemasjid.com traffic from the home IP:** stop it after use.
+
+## Security (2026-11-11)
+
+- **No back doors.** Nothing installs or changes code that root runs without the Pi password or a signed release.
+  - `deploy.sh` (dev loop) installs only the binary, through the narrow rule `pi ALL=(root) NOPASSWD: /opt/livemasjid/install-bin.sh`.
+    The binary runs as the unprivileged `livemasjid` user. `install-bin.sh` copies it in as root-owned, and checks it with `--version`
+    as `livemasjid`, never as root.
+  - Root-run scripts (`update.sh`, `netwatch.sh`, `bt-*.sh`, `install-bin.sh`, `harden.sh`) change only through signed releases or
+    `deploy.sh --scripts`, which asks for the password.
+- **`harden.sh`** (installed in `/opt/livemasjid`; run `sudo /opt/livemasjid/harden.sh`; safe to repeat):
+  - SSH key sign-in only, via a `10-` drop-in that wins over Pi OS's `50-cloud-init.conf`. Skipped without an authorized key.
+  - Comments out the user's `NOPASSWD: ALL` (Pi OS's `010_pi-nopasswd`), with a backup and `visudo -c`. Skipped if the user has no password.
+  - Root-owns `/opt/livemasjid` and the sudo rules.
+- **The app user's sudo rules are exact commands** (rfkill unblock, `bt-recover.sh`, two `systemctl start` units). Keep them that way:
+  no arguments the app chooses, no wildcards, and only scripts owned by root and not writable by others.
+- **Root never touches the data folder directly.** `update.sh` reads and writes `/var/lib/livemasjid` through `runuser -u livemasjid`
+  (`as_app`). The app owns that folder, so a planted symlink could otherwise make root overwrite or `chmod` any file.
+- **Web (`web/guard.rs`, every request):**
+  - The `Host` must be an IP address, `localhost`, `*.local`, the host name (alone or on `.lan`/`.home`/`.internal`/`.localdomain`/
+    `.home.arpa`), or a name in `LIVEMASJID_ALLOWED_HOSTS`. This blocks DNS rebinding.
+  - Never allow `<hostname>.<public domain>`: an attacker can register `raspberrypi.example.com`.
+  - Requests that change something must have no `Origin` or one matching `Host`. This blocks cross-site requests, which matters most
+    with no password set.
+  - Session cookie: HttpOnly, SameSite=Strict.
+
+## More gotchas
+
+- **SIGILL from the ARMv8 crypto extensions (fixed 2026-11-11).** `target-cpu=cortex-a53` also turns on the `aes`/`sha2` instructions, but
+  the Broadcom chips in the Pi Zero 2 W, 3 and 4 leave them out. SHA-256 (the UI password) killed the service with `status=4/ILL`, so
+  setting a password crashed it.
+  - `.cargo/config.toml` now adds `-C target-feature=-aes,-sha2`. Keep it.
+  - `config::password_tests` hashes on the Pi and would crash the test run if this comes back.

@@ -198,3 +198,21 @@ pub fn verify_password(password: &str, stored: &str) -> bool {
 pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
+
+#[cfg(test)]
+mod password_tests {
+    use super::*;
+
+    /// Also guards the build flags: on a Pi without the ARMv8 crypto extensions, SHA-256 compiled
+    /// for them dies with SIGILL (this test then crashes on the Pi instead of passing).
+    #[test]
+    fn password_hash_round_trip() {
+        let stored = hash_password("correct horse", None);
+        assert!(verify_password("correct horse", &stored));
+        assert!(!verify_password("wrong", &stored));
+        assert!(!verify_password("correct horse", "no-salt-separator"));
+        let (salt, _) = stored.split_once('$').unwrap();
+        assert_eq!(hash_password("correct horse", Some(salt)), stored, "same salt, same hash");
+        assert_ne!(hash_password("correct horse", None), stored, "a fresh salt each time");
+    }
+}

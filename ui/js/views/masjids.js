@@ -53,6 +53,7 @@ export function init(go) {
 }
 
 export async function show() {
+  $("#search").value = ""; // a fresh list each time the page opens
   try {
     ({ stations } = await api("stations"));
     render();

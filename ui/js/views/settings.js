@@ -2,13 +2,32 @@
 // its current state in one line, opening a focused page.
 
 import { api } from "../api.js";
-import { $ } from "../dom.js";
+import { $, runAction, toast } from "../dom.js";
 import { subscribe } from "../store.js";
 
 const DELAYS = { 3: "Near live", 8: "Balanced", 20: "Extra steady" };
 
 export function init() {
   subscribe(renderFromStatus);
+  $("#clear-history").addEventListener("click", (e) => {
+    if (!confirm("Delete all listening history? This can't be undone.")) return;
+    runAction(e.currentTarget, () => api("system/clear-history", {}), "History cleared");
+  });
+  $("#reset-app").addEventListener("click", resetApp);
+}
+
+/** Back to a fresh install (Quran downloads kept); the app restarts, then this page reloads. */
+async function resetApp() {
+  const ok = confirm("Reset Live Masjid to a fresh install?\n\nSettings, the password, history, playlists, schedules and the "
+    + "speaker choice are removed. Downloaded Quran recitations are kept. The app restarts.");
+  if (!ok) return;
+  try {
+    await api("system/reset", {});
+    toast("Resetting… the page reloads in a moment");
+    setTimeout(() => location.reload(), 8000);
+  } catch (err) {
+    toast(err.message);
+  }
 }
 
 export async function show() {

@@ -38,6 +38,24 @@ pub async fn action(State(app): State<App>, Path(action): Path<String>) -> ApiRe
                 std::process::exit(0); // systemd restarts us
             });
         }
+        "clear-history" => {
+            app.history.lock().unwrap().clear();
+            app.status.send_modify(|st| st.last_heard_ms = None);
+            app.log("info", "History cleared from the UI");
+        }
+        "reset" => {
+            // Back to a fresh install, keeping downloaded Quran recitations. The files go first,
+            // then the process exits at once (no shutdown that could save settings again), and
+            // systemd (or Docker's restart policy) starts it fresh.
+            let dir = app.paths.settings.parent().map(std::path::Path::to_path_buf).ok_or_else(|| ApiError::bad("no data folder"))?;
+            tracing::warn!("reset requested from the UI: removing everything in {} except quran/", dir.display());
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(300)).await; // let the reply go out
+                let removed = tokio::task::spawn_blocking(move || reset_data(&dir)).await.unwrap_or(0);
+                tracing::warn!("reset: removed {removed} items; restarting");
+                std::process::exit(0);
+            });
+        }
         "update" if !crate::platform::is_native() => {
             return Err(ApiError::bad(format!("This copy runs in Docker. Update it with: {DOCKER_UPDATE}")));
         }
@@ -95,6 +113,24 @@ pub async fn updates(State(app): State<App>, Query(q): Query<UpdatesQuery>) -> A
     })))
 }
 
+/// Remove everything in the data folder except the Quran recitations (`quran/`). Returns how
+/// many entries were removed.
+fn reset_data(dir: &std::path::Path) -> usize {
+    let keep = |name: &std::ffi::OsStr| name == "quran";
+    std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| !keep(&e.file_name()))
+        .filter(|e| {
+            let p = e.path();
+            // symlink_metadata: never follow a link out of the data folder.
+            let is_dir = std::fs::symlink_metadata(&p).is_ok_and(|m| m.is_dir());
+            if is_dir { std::fs::remove_dir_all(&p).is_ok() } else { std::fs::remove_file(&p).is_ok() }
+        })
+        .count()
+}
+
 /// How a Docker install is updated (shown on the Updates page).
 const DOCKER_UPDATE: &str = "docker compose pull && docker compose up -d";
 
@@ -113,4 +149,23 @@ async fn latest_release() -> Result<String, ApiError> {
         .ok()
         .and_then(|v| v.get("tag_name")?.as_str().map(str::to_string))
         .ok_or_else(|| ApiError::bad("Couldn't reach GitHub to check for updates"))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn reset_keeps_only_the_quran() {
+        let dir = std::env::temp_dir().join(format!("lm-reset-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(dir.join("quran/abdulrahman-sudais-r1")).unwrap();
+        std::fs::write(dir.join("quran/abdulrahman-sudais-r1/001.mp3"), b"x").unwrap();
+        for f in ["settings.json", "history.jsonl", "quran-playlists.json", "site.json"] {
+            std::fs::write(dir.join(f), b"{}").unwrap();
+        }
+        std::fs::create_dir_all(dir.join("cache")).unwrap();
+        assert_eq!(super::reset_data(&dir), 5);
+        let left: Vec<_> = std::fs::read_dir(&dir).unwrap().flatten().map(|e| e.file_name()).collect();
+        assert_eq!(left, vec![std::ffi::OsString::from("quran")]);
+        assert!(dir.join("quran/abdulrahman-sudais-r1/001.mp3").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

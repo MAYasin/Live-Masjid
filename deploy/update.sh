@@ -15,8 +15,16 @@ D=/opt/livemasjid
 DATA=/var/lib/livemasjid
 MODE="${1:-}"
 MANUAL=no
-if [ "$MODE" != "--check" ] && [ -f "$DATA/update-request" ]; then
-  rm -f "$DATA/update-request"
+
+# The data folder belongs to the app's user. Root never reads or writes there directly: a
+# compromised app could plant a symlink (e.g. update-status.json -> /etc/shadow) and have root
+# overwrite or expose the target. Everything in $DATA goes through the app's own user.
+as_app() {
+  if [ "$(id -u)" = 0 ]; then runuser -u livemasjid -- "$@"; else "$@"; fi
+}
+
+if [ "$MODE" != "--check" ] && as_app test -f "$DATA/update-request"; then
+  as_app rm -f "$DATA/update-request"
   MANUAL=yes
   MODE=--force
 fi
@@ -28,14 +36,13 @@ status() { # state message [from] [to]
   local manual=false
   [ "$MANUAL" = yes ] && manual=true
   printf '{"state":"%s","message":"%s","from":"%s","to":"%s","manual":%s,"at":%s}\n' \
-    "$1" "$2" "${3:-}" "${4:-}" "$manual" "$(date +%s)" > "$DATA/update-status.json.tmp" \
-    && mv "$DATA/update-status.json.tmp" "$DATA/update-status.json" \
-    && chmod 644 "$DATA/update-status.json" || true
+    "$1" "$2" "${3:-}" "${4:-}" "$manual" "$(date +%s)" \
+    | as_app sh -c 'umask 022 && cat > "$1.tmp" && mv -f "$1.tmp" "$1"' _ "$DATA/update-status.json" || true
 }
 trap 'rc=$?; [ $rc -ne 0 ] && [ -z "${REPORTED:-}" ] && status failed "The update failed (exit $rc); the current version keeps running" "${CUR:-}" "${TAG:-}"' EXIT
 
-if [ "$MODE" != "--check" ] && [ "$MANUAL" = no ] && [ -f "$DATA/settings.json" ] \
-   && grep -Eq '"auto_update" *: *false' "$DATA/settings.json"; then
+if [ "$MODE" != "--check" ] && [ "$MANUAL" = no ] \
+   && as_app grep -Eqs '"auto_update" *: *false' "$DATA/settings.json"; then
   echo "automatic updates are off; skipping"
   exit 0
 fi
@@ -124,7 +131,7 @@ if [ -d "$NEW" ]; then
     bash "$NEW/install.sh" --skip-binary || echo "configuration step failed; continuing with the update" >&2
   else
     # Keep helper scripts and units current.
-    install -m 755 "$NEW/update.sh" "$NEW/install-bin.sh" "$NEW/netwatch.sh" "$NEW/bt-recover.sh" "$NEW/bt-audio.sh" "$D/"
+    install -m 755 -o root -g root "$NEW/update.sh" "$NEW/install-bin.sh" "$NEW/netwatch.sh" "$NEW/bt-recover.sh" "$NEW/bt-audio.sh" "$NEW/harden.sh" "$D/"
     changed=0
     for u in "$NEW"/livemasjid*.service "$NEW"/livemasjid*.timer; do
       if ! cmp -s "$u" "/etc/systemd/system/$(basename "$u")"; then
