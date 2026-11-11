@@ -25,7 +25,9 @@ COPY Cargo.toml Cargo.lock ./
 COPY .cargo .cargo
 COPY src src
 COPY ui ui
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
+# sharing=locked: the platform builds run in parallel and would otherwise unpack the same crate at
+# the same time (cargo's own lock lives outside this cache) and fail with "File exists".
+RUN --mount=type=cache,target=/usr/local/cargo/registry,sharing=locked \
     --mount=type=cache,target=/src/target,id=livemasjid-target-$TARGETARCH$TARGETVARIANT \
     t=$(cat /rust-target) \
  && LIVEMASJID_BUILD=$LIVEMASJID_BUILD cargo build --release --locked --target "$t" \
