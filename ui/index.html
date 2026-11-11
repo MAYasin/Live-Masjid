@@ -139,7 +139,7 @@
 
       <!-- One masjid (#masjid/<mount>): follow/listen, salah times and recordings -->
       <section class="view" id="view-masjid">
-        <button class="back-link" data-go="masjids"><svg><use href="#i-chevron"/></svg>Masjids</button>
+        <nav class="crumbs" aria-label="Breadcrumb"><button data-go="masjids">Masjids</button><span aria-hidden="true">›</span><span aria-current="page" class="truncate" id="md-crumb">Masjid</span></nav>
         <div class="panel">
           <div class="panel-body">
             <div class="status-line" id="md-status"></div>
@@ -195,7 +195,7 @@
 
       <!-- Speaker -->
       <section class="view" id="view-speaker">
-        <button class="back-link" data-go="settings"><svg><use href="#i-chevron"/></svg>Settings</button>
+        <nav class="crumbs" aria-label="Breadcrumb"><button data-go="settings">Settings</button><span aria-hidden="true">›</span><span aria-current="page">Speaker</span></nav>
         <div class="notice error" id="speaker-error" hidden></div>
         <div class="notice repair" id="speaker-repair" hidden>
           <div><b>Your speaker has forgotten this Pi.</b> It accepts the connection but refuses audio, which happens after it pairs with
@@ -287,7 +287,7 @@
 
       <!-- Settings › Playback -->
       <section class="view" id="view-playback">
-        <button class="back-link" data-go="settings"><svg><use href="#i-chevron"/></svg>Settings</button>
+        <nav class="crumbs" aria-label="Breadcrumb"><button data-go="settings">Settings</button><span aria-hidden="true">›</span><span aria-current="page">Playback</span></nav>
         <div class="panel">
           <div class="field">
             <div class="field-label"><b>Delay behind live</b><span>How far behind the broadcast the speaker plays. A longer delay rides out Wi-Fi drop-outs without a gap.</span></div>
@@ -324,7 +324,7 @@
 
       <!-- Settings › Device & app: this app first, then the Pi, details collapsed -->
       <section class="view" id="view-system">
-        <button class="back-link" data-go="settings"><svg><use href="#i-chevron"/></svg>Settings</button>
+        <nav class="crumbs" aria-label="Breadcrumb"><button data-go="settings">Settings</button><span aria-hidden="true">›</span><span aria-current="page">Device &amp; app</span></nav>
         <div class="notice error" id="sys-power" hidden></div>
         <div class="section-title" style="margin-top:0">Live Masjid app</div>
         <div class="stats">
@@ -365,7 +365,7 @@
 
       <!-- Settings › Updates -->
       <section class="view" id="view-updates">
-        <button class="back-link" data-go="settings"><svg><use href="#i-chevron"/></svg>Settings</button>
+        <nav class="crumbs" aria-label="Breadcrumb"><button data-go="settings">Settings</button><span aria-hidden="true">›</span><span aria-current="page">Updates</span></nav>
         <div class="panel">
           <div class="field">
             <div class="field-label"><b>Version <span class="tabular" id="upd-version"></span></b><span id="upd-info">—</span></div>
@@ -383,11 +383,11 @@
 
       <!-- Settings › Password -->
       <section class="view" id="view-security">
-        <button class="back-link" data-go="settings"><svg><use href="#i-chevron"/></svg>Settings</button>
+        <nav class="crumbs" aria-label="Breadcrumb"><button data-go="settings">Settings</button><span aria-hidden="true">›</span><span aria-current="page">Password</span></nav>
         <div class="panel">
           <div class="field">
             <div class="field-label"><b>Password</b><span id="password-info">—</span></div>
-            <button class="btn" id="set-password">Set password</button>
+            <span class="actions"><button class="btn" id="set-password">Set password</button><button class="btn" id="remove-password" hidden>Remove password</button></span>
           </div>
           <div class="field" id="logout-row" hidden>
             <div class="field-label"><b>Sign out</b><span>Sign out of this browser</span></div>

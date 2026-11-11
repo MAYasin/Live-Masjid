@@ -34,7 +34,7 @@ that aren't obvious from the code.
   There is no More sheet. Settings is a hub (`views/settings.js`, one row per sub-page with a one-line live status) for Speaker, Playback
   (`views/playback.js`), Device & app (`views/system.js`: the app's own CPU, memory, uptime and Quran storage first, then the Pi, then
   collapsed details and the activity log), Updates (`views/updates.js`), Password (`views/security.js`) and "Install on this phone".
-  Sub-pages have `section: "settings"` in `VIEWS` (main.js), so the Settings item stays highlighted, and a `.back-link` (hidden at 900 px+).
+  Sub-pages have `section: "settings"` in `VIEWS` (main.js), so the Settings item stays highlighted, and a breadcrumb at every width (`nav.crumbs`: "Settings › Password"; the masjid page shows "Masjids › <name>" via `#md-crumb`).
   The masjid card on Now always shows the broadcast; the Quran or a recording has its own player card under it (`ui/js/miniplayer.js`,
   also at the top of the Quran page) with icon buttons.
 - **History (2026-11-11):** kept for 1 year (`history::KEEP_MS`) as well as the existing caps (2000 sessions, 4 MB file). Each session
@@ -391,6 +391,11 @@ that aren't obvious from the code.
   - SSH key sign-in only, via a `10-` drop-in that wins over Pi OS's `50-cloud-init.conf`. Skipped without an authorized key.
   - Comments out the user's `NOPASSWD: ALL` (Pi OS's `010_pi-nopasswd`), with a backup and `visudo -c`. Skipped if the user has no password.
   - Root-owns `/opt/livemasjid` and the sudo rules.
+  - Firewall (ufw): deny incoming except SSH, the web port and mDNS (5353/udp) from RFC 1918, link-local and ULA addresses. Existing rules
+    are kept; `NO_FIREWALL=1` skips it (VPN users).
+  - Automatic security updates: `unattended-upgrades` with `/etc/apt/apt.conf.d/20auto-upgrades` (Debian security origin, no auto reboot).
+  - Tested in a privileged `debian:trixie` container: a second run adds no duplicate rules.
+  - Run it with `./deploy.sh --scripts --harden` (one session, one password prompt) or from the wizard (step 9, offered after verify).
 - **The app user's sudo rules are exact commands** (rfkill unblock, `bt-recover.sh`, two `systemctl start` units). Keep them that way:
   no arguments the app chooses, no wildcards, and only scripts owned by root and not writable by others.
 - **Root never touches the data folder directly.** `update.sh` reads and writes `/var/lib/livemasjid` through `runuser -u livemasjid`

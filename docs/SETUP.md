@@ -54,6 +54,7 @@ In a terminal (macOS/Linux) or Git Bash (Windows), in the repository folder:
 | 6. Release check | Confirms the latest GitHub release has a build for this CPU and that CI is green. Without one, it builds locally (needs Rust) |
 | 7. Install | Uploads the installer and runs it (sudo may ask for the device password once). See below |
 | 8. Verify | Service running and enabled at boot, web UI healthy, auto-update configured, Wi-Fi power saving off, Bluetooth on |
+| 9. Lock down | Offers to run `harden.sh` (see [Lock it down](#4-lock-it-down-recommended-once)): SSH keys only, a password for sudo, a firewall for the home network, automatic security updates |
 
 What the installer configures on the device (`deploy/install.sh`, safe to re-run):
 
@@ -78,34 +79,69 @@ Open the address shown at the end (e.g. `http://masjid-radio.local/` or `http://
 2. **Speaker:**
    - **Bluetooth:** put the speaker in pairing mode (usually hold its Bluetooth or power button until it flashes), tap **Scan**, then **Pair**. Tap **Play test sound** to check.
    - **USB/wired:** plug it in; **Fallback output → Automatic** picks it up.
-3. **Settings:** optionally set a password for the page.
+3. **Settings › Password:** set a password for the page, so only people who know it can control the radio. You can change or remove it
+   there too.
 
-### Lock it down (recommended)
+## How the pieces fit
 
-Pi OS lets the `pi` user run anything as root without a password, and accepts SSH passwords. Once you can sign in with your SSH key
-(the wizard sets that up), run this on the Pi once:
+| Piece | Where it runs | What it does |
+|---|---|---|
+| `setup.sh` (the wizard) | your computer | Connects to the Pi over SSH and runs the installer on it. You use it once per device. |
+| `install.sh` (the installer) | the Pi, as root, once | Installs packages, configures Wi-Fi and Bluetooth, and creates the `livemasjid` service and its user. |
+| `livemasjid` (the app) | the Pi, as the `livemasjid` user, always | Plays the masjid and serves the web page. It is **not** root and can't change the system. |
+| The updater | the Pi, as root, once an hour | Downloads the newest release, checks its digital signature, installs it, and rolls back if it doesn't start. |
+| `harden.sh` | the Pi, as root, when you run it | Locks the device down (next section). |
+
+## 4. Lock it down (recommended, once)
+
+A fresh Raspberry Pi OS is set up for convenience, not safety:
+- the `pi` account can run any command as the administrator ("root") without typing a password;
+- the Pi accepts SSH password logins;
+- nothing filters network connections;
+- system security fixes are only installed when someone remembers to.
+
+`harden.sh` fixes all of that. **The wizard offers to run it at the end (step 9).** If you skipped that, or set the device up another
+way, run it once yourself:
 
 ```sh
-sudo /opt/livemasjid/harden.sh
+ssh pi@masjid-radio.local          # sign in to the Pi (use your Pi's name or IP address)
+sudo /opt/livemasjid/harden.sh     # type your Pi password when asked
 ```
 
-Afterwards:
+`sudo` means "run this as the administrator". It asks for the password you chose in Raspberry Pi Imager. The script takes a minute
+or two (it installs two small packages), prints one line per step, and then you're done. Nothing restarts. It is safe to run again
+at any time, for example after a reinstall.
 
-- SSH accepts keys only.
-- `sudo` asks for the password, except for installing a new app binary, which the dev loop (`./deploy.sh`) uses.
-- The app's files belong to root.
+**What it changes, in plain words:**
 
-The app itself never runs as root. It has a few exact sudo rules (rfkill, Bluetooth recovery and the update service).
-Updates are signed releases. Also set a password for the web page under Settings › Password.
+| | Before | After |
+|---|---|---|
+| **Signing in over SSH** | with a password or a key | **only with your computer's SSH key**. If you have no key on the Pi yet, this step is skipped so you can't lock yourself out. |
+| **Administrator commands** (`sudo`) | run without a password | **ask for your Pi password**. The one exception: installing a new copy of the app itself, which the developer's `./deploy.sh` uses. The app runs as an ordinary user, so that can't give anyone administrator rights. |
+| **The app's files** | | owned by root, so nothing else can change them |
+| **Firewall** | everything open | **only devices on your home network** can reach SSH and the web page. Nothing from the internet gets in, even if a router port is opened by mistake. The Pi can still reach the internet (streams, updates). |
+| **Security updates** | manual | **installed automatically every day** (Debian security fixes only; it never reboots by itself) |
 
-## 4. Updates and the release pipeline
+**About SSH keys:** after hardening, `ssh pi@…` no longer asks for a password, and that's expected. Your computer proves who you are
+with its SSH key, a secret file (`~/.ssh/id_ed25519`) that is far harder to guess than any password. Keep that file private.
+If you'd like a prompt anyway, protect the key with a passphrase on your computer: `ssh-keygen -p -f ~/.ssh/id_ed25519`. SSH (and
+`./deploy.sh`) then ask for it; `ssh-agent` can remember it for a session.
+
+**Using a VPN such as Tailscale** to reach the Pi from away? Its addresses aren't "home network". Run the script with
+`sudo NO_FIREWALL=1 /opt/livemasjid/harden.sh` to skip the firewall. Then open the page by the VPN name and add that name to
+`LIVEMASJID_ALLOWED_HOSTS` in `/etc/default/livemasjid`.
+
+**For developers:** `./deploy.sh --scripts --harden` copies the newest helper scripts to the Pi and runs `harden.sh` in one go. It
+asks for the Pi password once. A plain `./deploy.sh` never needs it.
+
+## 5. Updates and the release pipeline
 
 - Every push to `main` runs GitHub Actions (`.github/workflows/release.yml`):
   - it builds and tests **aarch64**, **armv7** and **armv6** (32-bit tests run under QEMU)
   - it publishes one release with an asset per CPU
 - Each device checks hourly and installs the asset for its CPU. **Settings → Check for updates** does it immediately.
 - When a release changes system configuration (`deploy/CONFIG_VERSION` increases), the updater re-applies the installer's configuration once.
-- Check a device by hand: `ssh pi@<device> sudo /opt/livemasjid/update.sh --check`.
+- Check a device by hand: `ssh pi@<device> /opt/livemasjid/update.sh --check` (no sudo needed; it changes nothing).
 
 ## Troubleshooting
 
@@ -119,5 +155,8 @@ Updates are signed releases. Also set a password for the web page under Settings
 | Device drops off the network | Weak Wi-Fi or power saving | The installer disables power saving and the watchdog self-heals. Improve the signal (−65 dBm or better) |
 | *"livemasjid.com is refusing requests from this network"* | The website blocked your IP | Playback still works through the stream servers. Ask the livemasjid team to lift the block. Never use a VPN or proxy to get around it |
 | No sound at all | No output available | Check the Speaker page for the output in use, and try **Play test sound** |
+| `ssh` no longer asks for a password | Expected after `harden.sh`: your SSH key signs you in | To be asked anyway, add a passphrase to the key: `ssh-keygen -p -f ~/.ssh/id_ed25519` |
+| The page or SSH doesn't answer from another network or a VPN | The firewall from `harden.sh` admits the home network only | On the Pi: `sudo ufw allow from <address> to any port 22 proto tcp` (and port 80), or re-run `harden.sh` with `NO_FIREWALL=1` |
+| *"Live Masjid doesn't answer to …"* | The page was opened by a name it doesn't know (protection against malicious websites) | Use the IP address or `<name>.local`, or add the name to `LIVEMASJID_ALLOWED_HOSTS` in `/etc/default/livemasjid` |
 
 Logs: `ssh pi@<device> journalctl -u livemasjid -f` (or `./deploy.sh --logs`). The **System → Activity** panel shows the same events.

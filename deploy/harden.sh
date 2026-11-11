@@ -7,6 +7,12 @@
 #     narrow rules in /etc/sudoers.d/livemasjid. Skipped if <user> has no password, because sudo
 #     would then be unusable.
 #  3. App files: /opt/livemasjid and the sudo rules are owned by root and writable only by root.
+#  4. Firewall (ufw): nothing from outside the home network gets in. From home-network addresses
+#     (10.x, 172.16-31.x, 192.168.x, and IPv6 link-local/ULA) it allows SSH, the web page and mDNS
+#     (so pi.local keeps working). Outgoing traffic (streams, updates) is unaffected. Existing ufw
+#     rules are kept. Skip with NO_FIREWALL=1 (e.g. if you reach the Pi over a VPN like Tailscale).
+#  5. Security updates: Debian security fixes install automatically every day
+#     (unattended-upgrades). It never reboots by itself.
 #
 # Safe to run again. <user> defaults to the account that ran sudo.
 set -euo pipefail
@@ -72,3 +78,39 @@ if [ -f /etc/sudoers.d/livemasjid ]; then
   chmod 440 /etc/sudoers.d/livemasjid
 fi
 echo "App files: owned by root"
+
+# Packages for steps 4 and 5 (refresh the package lists once if something is missing).
+need=""
+command -v ufw >/dev/null || need="$need ufw"
+dpkg -s unattended-upgrades >/dev/null 2>&1 || need="$need unattended-upgrades"
+if [ -n "$need" ]; then
+  echo "Installing:$need"
+  apt-get update -qq
+  # shellcheck disable=SC2086
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -qq $need >/dev/null
+fi
+
+# 4. Firewall.
+if [ "${NO_FIREWALL:-}" = 1 ]; then
+  echo "Firewall: skipped (NO_FIREWALL=1)"
+else
+  # The web port, read in a subshell: /etc/default/livemasjid must not clobber this script's variables.
+  PORT="$( ( [ -f /etc/default/livemasjid ] && . /etc/default/livemasjid; echo "${LIVEMASJID_PORT:-80}" ) )"
+  ufw default deny incoming >/dev/null
+  ufw default allow outgoing >/dev/null
+  for net in 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 fe80::/10 fc00::/7; do
+    ufw allow from "$net" to any port 22 proto tcp comment 'livemasjid: SSH from the home network' >/dev/null
+    ufw allow from "$net" to any port "$PORT" proto tcp comment 'livemasjid: web page' >/dev/null
+    ufw allow from "$net" to any port 5353 proto udp comment 'livemasjid: mDNS (pi.local)' >/dev/null
+  done
+  ufw --force enable >/dev/null
+  echo "Firewall: on (SSH, web page on port $PORT and mDNS from the home network only)"
+fi
+
+# 5. Automatic security updates (Debian's default unattended-upgrades policy: security fixes only).
+cat > /etc/apt/apt.conf.d/20auto-upgrades <<'CONF'
+// Written by Live Masjid's harden.sh: install security updates every day.
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+CONF
+echo "Security updates: installed automatically every day (no automatic reboots)"

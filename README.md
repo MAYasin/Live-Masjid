@@ -163,7 +163,13 @@ The updater leaves development builds alone for 12 hours, so it won't immediatel
 
 ## Security
 
-- The UI is meant for a trusted network. Set a password in **Settings**, and don't expose the port to the internet.
+- The UI is meant for a trusted network. Set a password in **Settings › Password**, and don't expose the port to the internet.
+- The page refuses requests from other websites (no DNS rebinding or cross-site commands), password or not.
+- The app runs as its own unprivileged user, never as root. Its few root actions are exact, fixed commands.
+- **Lock the device down once** (the setup wizard offers it): `sudo /opt/livemasjid/harden.sh`.
+  - SSH by key only, and sudo asks for a password.
+  - A firewall admits only your home network, and security updates install automatically.
+  - [What it does, in plain words](docs/SETUP.md#4-lock-it-down-recommended-once)
 - Releases are signed with Ed25519. A device keeps the public key from its first install and refuses any update that doesn't verify.
 - Report vulnerabilities privately; see [SECURITY.md](SECURITY.md).
 

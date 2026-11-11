@@ -39,6 +39,7 @@ export async function show(arg = "") {
     return;
   }
   $("#md-name").textContent = mount;
+  $("#md-crumb").textContent = mount;
   $("#md-place").textContent = "";
   $("#md-status").textContent = "";
   for (const b of ["#md-listen", "#md-follow"]) $(b).hidden = true;
@@ -53,6 +54,7 @@ export async function show(arg = "") {
 function paintHeader() {
   const s = station;
   $("#md-name").textContent = s.name;
+  $("#md-crumb").textContent = s.name.split(",")[0].trim();
   $("#md-place").textContent = shortPlace(s.location) || s.genre || "";
   const heard = s.last_heard_ms ? `Last heard ${lowerFirst(timeAgo(s.last_heard_ms))}` : "";
   $("#md-status").innerHTML = s.live

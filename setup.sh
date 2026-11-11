@@ -250,6 +250,17 @@ fi
 UV="$(remote "cat /sys/devices/platform/soc/soc:firmware/get_throttled 2>/dev/null")"
 if printf '%s' "$UV" | grep -qE '^0x[0-9a-fA-F]+$' && [ $(( UV & 0x10001 )) -ne 0 ]; then warn "Under-voltage detected: use a proper 5 V power supply (weak power causes Wi-Fi/Bluetooth drop-outs)."; fi
 
+# ----------------------------------------------------------------------------- 9. lock down
+step 9 "Lock the device down"
+info "SSH sign-in with your key only, a password for administrator (sudo) commands, a firewall that"
+info "admits only your home network, and automatic security updates. See docs/SETUP.md > Lock it down."
+if remote "test -x /opt/livemasjid/harden.sh" && ask_yes "Lock it down now? Recommended (sudo may ask for the device password)" y; then
+  if ssh -t $SSH_OPTS "$TARGET" "sudo /opt/livemasjid/harden.sh \$(id -un)"; then good "device locked down"
+  else bad "harden.sh reported a problem (see above); it's safe to run again: sudo /opt/livemasjid/harden.sh"; fi
+else
+  info "Skipped. Later, on the device: sudo /opt/livemasjid/harden.sh"
+fi
+
 # ----------------------------------------------------------------------------- done
 URL="http://$HOST/"
 echo
