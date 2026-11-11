@@ -5,8 +5,9 @@
 // the broadcast has ended.
 
 import { api } from "../api.js";
+import { emptyState, icon, isOpen, pollWhileOpen } from "../components.js";
 import { $, closeModal, openModal, runAction, toast } from "../dom.js";
-import { escapeHtml } from "../format.js";
+import { escapeHtml, fileSize as mb } from "../format.js";
 import * as miniplayer from "../miniplayer.js";
 import { getStatus, subscribe } from "../store.js";
 
@@ -16,15 +17,12 @@ const DAY_NAMES = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", 
 let lib = null;
 let playlists = [];
 let reciters = null; // { default, reciters: [...] }
-let visible = false;
-let pollTimer;
 let confirmDelete = 0;
 /** Playlist being edited: { id?, surahs: number[], reciter: string|null }. */
 let draft = null;
 /** What the reciter picker is choosing for: "default" or "playlist". */
 let pickerFor = "default";
 
-const mb = (b) => `${(b / 1048576).toFixed(b < 10485760 ? 1 : 0)} MB`;
 const fold = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯʿʾ]/g, "");
 const surahName = (n) => lib?.surahs?.[n - 1]?.name ?? `Surah ${n}`;
 const reciterOf = (key) => reciters?.reciters.find((r) => r.key === key);
@@ -47,7 +45,7 @@ function scheduleText(p) {
 
 function surahState(x) {
   switch (x.state) {
-    case "ready": return `<span class="q-ready"><svg><use href="#i-check"/></svg>${mb(x.bytes)}</span>`;
+    case "ready": return `<span class="q-ready">${icon("check")}${mb(x.bytes)}</span>`;
     case "downloading": return x.total ? `Downloading ${Math.floor((100 * x.bytes) / x.total)}%` : `Downloading ${mb(x.bytes)}`;
     case "queued": return "Waiting to download";
     case "partial": return x.total ? `${Math.floor((100 * x.bytes) / x.total)}% downloaded` : "Partly downloaded";
@@ -69,11 +67,11 @@ function renderPlaylists() {
         </div>
         <div class="item-actions">
           <button class="btn small ghost" data-edit="${escapeHtml(p.id)}">Edit</button>
-          <button class="btn small${p.id === now ? "" : " ghost"}" data-play-pl="${escapeHtml(p.id)}"><svg><use href="#i-play"/></svg>Play</button>
+          <button class="btn small${p.id === now ? "" : " ghost"}" data-play-pl="${escapeHtml(p.id)}">${icon("play")}Play</button>
         </div>
       </div>`;
     }).join("")
-    : '<div class="empty small">Make a playlist of the surahs you listen to, for example Al-Fātiḥah, Al-Baqarah and Yā Sīn. It can play by itself on chosen days.</div>';
+    : emptyState("Make a playlist of the surahs you listen to, for example Al-Fātiḥah, Al-Baqarah and Yā Sīn. It can play by itself on chosen days.", { small: true });
 }
 
 function renderList() {
@@ -92,11 +90,11 @@ function renderList() {
           <div class="item-meta">${surahState(x)}</div>
         </div>
         <div class="item-actions">
-          ${off ? "" : `<button class="btn small${x.n === mine ? "" : " ghost"}" data-surah="${x.n}"><svg><use href="#i-play"/></svg>Play</button>`}
+          ${off ? "" : `<button class="btn small${x.n === mine ? "" : " ghost"}" data-surah="${x.n}">${icon("play")}Play</button>`}
         </div>
       </div>`;
     }).join("");
-  $("#quran-list").innerHTML = rows || '<div class="empty small">No surah matches.</div>';
+  $("#quran-list").innerHTML = rows || emptyState("No surah matches.", { small: true });
 
   $("#reciter-name").textContent = lib.reciter.name;
   $("#quran-store").textContent = `${lib.ready} of ${lib.available} surahs on the Pi for this reciter, ${mb(lib.stored_bytes)} in total`;
@@ -115,7 +113,7 @@ async function load() {
     renderPlaylists();
     renderList();
   } catch (err) {
-    $("#quran-list").innerHTML = `<div class="empty small">${escapeHtml(err.message)}</div>`;
+    $("#quran-list").innerHTML = emptyState(err.message, { small: true });
   }
 }
 
@@ -127,7 +125,7 @@ function renderReciters() {
   const current = pickerFor === "playlist" ? draft?.reciter ?? "" : reciters.default;
   const opt = (r) => `<button type="button" class="reciter-opt" role="option" data-key="${escapeHtml(r.key)}" aria-selected="${r.key === current}">
       <span class="grow"><span class="truncate">${escapeHtml(r.name)}</span>${r.style || r.surahs.length < 114 ? `<small>${escapeHtml([r.style, r.surahs.length < 114 ? `${r.surahs.length} surahs` : ""].filter(Boolean).join(", "))}</small>` : ""}</span>
-      <svg><use href="#i-check"/></svg></button>`;
+      ${icon("check")}</button>`;
   const list = reciters.reciters.filter((r) => !q || fold(`${r.name} ${r.style}`).includes(q));
   const popular = list.filter((r) => r.popular);
   const rest = list.filter((r) => !r.popular);
@@ -135,11 +133,11 @@ function renderReciters() {
   if (pickerFor === "playlist" && !q) {
     const def = reciterOf(reciters.default);
     html += `<button type="button" class="reciter-opt" role="option" data-key="" aria-selected="${current === ""}">
-      <span class="grow">App default<small>${escapeHtml(reciterLabel(def))}</small></span><svg><use href="#i-check"/></svg></button>`;
+      <span class="grow">App default<small>${escapeHtml(reciterLabel(def))}</small></span>${icon("check")}</button>`;
   }
   if (popular.length) html += `<div class="group-label">Popular</div>${popular.map(opt).join("")}`;
   if (rest.length) html += `<div class="group-label">All reciters</div>${rest.map(opt).join("")}`;
-  $("#reciter-list").innerHTML = html || '<div class="empty small">No reciter matches.</div>';
+  $("#reciter-list").innerHTML = html || emptyState("No reciter matches.", { small: true });
 }
 
 async function openPicker(target) {
@@ -176,11 +174,11 @@ function renderDraft() {
   $("#pl-chosen").innerHTML = draft.surahs.length
     ? draft.surahs.map((n, i) => `<div class="pl-item">
         <span class="q-num tabular">${n}</span><span class="grow truncate">${escapeHtml(surahName(n))}</span>
-        <button type="button" class="icon-btn sm" data-move="${i}" data-by="-1" aria-label="Move up" ${i === 0 ? "disabled" : ""}><svg><use href="#i-up"/></svg></button>
-        <button type="button" class="icon-btn sm" data-move="${i}" data-by="1" aria-label="Move down" ${i === draft.surahs.length - 1 ? "disabled" : ""}><svg><use href="#i-down"/></svg></button>
-        <button type="button" class="icon-btn sm" data-remove="${i}" aria-label="Remove"><svg><use href="#i-x"/></svg></button>
+        <button type="button" class="icon-btn sm" data-move="${i}" data-by="-1" aria-label="Move up" ${i === 0 ? "disabled" : ""}>${icon("up")}</button>
+        <button type="button" class="icon-btn sm" data-move="${i}" data-by="1" aria-label="Move down" ${i === draft.surahs.length - 1 ? "disabled" : ""}>${icon("down")}</button>
+        <button type="button" class="icon-btn sm" data-remove="${i}" aria-label="Remove">${icon("x")}</button>
       </div>`).join("")
-    : '<div class="empty small">No surahs yet. Add them below, in the order you want.</div>';
+    : emptyState("No surahs yet. Add them below, in the order you want.", { small: true });
 }
 
 function paintDraftReciter() {
@@ -316,7 +314,7 @@ export function init() {
   });
   subscribe((s) => {
     miniplayer.update($("#quran-player"), s, { quranOnly: true, volume: true });
-    if (!visible) return;
+    if (!isOpen("quran")) return;
     // Highlight what's playing when it changes (next in the playlist).
     const now = playing(s);
     const key = `${now?.reciter_key}/${now?.surah}/${now?.playlist?.id}`;
@@ -329,13 +327,7 @@ export function init() {
 }
 
 export function show() {
-  visible = true;
   load();
-  clearInterval(pollTimer);
   // Download progress: refresh while this page is open.
-  pollTimer = setInterval(() => {
-    visible = Boolean(document.querySelector("#view-quran.active"));
-    if (!visible) return clearInterval(pollTimer);
-    if (!document.hidden) load();
-  }, 3000);
+  pollWhileOpen("quran", load, 3000);
 }

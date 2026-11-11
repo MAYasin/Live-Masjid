@@ -13,6 +13,7 @@ mod edge;
 mod ogg;
 pub mod local;
 pub mod recording;
+pub mod source;
 mod stretch;
 
 pub use decode::Codec;
@@ -26,7 +27,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc::UnboundedSender;
+pub use source::{Events, Source};
 
 #[derive(Debug)]
 pub enum StreamEvent {
@@ -57,7 +58,7 @@ pub struct SessionParams {
     pub sink: SinkHandle,
     pub epoch: u64,
     pub stop: Arc<AtomicBool>,
-    pub events: UnboundedSender<StreamEvent>,
+    pub events: Events<StreamEvent>,
     /// How long to keep retrying before the first audio.
     pub start_grace: Duration,
     /// Buffered audio in ms, published for the UI.
@@ -108,7 +109,7 @@ fn path_codec(path: &str) -> Codec {
     if path.ends_with(".mp3") { Codec::Mp3 } else { Codec::Opus }
 }
 
-pub fn run_session(p: SessionParams) {
+fn run_session(p: SessionParams) {
     let cands = candidates(&p.mount, &p.codec);
     let mut conn = match connect(&p, &cands, p.start_grace, None) {
         Ok(c) => c,
@@ -157,6 +158,14 @@ pub fn run_session(p: SessionParams) {
                 }
             }
         }
+    }
+}
+
+impl Source for SessionParams {
+    const THREAD: &'static str = "stream";
+
+    fn run(self) {
+        run_session(self);
     }
 }
 
@@ -236,11 +245,10 @@ fn pump(conn: &mut StreamConn, pipe: &mut Pipeline, p: &SessionParams, carry: Op
             }
         }
     };
-    if let Some(bytes) = carry {
-        if let Some(r) = deliver(&bytes, pipe) {
+    if let Some(bytes) = carry
+        && let Some(r) = deliver(&bytes, pipe) {
             return r;
         }
-    }
     if std::mem::take(&mut pipe.fresh) {
         let raw = match read_burst(conn, p) {
             Ok(raw) => raw,

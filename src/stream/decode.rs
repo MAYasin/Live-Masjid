@@ -52,11 +52,10 @@ pub fn run(codec: Codec, ctx: DecodeCtx) {
         Codec::Opus => decode_opus(reader, &mut out),
         Codec::Mp3 => decode_mp3(reader, &mut out),
     };
-    if let Err(e) = result {
-        if !out.ctx.stop.load(Ordering::Relaxed) {
+    if let Err(e) = result
+        && !out.ctx.stop.load(Ordering::Relaxed) {
             tracing::warn!("{} decoder stopped: {e}", codec.name());
         }
-    }
     out.ctx.buffer_ms.store(0, Ordering::Relaxed);
 }
 

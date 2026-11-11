@@ -1,6 +1,7 @@
 // "Speaker": Bluetooth pairing and audio output settings.
 
 import { api } from "../api.js";
+import { emptyState, icon } from "../components.js";
 import { $, runAction, toast } from "../dom.js";
 import { escapeHtml } from "../format.js";
 import { getStatus, subscribe } from "../store.js";
@@ -49,7 +50,7 @@ function render(s) {
   $("#keep-awake").checked = s.keep_awake;
   const scan = $("#scan");
   scan.disabled = bt.scanning || !bt.powered;
-  scan.innerHTML = bt.scanning ? '<span class="spinner"></span>Scanning' : '<svg><use href="#i-refresh"/></svg>Scan';
+  scan.innerHTML = bt.scanning ? '<span class="spinner"></span>Scanning' : `${icon("refresh")}Scan`;
 }
 
 function deviceRow(d) {
@@ -74,11 +75,11 @@ async function loadDevices() {
     const hidden = devices.length - named.length;
     const rows = named.length
       ? named.map(deviceRow).join("")
-      : '<div class="empty">No speakers found yet. Put your speaker in pairing mode and tap Scan.</div>';
+      : emptyState("No speakers found yet. Put your speaker in pairing mode and tap Scan.");
     const note = hidden ? `<div class="item"><div class="item-meta">${hidden} unnamed nearby device${hidden > 1 ? "s" : ""} hidden</div></div>` : "";
     $("#devices").innerHTML = rows + note;
   } catch (err) {
-    $("#devices").innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    $("#devices").innerHTML = emptyState(err.message);
   }
 }
 

@@ -1,6 +1,7 @@
 // "Masjids": searchable directory with live badges; choosing one starts following it.
 
 import { api } from "../api.js";
+import { emptyState } from "../components.js";
 import { $, $$, closeModal, openModal, setActive, toast } from "../dom.js";
 import { escapeHtml, lowerFirst, timeAgo } from "../format.js";
 
@@ -64,7 +65,7 @@ export async function show() {
     ({ stations } = await api("stations"));
     render();
   } catch (err) {
-    $("#stations").innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    $("#stations").innerHTML = emptyState(err.message);
   }
 }
 
@@ -114,7 +115,7 @@ function render() {
   const list = stations.filter((s) => matches(s, words)).sort(compare);
   const liveCount = stations.filter((s) => s.live).length;
   $("#result-count").textContent = `${list.length} of ${stations.length} · ${liveCount} live now`;
-  $("#stations").innerHTML = list.length ? list.map(row).join("") : '<div class="empty">No masjids match your search.</div>';
+  $("#stations").innerHTML = list.length ? list.map(row).join("") : emptyState("No masjids match your search.");
 }
 
 async function choose(mount, listen) {

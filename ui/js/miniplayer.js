@@ -9,6 +9,7 @@
 
 import { api } from "./api.js";
 import { runAction, toast } from "./dom.js";
+import { clock } from "./format.js";
 
 const icon = (id) => `<svg aria-hidden="true"><use href="#i-${id}"/></svg>`;
 /** How long an optimistic change may wait for the Pi to confirm it. */
@@ -36,12 +37,6 @@ export function cancelStarting() {
       render(box);
     }
   }
-}
-
-export function clock(s) {
-  s = Math.max(0, Math.floor(s || 0));
-  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
-  return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
 }
 
 /** Build the player inside `box` and wire its controls. */

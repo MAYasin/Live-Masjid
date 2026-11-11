@@ -1,6 +1,7 @@
 // "Now playing": selected masjid, playback controls, volume, health stats, recent broadcasts.
 
 import { api } from "../api.js";
+import { emptyState } from "../components.js";
 import { $, runAction, setStat, toast } from "../dom.js";
 import { clockTime, duration, lowerFirst, timeAgo } from "../format.js";
 import { getStatus, subscribe } from "../store.js";
@@ -56,7 +57,7 @@ export function show() {
 async function loadRecordings() {
   const mount = getStatus()?.mount;
   const box = $("#recordings-latest");
-  if (!mount) { box.innerHTML = '<div class="empty small">Choose a masjid to see its recordings.</div>'; return; }
+  if (!mount) { box.innerHTML = emptyState("Choose a masjid to see its recordings.", { small: true }); return; }
   try {
     const list = await api(`recordings?mount=${encodeURIComponent(mount)}`);
     box.innerHTML = list.status === "ok" ? recordings.rows(list, 3) : recordings.fallback(list);

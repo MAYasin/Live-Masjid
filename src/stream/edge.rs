@@ -68,11 +68,10 @@ pub fn mp3_start(data: &[u8], delay: Duration) -> usize {
         if pos + 4 > data.len() {
             return 0;
         }
-        if let Some((len, _)) = mp3_frame(&data[pos..]) {
-            if mp3_frame(data.get(pos + len..).unwrap_or(&[])).is_some() {
+        if let Some((len, _)) = mp3_frame(&data[pos..])
+            && mp3_frame(data.get(pos + len..).unwrap_or(&[])).is_some() {
                 break pos;
             }
-        }
         pos += 1;
     };
     // Walk the frames.

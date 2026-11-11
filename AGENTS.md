@@ -147,7 +147,7 @@ that aren't obvious from the code.
 - **Scheduled playlists:** `Playlist.days` (0 = Sunday) + `time` "HH:MM". `schedule.rs` reads `date +%w %H:%M %F` every 20 s and fires
   once per day per playlist. The player starts it at once, or, if live is playing or about to, waits up to 2 h for the broadcast to end
   (`quran_pending`), then skips it. Verified: a playlist due one minute later fired and played.
-- **Quran** (`quran.rs` library, `stream/local.rs` playback, `views/quran.js`): Al-Sudais (the default) from
+- **Quran** (`quran/` library, `stream/local.rs` playback, `views/quran.js`): Al-Sudais (the default) from
   `https://cdn.mp3quran.net/audio/abdulrahman-sudais/r1/NNN.mp3` (from `mp3quran.net/api/v3/reciters`, id 54). The files are 128 kbps CBR
   MP3 with an ID3 tag, from 0.4 MB (114) to 90 MB (2, 1:33:58).
   - **Storage:** `<data>/quran/sudais/NNN.mp3` (`.part` while downloading).
@@ -259,7 +259,7 @@ that aren't obvious from the code.
   through a systemd unit, for example `systemctl start livemasjid-bt-audio@<q>.service` (exact sudo rule), like the update service does.
 - **Watchdog restart loop (2026-11-07, 74 restarts in 1.5 h).** A stalled Bluetooth link made `aplay`'s pipe stop accepting audio. The sink's
   blocking write froze its thread, its heartbeat went stale, the app stopped petting systemd, and `WatchdogSec=45` killed the service.
-  Each restart dropped the speaker, which looked like Bluetooth flapping. Fix (`sink.rs`): writes go through a writer thread and a bounded queue;
+  Each restart dropped the speaker, which looked like Bluetooth flapping. Fix (`sink/device.rs`): writes go through a writer thread and a bounded queue;
   after 5 s without progress the output counts as stalled (`audio device stopped accepting data`), and `aplay` is killed and re-opened.
   Verified by `kill -STOP` on `aplay`: recovered in about 6 s with 0 restarts. **Never do blocking I/O on the sink or player thread.**
 - **Half-hung Bluetooth chip:** it reports `Powered: yes`, but HCI commands time out (`hci0: Opcode 0x0401 failed: -110`,
@@ -314,19 +314,19 @@ that aren't obvious from the code.
 ## Code map
 
 - `main.rs` wiring and the systemd watchdog · `state.rs` shared state and `Status` · `config.rs` settings and password hashing
-- `player.rs` state machine (signals → sessions, stop and suppression, probe)
-- `stream/` `mod.rs` session and reconnect · `buffer.rs` jitter buffer · `ogg.rs` seamless page filter · `decode.rs` Opus and MP3 decoding
-- `sink.rs` aplay output thread (epochs, keep-awake, failover)
+- `player/` `mod.rs` the `Player` state machine: one handler per input (commands, signals, live events, on-demand events, tick), live precedence, Quran resume, schedules, probe · `live.rs` `LiveSession`, `Trigger`, `StopReason`, history end labels · `media.rs` on-demand item (recording or surah), heard position, next surah (pure, tested)
+- `stream/` `source.rs` the `Source` trait (every playback kind runs on its own thread via `source::spawn`) and `Events<E>` (events tagged with the session token, so stale ones are ignored) · `mod.rs` live session and reconnect · `buffer.rs` jitter buffer · `ogg.rs` seamless page filter · `decode.rs` Opus and MP3 decoding
+- `sink/` `mod.rs` `SinkHandle` and the output thread (epochs, keep-awake, failover, per-channel volume) · `device.rs` one `aplay` process with a non-blocking writer and stall detection · `pcm.rs` gain, encoding, browser mirror, chime (pure, tested)
 - `monitor/` `sse.rs` live push · `poll.rs` Icecast status · `site.rs` website back-off guard
 - `bluetooth/` `mod.rs` supervisor · `adapter.rs` power, rfkill and controller reset · `devices.rs` pair, use, forget, re-pair · `speaker.rs` audio-ready state machine · `agent.rs` persistent agent · `ctl.rs` bluetoothctl · `outputs.rs` ALSA targets
 - `sysinfo.rs` device, Wi-Fi, Bluetooth and app health (incl. Quran storage) for Device & app · `salah_match.rs` labels broadcasts with a salah
-- `integrations/` `mod.rs` curl fetch, caches and guards · `salah.rs` source choice + masjidscreen · `masjidboard.rs` masjidboardlive · `recordings.rs` RSS feed · `stream/recording.rs` playback
-- `quran.rs` Quran reciters, library, playlists and downloader · `schedule.rs` scheduled playlists · `stream/local.rs` file playback with seek (growing files) · `web/api/quran.rs`
+- `integrations/` `mod.rs` curl fetch, caches and guards · `salah.rs` source rules (`choose`, over the `Sources` trait: masjidboardlive + masjidscreen; tested with a fake) and masjidscreen · `masjidboard.rs` masjidboardlive · `recordings.rs` RSS feed · `stream/recording.rs` playback
+- `quran/` `mod.rs` `Library` (files, delete, info) · `reciters.rs` catalogue · `playlists.rs` playlists and `validate` · `download.rs` queue and worker behind the `Fetcher` trait (`Curl` on the Pi, a fake in tests) · `schedule.rs` scheduled playlists · `stream/local.rs` file playback with seek (growing files) · `web/api/quran.rs`
 - `catalog.rs` directory scrape, cache and seed · `history.rs` JSONL sessions · `net.rs` raw Icecast HTTP and endpoints
 - `web/` `mod.rs` router and `ApiError` · `auth.rs` · `assets.rs` (embedded UI, ETag) · `api/{status,stations,player,speaker,system}.rs`
 - Device setup: `setup.sh` (wizard), `deploy.sh` (dev loop) · `deploy/install.sh` (generic installer) · `deploy/update.sh` (`--check`, `--force`) · `docs/SETUP.md`
 - `ui/` `index.html` markup only · `miniplayer.js` Quran/recording player card · `install.js` install guide · `icons/` PNG app icons · · `css/{base,layout,components,views}.css` · `js/` ES modules: `main.js` router, `store.js` live status,
-  `api.js`, `dom.js`, `format.js`, `views/{now,masjids,quran,speaker,history,settings,playback,system,updates,security,recordings,salah}.js`. New UI files must be added to `FILES` in `web/assets.rs`.
+  `api.js`, `dom.js`, `format.js` (incl. `clock`, `uptime`, `fileSize`), `components.js` (shared `icon`, `emptyState`, `definitionList`, `meter`, `pollWhileOpen`: use these rather than hand-written markup or timers), `views/{now,masjids,quran,speaker,history,settings,playback,system,updates,security,recordings,salah}.js`. New UI files must be added to `FILES` in `web/assets.rs`.
 
 ## Signed releases
 
@@ -336,3 +336,12 @@ that aren't obvious from the code.
   later release can't swap the key. `update.sh` verifies the signature when that file exists and refuses unsigned or invalid releases.
   Devices without the key skip the check once (with a warning) and get the key on their next config update (`CONFIG_VERSION` 6).
 - Verify by hand: `openssl pkeyutl -verify -pubin -inkey deploy/release.pub -rawin -in <asset> -sigfile <asset>.sig`.
+
+## Code conventions (refactor of 2026-11-11)
+
+- **Clippy-clean** (`cargo clippy --release --target aarch64-unknown-linux-musl --all-targets` gives no warnings). Keep it that way.
+  The MSRV is 1.88: don't use newer std APIs (e.g. `Atomic*::try_update`); clippy flags them.
+- **Rules live in pure functions with unit tests**; I/O sits behind small traits so the rules can be tested with fakes:
+  `stream::Source` (playback kinds), `quran::Fetcher` (downloads), `integrations::salah::Sources` (salah providers).
+- **Behaviour-preserving refactors are checked on the Pi**: the test binary (see Build), then the real paths (Quran play/pause/seek/
+  next/stop through the API, a live broadcast, the browser console). Don't deploy while a broadcast is playing: a deploy restarts the service.

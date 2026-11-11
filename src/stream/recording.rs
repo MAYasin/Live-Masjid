@@ -10,7 +10,7 @@ use std::io::Read;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use tokio::sync::mpsc::UnboundedSender;
+use super::source::{Events, Source};
 
 #[derive(Debug)]
 pub enum RecordingEvent {
@@ -26,7 +26,7 @@ pub struct RecordingParams {
     pub stop: Arc<AtomicBool>,
     pub paused: Arc<AtomicBool>,
     pub position_ms: Arc<AtomicU64>,
-    pub events: UnboundedSender<RecordingEvent>,
+    pub events: Events<RecordingEvent>,
 }
 
 fn codec_for(url: &str) -> Codec {
@@ -34,7 +34,15 @@ fn codec_for(url: &str) -> Codec {
     if path.ends_with(".ogg") || path.ends_with(".opus") || path.ends_with(".oga") { Codec::Opus } else { Codec::Mp3 }
 }
 
-pub fn run(p: RecordingParams) {
+impl Source for RecordingParams {
+    const THREAD: &'static str = "recording";
+
+    fn run(self) {
+        run(self);
+    }
+}
+
+fn run(p: RecordingParams) {
     let child = Command::new("curl")
         .args(["-sS", "-L", "--fail", "--max-redirs", "3", "--proto", "=https,http", "--max-time", "21600"])
         .args(["-A", crate::integrations::USER_AGENT, &p.url])

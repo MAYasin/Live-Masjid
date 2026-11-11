@@ -3,6 +3,7 @@
 // estimate for older ones ("around Esha"). The Pi keeps a year of history.
 
 import { api } from "../api.js";
+import { emptyState } from "../components.js";
 import { $, $$, setActive } from "../dom.js";
 import { clockTime, dayHeading, duration, escapeHtml, timeAgo } from "../format.js";
 import { getStatus } from "../store.js";
@@ -77,10 +78,10 @@ export async function show() {
       html += `<div class="group-label history-day"><span>${escapeHtml(heading)}</span><span>${escapeHtml(duration(total))}</span></div>`;
       html += list.map((s) => historyRow(s, named)).join("");
     }
-    $("#history").innerHTML = html || '<div class="empty">No broadcasts yet. They appear here automatically.</div>';
+    $("#history").innerHTML = html || emptyState("No broadcasts yet. They appear here automatically.");
     // Fewer than asked for means there is nothing older (the Pi keeps a year).
     $("#history-more").hidden = sessions.length < limit;
   } catch (err) {
-    $("#history").innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
+    $("#history").innerHTML = emptyState(err.message);
   }
 }

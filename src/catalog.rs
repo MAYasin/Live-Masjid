@@ -25,15 +25,13 @@ struct CacheFile {
 const SEED: &str = include_str!("catalog_seed.json");
 
 pub fn load_cache(app: &App) {
-    if let Ok(bytes) = std::fs::read(&app.paths.catalog) {
-        if let Ok(c) = serde_json::from_slice::<CacheFile>(&bytes) {
-            if !c.stations.is_empty() {
+    if let Ok(bytes) = std::fs::read(&app.paths.catalog)
+        && let Ok(c) = serde_json::from_slice::<CacheFile>(&bytes)
+            && !c.stations.is_empty() {
                 *app.catalog.write().unwrap() = c.stations;
                 app.catalog_fetched_ms.store(c.fetched_ms, Ordering::Relaxed);
                 return;
             }
-        }
-    }
     if let Ok(seed) = serde_json::from_str::<Vec<Station>>(SEED) {
         *app.catalog.write().unwrap() = seed;
         // fetched_ms stays 0, so the background task refreshes it as soon as it can.

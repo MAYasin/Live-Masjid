@@ -3,12 +3,12 @@
 // page polls its status and reloads once the new version is running.
 
 import { api } from "../api.js";
+import { pollWhileOpen } from "../components.js";
 import { $, runAction, toast } from "../dom.js";
 import { lowerFirst, timeAgo } from "../format.js";
 
 let updates = null; // { installed, auto_update, last, latest }
 let updating = null; // { from, at } after "Update now"
-let timer;
 
 export function init() {
   $("#check-updates").addEventListener("click", (e) => checkUpdates(e.currentTarget));
@@ -22,12 +22,8 @@ export function init() {
 
 export function show() {
   load();
-  clearInterval(timer);
   // Follow a running update while this page is open.
-  timer = setInterval(() => {
-    if (!$("#view-updates").classList.contains("active")) return clearInterval(timer);
-    if (updating && !document.hidden) load();
-  }, 3000);
+  pollWhileOpen("updates", () => updating && load(), 3000);
 }
 
 async function load(check = false) {

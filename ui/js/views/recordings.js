@@ -2,8 +2,9 @@
 // (#recordings/<mount>). Tapping one plays it on the Pi speaker.
 
 import { api } from "../api.js";
+import { emptyState } from "../components.js";
 import { $, runAction, toast } from "../dom.js";
-import { duration, escapeHtml, shortDate } from "../format.js";
+import { duration, escapeHtml, fileSize, shortDate } from "../format.js";
 import { getStatus } from "../store.js";
 import * as local from "../local.js";
 import * as miniplayer from "../miniplayer.js";
@@ -18,7 +19,7 @@ function meta(r) {
     parts.push(isNaN(d) ? r.published : `${shortDate(d.getTime())}, ${d.toTimeString().slice(0, 5)}`);
   }
   if (r.duration_s) parts.push(duration(r.duration_s * 1000));
-  if (r.size_bytes) parts.push(`${(r.size_bytes / 1048576).toFixed(1)} MB`);
+  if (r.size_bytes) parts.push(fileSize(r.size_bytes));
   return parts.join(" · ");
 }
 
@@ -42,7 +43,7 @@ export function rows(list, limit) {
 /** Fallback text for a non-ok list. */
 export function fallback(list) {
   const msg = list?.message || "Recordings are unavailable right now.";
-  return `<div class="empty small">${escapeHtml(msg)}</div>`;
+  return emptyState(msg, { small: true });
 }
 
 /** Handle a click on any "Play on speaker" button (event delegation). */
@@ -71,7 +72,7 @@ export async function show(mount) {
   const heading = $("#rec-heading");
   if (!currentMount) {
     heading.textContent = "Recordings";
-    $("#rec-list").innerHTML = '<div class="empty">Choose a masjid first.</div>';
+    $("#rec-list").innerHTML = emptyState("Choose a masjid first.");
     return;
   }
   heading.textContent = `Recordings · ${currentMount}`;

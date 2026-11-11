@@ -15,6 +15,7 @@ use super::masjidboard::{self, Lookup};
 use super::{Fetched, fetch, valid_mount};
 use crate::state::App;
 use serde::Serialize;
+use std::future::Future;
 use std::time::Duration;
 
 const ORDER: [(&str, &str); 5] = [("fajr", "Fajr"), ("zuhr", "Zuhr"), ("asr", "Asr"), ("maghrib", "Maghrib"), ("esha", "Esha")];
@@ -87,6 +88,28 @@ pub struct SalahTimes {
     pub manual: bool,
 }
 
+/// The two places salah times come from. The real one ([`Live`]) fetches over the network
+/// (cached, rate-limited); tests use a fake.
+pub trait Sources: Sync {
+    /// A masjidboardlive board by id.
+    fn board(&self, id: &str) -> impl Future<Output = Lookup> + Send;
+    /// masjidscreen.co.za times for a livemasjid mount.
+    fn masjidscreen(&self, mount: &str) -> impl Future<Output = SalahTimes> + Send;
+}
+
+/// The real sources.
+struct Live<'a>(&'a App);
+
+impl Sources for Live<'_> {
+    async fn board(&self, id: &str) -> Lookup {
+        masjidboard::lookup(self.0, id).await
+    }
+
+    async fn masjidscreen(&self, mount: &str) -> SalahTimes {
+        masjidscreen(self.0, mount).await
+    }
+}
+
 /// Times for `mount`, from the source chosen for it (see the module docs).
 pub async fn get(app: &App, mount: &str) -> SalahTimes {
     if !valid_mount(mount) {
@@ -94,17 +117,23 @@ pub async fn get(app: &App, mount: &str) -> SalahTimes {
     }
     let base = mount.strip_suffix(".mp3").unwrap_or(mount).to_ascii_lowercase();
     let choice = app.settings().salah_boards.get(&base).cloned();
-    match choice.as_deref() {
+    choose(&Live(app), mount, &base, choice.as_deref()).await
+}
+
+/// The source rules. `choice` is the user's pick for this masjid: a board id, or "none" for
+/// masjidscreen only.
+async fn choose(src: &impl Sources, mount: &str, base: &str, choice: Option<&str>) -> SalahTimes {
+    match choice {
         Some("none") => {
-            let mut t = masjidscreen(app, mount).await;
+            let mut t = src.masjidscreen(mount).await;
             t.manual = true;
             return t;
         }
-        Some(id) => match masjidboard::lookup(app, id).await {
+        Some(id) => match src.board(id).await {
             Lookup::Found(t) => return SalahTimes { manual: true, ..*t },
             other => {
                 // Chosen board unavailable right now: masjidscreen, with a note.
-                let mut t = masjidscreen(app, mount).await;
+                let mut t = src.masjidscreen(mount).await;
                 t.manual = true;
                 if t.status != "ok" {
                     let why = match other {
@@ -122,19 +151,19 @@ pub async fn get(app: &App, mount: &str) -> SalahTimes {
     }
     // Automatic: a board whose own livemasjid link is this mount.
     let mut suggestion = None;
-    if masjidboard::valid_id(&base) {
-        if let Lookup::Found(t) = masjidboard::lookup(app, &base).await {
-            let board = t.board.clone();
-            match board.as_ref().and_then(|b| b.stream.as_deref()) {
-                Some(s) if s == base => return *t,
-                // The board names a different stream: it belongs to another masjid.
-                Some(_) => {}
-                // No stream named: maybe this masjid's board; let the user confirm.
-                None => suggestion = board,
-            }
+    if masjidboard::valid_id(base)
+        && let Lookup::Found(t) = src.board(base).await
+    {
+        let board = t.board.clone();
+        match board.as_ref().and_then(|b| b.stream.as_deref()) {
+            Some(s) if s == base => return *t,
+            // The board names a different stream: it belongs to another masjid.
+            Some(_) => {}
+            // No stream named: maybe this masjid's board; let the user confirm.
+            None => suggestion = board,
         }
     }
-    let mut t = masjidscreen(app, mount).await;
+    let mut t = src.masjidscreen(mount).await;
     t.suggestion = suggestion;
     t
 }
@@ -143,17 +172,15 @@ pub async fn get(app: &App, mount: &str) -> SalahTimes {
 async fn masjidscreen(app: &App, mount: &str) -> SalahTimes {
     let source = format!("https://masjidscreen.co.za/{mount}/");
     let it = &app.integrations;
-    if let Some(hit) = it.salah.get(mount) {
-        if hit.status != "ok" || hit.date.as_deref() == Some(&today()) {
+    if let Some(hit) = it.salah.get(mount)
+        && (hit.status != "ok" || hit.date.as_deref() == Some(&today())) {
             return hit;
         }
-    }
     let _one = it.masjidscreen_gate.lock().await;
-    if let Some(hit) = it.salah.get(mount) {
-        if hit.status != "ok" || hit.date.as_deref() == Some(&today()) {
+    if let Some(hit) = it.salah.get(mount)
+        && (hit.status != "ok" || hit.date.as_deref() == Some(&today())) {
             return hit; // fetched by a concurrent request while we waited
         }
-    }
     let url = format!("https://masjidscreen.co.za/{mount}/api/prayertimes.php");
     let (result, ttl) = match fetch(&url, Duration::from_secs(10), &it.masjidscreen).await {
         Fetched::Ok(body) => match parse(&body) {
@@ -241,5 +268,79 @@ mod tests {
         let short = r#"{"masjid":"lakewood","date":"2026-11-07","fajr":{"athaan":"04:45:00","jamaat":"05:00:00"}}"#;
         assert_eq!(super::parse(short).unwrap().times.len(), 1);
         assert!(super::parse(r#"{"error":"Masjid not found"}"#).is_none());
+    }
+}
+
+#[cfg(test)]
+mod source_rules {
+    use super::*;
+
+    /// Boards by id, and what masjidscreen answers.
+    struct Fake {
+        boards: Vec<(&'static str, Lookup)>,
+        screen: &'static str,
+    }
+
+    impl Sources for Fake {
+        async fn board(&self, id: &str) -> Lookup {
+            self.boards.iter().find(|(b, _)| *b == id).map_or(Lookup::NotFound, |(_, l)| l.clone())
+        }
+
+        async fn masjidscreen(&self, _mount: &str) -> SalahTimes {
+            SalahTimes { status: self.screen.into(), provider: "masjidscreen".into(), ..SalahTimes::default() }
+        }
+    }
+
+    fn board(id: &str, stream: Option<&str>) -> Lookup {
+        let b = Board { id: id.into(), name: id.into(), city: None, url: String::new(), stream: stream.map(Into::into) };
+        Lookup::Found(Box::new(SalahTimes { status: "ok".into(), provider: "masjidboardlive".into(), board: Some(b), ..SalahTimes::default() }))
+    }
+
+    fn run(src: &Fake, choice: Option<&str>) -> SalahTimes {
+        let rt = tokio::runtime::Builder::new_current_thread().build().unwrap();
+        rt.block_on(choose(src, "lakewood", "lakewood", choice))
+    }
+
+    #[test]
+    fn automatic_board_only_when_it_names_this_stream() {
+        let mine = Fake { boards: vec![("lakewood", board("lakewood", Some("lakewood")))], screen: "ok" };
+        let t = run(&mine, None);
+        assert_eq!((t.provider.as_str(), t.manual), ("masjidboardlive", false));
+
+        let other = Fake { boards: vec![("lakewood", board("lakewood", Some("elsewhere")))], screen: "ok" };
+        let t = run(&other, None);
+        assert_eq!(t.provider, "masjidscreen");
+        assert!(t.suggestion.is_none(), "another masjid's board is never suggested");
+
+        let maybe = Fake { boards: vec![("lakewood", board("lakewood", None))], screen: "not_listed" };
+        let t = run(&maybe, None);
+        assert_eq!(t.provider, "masjidscreen");
+        assert_eq!(t.suggestion.map(|b| b.id).as_deref(), Some("lakewood"), "offered for the user to confirm");
+    }
+
+    #[test]
+    fn the_users_choice_wins() {
+        let src = Fake { boards: vec![("lakewood", board("lakewood", Some("lakewood"))), ("kauthar", board("kauthar", None))], screen: "ok" };
+        let t = run(&src, Some("kauthar"));
+        assert_eq!((t.provider.as_str(), t.manual), ("masjidboardlive", true));
+        assert_eq!(t.board.map(|b| b.id).as_deref(), Some("kauthar"));
+
+        let t = run(&src, Some("none"));
+        assert_eq!((t.provider.as_str(), t.manual), ("masjidscreen", true), "masjidscreen only");
+    }
+
+    #[test]
+    fn a_missing_chosen_board_falls_back_with_a_note() {
+        let screen_ok = Fake { boards: vec![], screen: "ok" };
+        let t = run(&screen_ok, Some("gone"));
+        assert_eq!((t.status.as_str(), t.manual), ("ok", true));
+        assert!(t.message.is_none(), "masjidscreen had times: no note needed");
+
+        let neither = Fake { boards: vec![("blocked", Lookup::Blocked)], screen: "not_listed" };
+        let t = run(&neither, Some("gone"));
+        assert_eq!(t.status, "error");
+        assert!(t.message.unwrap().contains("no longer exists"));
+        let t = run(&neither, Some("blocked"));
+        assert!(t.message.unwrap().contains("not answering"));
     }
 }

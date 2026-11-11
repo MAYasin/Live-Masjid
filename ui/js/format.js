@@ -40,3 +40,24 @@ export function duration(ms) {
 /** "Saturday, 7 November" style day heading. */
 export const dayHeading = (ms) =>
   new Date(ms).toLocaleDateString([], { weekday: "long", day: "numeric", month: "long" });
+
+/** Playback position, e.g. "3:07" or "1:02:45". */
+export function clock(s) {
+  s = Math.max(0, Math.floor(s || 0));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h ? `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}` : `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+/** How long something has been up, e.g. "3 d 4 h", "5 h 12 m" or "8 m". */
+export function uptime(s) {
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  if (d) return `${d} d ${h} h`;
+  if (h) return `${h} h ${m} m`;
+  return `${m} m`;
+}
+
+/** A file size in bytes, e.g. "4.2 MB" (one decimal below 10 MB). */
+export const fileSize = (b) => `${(b / 1048576).toFixed(b < 10485760 ? 1 : 0)} MB`;
+
+/** A size in megabytes, switching to GB from 1024 MB. */
+export const storageSize = (mb) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`);

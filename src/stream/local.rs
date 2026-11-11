@@ -15,7 +15,7 @@ use std::io::{Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use tokio::sync::mpsc::UnboundedSender;
+use super::source::{Events, Source};
 
 pub struct LocalParams {
     pub lib: Arc<Library>,
@@ -32,7 +32,7 @@ pub struct LocalParams {
     pub duration_ms: Arc<AtomicU64>,
     /// Playback speed (f32 bits); can change while playing.
     pub speed: Arc<std::sync::atomic::AtomicU32>,
-    pub events: UnboundedSender<RecordingEvent>,
+    pub events: Events<RecordingEvent>,
 }
 
 /// Give up when a download makes no progress for this long.
@@ -181,7 +181,15 @@ fn open(p: &LocalParams) -> Result<(Growing, u64), String> {
     Ok((g, pos))
 }
 
-pub fn run(p: LocalParams) {
+impl Source for LocalParams {
+    const THREAD: &'static str = "quran";
+
+    fn run(self) {
+        run(self);
+    }
+}
+
+fn run(p: LocalParams) {
     let (mut reader, base) = match open(&p) {
         Ok(v) => v,
         Err(e) => {

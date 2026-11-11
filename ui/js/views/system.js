@@ -2,11 +2,11 @@
 // health, a restart button, and collapsed details (network, Bluetooth, device, activity log).
 
 import { api } from "../api.js";
+import { definitionList as kv, meter, pollWhileOpen } from "../components.js";
 import { $, runAction } from "../dom.js";
-import { escapeHtml } from "../format.js";
+import { escapeHtml, storageSize as size, uptime } from "../format.js";
 
 const REFRESH_MS = 3000;
-let timer;
 
 export function init() {
   $("#restart").addEventListener("click", (e) => {
@@ -18,40 +18,11 @@ export function init() {
 
 export function show() {
   refresh();
-  clearInterval(timer);
-  // Poll only while the page is visible; stops by itself when another view is opened.
-  timer = setInterval(() => {
-    if (!$("#view-system").classList.contains("active")) return clearInterval(timer);
-    if (!document.hidden) refresh();
-  }, REFRESH_MS);
-}
-
-/** Uptime as "3 d 4 h", "5 h 12 m" or "8 m". */
-function uptime(s) {
-  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-  if (d) return `${d} d ${h} h`;
-  if (h) return `${h} h ${m} m`;
-  return `${m} m`;
-}
-
-function meter(id, percent, warnAt = 75, critAt = 90) {
-  const bar = $(`#${id}-bar`);
-  const p = Math.max(0, Math.min(100, percent ?? 0));
-  bar.style.width = `${p}%`;
-  bar.className = p >= critAt ? "critical" : p >= warnAt ? "high" : "";
-}
-
-/** Render [label, value] rows, skipping empty values. */
-function kv(id, rows) {
-  $(`#${id}`).innerHTML = rows
-    .filter(([, v]) => v !== null && v !== undefined && v !== "")
-    .map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(v)}</dd>`)
-    .join("");
+  pollWhileOpen("system", refresh, REFRESH_MS);
 }
 
 const yesNo = (b) => (b ? "Yes" : "No");
 const fixed = (n, d = 1) => (n == null ? null : Number(n).toFixed(d));
-const size = (mb) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`);
 
 function signalWord(dbm) {
   if (dbm >= -55) return "· excellent";

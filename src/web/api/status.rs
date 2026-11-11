@@ -68,15 +68,14 @@ pub async fn history(State(app): State<App>, Query(q): Query<HistoryQuery>) -> J
         .into_iter()
         .map(|s| {
             let mut v = serde_json::to_value(&s).unwrap_or(Value::Null);
-            if s.salah.is_none() && Some(&s.mount) == followed.as_ref() {
-                if let Some(t) = &times {
+            if s.salah.is_none() && Some(&s.mount) == followed.as_ref()
+                && let Some(t) = &times {
                     let (weekday, minute) = crate::salah_match::local_day_minute(s.start_ms, offset);
                     if let Some(label) = crate::salah_match::salah_for(t, weekday, minute) {
                         v["salah"] = json!(label);
                         v["salah_estimated"] = json!(true);
                     }
                 }
-            }
             v
         })
         .collect();
