@@ -189,3 +189,27 @@
 .speed-btn:hover { background: var(--hover); color: var(--text); }
 .speed-btn.on { border-color: var(--text); color: var(--text); }
 .speed-btn:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+/* History */
+.h-row .item-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.salah-tag { display: inline-block; padding: 1px 8px; border: 1px solid var(--border-strong); border-radius: var(--radius); font-size: 12px; font-weight: 600; color: var(--text); }
+.salah-tag.estimated { border-style: dashed; font-weight: 500; color: var(--text-2); }
+.h-dur { flex: none; font-size: 13px; color: var(--text-2); }
+.history-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-top: 12px; }
+
+/* Settings hub and its pages */
+.hub { padding: 4px; }
+.hub-row { display: flex; align-items: center; gap: 14px; width: 100%; min-height: 60px; padding: 10px 12px; border: 0; border-radius: var(--radius); background: none; color: var(--text); text-align: left; cursor: pointer; }
+.hub-row + .hub-row { border-top: 1px solid var(--border); border-radius: 0; }
+.hub-row:hover { background: var(--hover); }
+.hub-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+.hub-row > svg { flex: none; width: 20px; height: 20px; color: var(--text-2); }
+.hub-row .chev { width: 16px; height: 16px; color: var(--text-3); }
+.hub-row .grow { min-width: 0; }
+.hub-row b { display: block; font-size: 14px; font-weight: 600; }
+.hub-row .grow > span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-2); }
+.back-link { display: inline-flex; align-items: center; gap: 2px; margin: -4px 0 12px -4px; padding: 4px 6px; border: 0; border-radius: var(--radius); background: none; color: var(--text-2); font-size: 13px; cursor: pointer; }
+.back-link svg { width: 16px; height: 16px; transform: rotate(180deg); }
+.back-link:hover { background: var(--hover); color: var(--text); }
+@media (min-width: 900px) { .back-link { display: none; } }
+.log-tools { display: flex; justify-content: flex-end; margin-bottom: 6px; }

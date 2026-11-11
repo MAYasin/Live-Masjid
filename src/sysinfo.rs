@@ -74,6 +74,8 @@ pub struct AppUsage {
     pub data_received_mb: f32,
     pub buffer_s: f32,
     pub phase: String,
+    /// Quran recitations stored on the Pi (all reciters), in MB.
+    pub quran_mb: f32,
 }
 
 /// CPU counters from the previous sample, to turn cumulative ticks into percentages.
@@ -139,6 +141,7 @@ pub async fn collect(app: &App) -> SystemInfo {
         data_received_mb: crate::stream::BYTES_RECEIVED.load(Ordering::Relaxed) as f32 / 1_048_576.0,
         buffer_s: st.buffer_ms as f32 / 1000.0,
         phase: format!("{:?}", st.phase).to_lowercase(),
+        quran_mb: app.quran.stored_bytes() as f32 / 1_048_576.0,
     };
 
     SystemInfo { device, wifi: wifi().await, bluetooth, app: app_usage }

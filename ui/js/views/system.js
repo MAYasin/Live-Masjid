@@ -1,40 +1,28 @@
-// "System": live health of the device — Wi-Fi, Bluetooth, CPU/memory/temperature/disk —
-// plus the app's own usage, update/restart actions and the activity log.
+// Settings › Device & app: the app's own usage first (CPU, memory, uptime, storage), then the Pi's
+// health, a restart button, and collapsed details (network, Bluetooth, device, activity log).
 
 import { api } from "../api.js";
-import { $, runAction, toast } from "../dom.js";
-import { escapeHtml, lowerFirst, timeAgo } from "../format.js";
+import { $, runAction } from "../dom.js";
+import { escapeHtml } from "../format.js";
 
 const REFRESH_MS = 3000;
 let timer;
 
 export function init() {
-  $("#check-updates").addEventListener("click", (e) => checkUpdates(e.currentTarget));
-  $("#update-now").addEventListener("click", (e) => runAction(e.currentTarget, () => api("system/update", {}), "Updating…").then(() => {
-    updating = { from: updates?.installed, at: Date.now() };
-    $("#update-now").hidden = true;
-    paintUpdates();
-  }));
-  $("#auto-update").addEventListener("change", (e) =>
-    runAction(null, () => api("settings", { auto_update: e.target.checked }), e.target.checked ? "Automatic updates on" : "Automatic updates off"));
   $("#restart").addEventListener("click", (e) => {
     if (confirm("Restart the player service?")) runAction(e.currentTarget, () => api("system/restart", {}), "Restarting");
   });
   $("#refresh-logs").addEventListener("click", loadLogs);
+  $("#activity").addEventListener("toggle", (e) => { if (e.target.open) loadLogs(); });
 }
 
 export function show() {
   refresh();
-  loadUpdates();
-  loadLogs();
   clearInterval(timer);
   // Poll only while the page is visible; stops by itself when another view is opened.
   timer = setInterval(() => {
-    if ($("#view-system").classList.contains("active") && !document.hidden) {
-      refresh();
-      if (updating) loadUpdates();
-    }
-    else clearInterval(timer);
+    if (!$("#view-system").classList.contains("active")) return clearInterval(timer);
+    if (!document.hidden) refresh();
   }, REFRESH_MS);
 }
 
@@ -63,12 +51,43 @@ function kv(id, rows) {
 
 const yesNo = (b) => (b ? "Yes" : "No");
 const fixed = (n, d = 1) => (n == null ? null : Number(n).toFixed(d));
+const size = (mb) => (mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`);
+
+function signalWord(dbm) {
+  if (dbm >= -55) return "· excellent";
+  if (dbm >= -65) return "· good";
+  if (dbm >= -72) return "· fair";
+  return "· weak";
+}
 
 async function refresh() {
   let s;
   try { s = await api("system"); } catch { return; }
   const { device: dev, wifi, bluetooth: bt, app } = s;
+  paintApp(app, dev);
+  paintPi(dev, wifi);
+  paintDetails(dev, wifi, bt);
+}
 
+/** This app's own footprint. */
+function paintApp(app, dev) {
+  $("#app-cpu").textContent = app.cpu_percent == null ? "…" : `${fixed(app.cpu_percent)}%`;
+  meter("app-cpu", app.cpu_percent, 50, 80);
+  $("#app-mem").textContent = `${fixed(app.memory_mb)} MB`;
+  meter("app-mem", dev.mem_total_mb ? (100 * app.memory_mb) / dev.mem_total_mb : 0, 25, 50);
+  $("#app-uptime").textContent = uptime(app.uptime_s);
+  $("#app-storage").textContent = size(app.quran_mb ?? 0);
+  kv("sys-app", [
+    ["Version", app.version],
+    ["Threads", app.threads],
+    ["Service restarts", app.restarts],
+    ["Audio streamed", `${fixed(app.data_received_mb)} MB since start`],
+    ["Buffer", app.phase === "playing" || app.phase === "reconnecting" ? `${fixed(app.buffer_s)} s` : null],
+  ]);
+}
+
+/** The Pi's resources, with a warning when the power supply is too weak. */
+function paintPi(dev, wifi) {
   const memPct = dev.mem_total_mb ? (100 * dev.mem_used_mb) / dev.mem_total_mb : 0;
   $("#sys-cpu").textContent = dev.cpu_percent == null ? "…" : `${fixed(dev.cpu_percent, 0)}%`;
   meter("sys-cpu", dev.cpu_percent);
@@ -87,7 +106,10 @@ async function refresh() {
   if (dev.throttled_now) power.push("The CPU is being throttled (heat or power).");
   $("#sys-power").hidden = power.length === 0;
   $("#sys-power").textContent = power.join(" ");
+}
 
+/** The collapsed details. */
+function paintDetails(dev, wifi, bt) {
   kv("sys-network", wifi ? [
     ["Wi-Fi network", wifi.ssid ?? "Not connected"],
     ["Signal", wifi.signal_dbm == null ? null : `${wifi.signal_dbm} dBm (${wifi.quality}%) ${signalWord(wifi.signal_dbm)}`],
@@ -118,24 +140,6 @@ async function refresh() {
     ["Power", dev.undervoltage_now == null ? null : dev.undervoltage_now ? "Under-voltage!" : "OK"],
     ["Up for", uptime(dev.uptime_s)],
   ]);
-
-  kv("sys-app", [
-    ["Version", app.version],
-    ["Running for", uptime(app.uptime_s)],
-    ["Memory", `${fixed(app.memory_mb)} MB`],
-    ["CPU", app.cpu_percent == null ? "…" : `${fixed(app.cpu_percent)}% of one core`],
-    ["Threads", app.threads],
-    ["Service restarts", app.restarts],
-    ["Audio downloaded", `${fixed(app.data_received_mb)} MB since start`],
-    ["Buffer", app.phase === "playing" || app.phase === "reconnecting" ? `${fixed(app.buffer_s)} s` : null],
-  ]);
-}
-
-function signalWord(dbm) {
-  if (dbm >= -55) return "· excellent";
-  if (dbm >= -65) return "· good";
-  if (dbm >= -72) return "· fair";
-  return "· weak";
 }
 
 async function loadLogs() {
@@ -145,70 +149,4 @@ async function loadLogs() {
     $("#logs").innerHTML = logs.map((l) => `<div class="${l.level}"><span class="text-3">${time(l.t)}</span>  ${escapeHtml(l.msg)}</div>`).join("")
       || '<div class="text-3">No activity yet.</div>';
   } catch { /* ignore */ }
-}
-
-// ------------------------------------------------------------------ updates
-
-let updates = null; // { installed, auto_update, last, latest }
-let updating = null; // { from, at } after "Update now"
-
-async function loadUpdates(check = false) {
-  try {
-    const u = await api(`system/updates${check ? "?check=true" : ""}`);
-    // A new version took over: reload so the page runs its matching interface.
-    if (updating && u.installed !== updating.from) {
-      toast(`Updated to ${u.installed}`);
-      setTimeout(() => location.reload(), 1500);
-    }
-    if (!check && updates?.latest) u.latest = updates.latest; // keep the last check's answer
-    updates = u;
-    paintUpdates();
-    return u;
-  } catch (err) {
-    if (check) throw err;
-    return null; // the service may be restarting during an update
-  }
-}
-
-async function checkUpdates(btn) {
-  await runAction(btn, async () => {
-    const u = await loadUpdates(true);
-    const newer = u.latest && u.latest.tag !== u.installed;
-    return newer ? `${u.latest.tag} is available` : "You're up to date";
-  }, (msg) => msg);
-}
-
-function paintUpdates() {
-  if (!updates) return;
-  const { installed, auto_update, last, latest } = updates;
-  $("#upd-version").textContent = installed;
-  $("#auto-update").checked = auto_update;
-  const newer = latest && latest.tag !== installed && latest.available;
-  $("#update-now").hidden = !newer || Boolean(updating);
-  $("#update-now").textContent = newer ? `Update to ${latest.tag}` : "Update now";
-  let info;
-  if (updating) {
-    const state = last && last.at * 1000 >= updating.at - 5000 ? last.state : "checking";
-    info = state === "failed" ? last.message
-      : state === "up_to_date" ? "Already up to date"
-      : `Updating${latest?.tag ? ` to ${latest.tag}` : ""}… the page reloads when it's done`;
-    if (["failed", "up_to_date", "skipped"].includes(state)) updating = null;
-  } else if (newer) {
-    info = `${latest.tag} is available`;
-  } else if (latest) {
-    info = "Up to date";
-  } else if (last?.at) {
-    const when = lowerFirst(timeAgo(last.at * 1000));
-    info = {
-      updated: `Updated to ${last.to} ${when}`,
-      up_to_date: `Up to date, checked ${when}`,
-      failed: last.message,
-      skipped: last.message,
-      updating: `Updating to ${last.to}…`,
-      checking: "Checking…",
-    }[last.state] ?? "";
-  } else {
-    info = auto_update ? "Checks for a new version every hour" : "Automatic updates are off";
-  }
-  $("#upd-info").textContent = info;
 }

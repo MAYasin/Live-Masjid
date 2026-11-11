@@ -27,9 +27,17 @@ pub struct Target {
     pub label: String,
 }
 
+/// Which volume a piece of audio follows. Broadcasts (live and recordings) and the Quran have
+/// their own, independent volumes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Channel {
+    Broadcast,
+    Quran,
+}
+
 pub enum SinkMsg {
     /// Interleaved stereo s16 at `rate`.
-    Pcm { epoch: u64, rate: u32, data: Vec<i16> },
+    Pcm { epoch: u64, rate: u32, data: Vec<i16>, channel: Channel },
     /// New ordered list of outputs to try (first = preferred).
     Retarget(Vec<Target>),
     /// Force close/reopen (e.g. a Bluetooth speaker reconnected with new transport).
@@ -54,6 +62,8 @@ pub struct SinkHandle {
     pub mirror: tokio::sync::broadcast::Sender<Arc<[u8]>>,
     /// Audio queued for the sink thread but not yet handed to the device, in µs.
     queued_us: Arc<AtomicU64>,
+    /// The Quran's volume (0–100), independent of the broadcast volume.
+    pub quran_volume: Arc<AtomicU8>,
 }
 
 /// Duration of an interleaved stereo chunk, in µs.
@@ -78,6 +88,7 @@ impl SinkHandle {
             targets: Arc::new(Mutex::new(Vec::new())),
             mirror: tokio::sync::broadcast::channel(64).0,
             queued_us: Arc::new(AtomicU64::new(0)),
+            quran_volume: Arc::new(AtomicU8::new(100)),
         };
         let h2 = h.clone();
         std::thread::Builder::new()
@@ -98,7 +109,13 @@ impl SinkHandle {
     /// Blocking send of PCM (applies back-pressure to the decoder). Returns false if the sink is gone.
     pub fn send_pcm(&self, epoch: u64, rate: u32, data: Vec<i16>) -> bool {
         self.queued_us.fetch_add(chunk_us(rate, &data), Ordering::Relaxed);
-        self.tx.send(SinkMsg::Pcm { epoch, rate, data }).is_ok()
+        self.tx.send(SinkMsg::Pcm { epoch, rate, data, channel: Channel::Broadcast }).is_ok()
+    }
+
+    /// Like `send_pcm`, for audio that follows `channel`'s volume.
+    pub fn send_pcm_on(&self, channel: Channel, epoch: u64, rate: u32, data: Vec<i16>) -> bool {
+        self.queued_us.fetch_add(chunk_us(rate, &data), Ordering::Relaxed);
+        self.tx.send(SinkMsg::Pcm { epoch, rate, data, channel }).is_ok()
     }
 
     fn dequeued(&self, rate: u32, data: &[i16]) {
@@ -222,15 +239,15 @@ impl Sink {
                     || self.last_pcm.is_some_and(|t| t.elapsed() < Duration::from_secs(3)));
             let wait = if feeding { Duration::from_millis(1) } else { Duration::from_millis(25) };
             match rx.recv_timeout(wait) {
-                Ok(SinkMsg::Pcm { epoch, rate, data }) if epoch != self.h.epoch.load(Ordering::SeqCst) => {
+                Ok(SinkMsg::Pcm { epoch, rate, data, .. }) if epoch != self.h.epoch.load(Ordering::SeqCst) => {
                     self.h.dequeued(rate, &data);
                 }
-                Ok(SinkMsg::Pcm { rate, data, .. }) => {
+                Ok(SinkMsg::Pcm { rate, data, channel, .. }) => {
                     self.h.dequeued(rate, &data);
                     self.last_pcm = Some(Instant::now());
                     self.h.audible.store(true, Ordering::Relaxed);
                     cur_rate = rate;
-                    self.play(rate, &data, true);
+                    self.play(rate, &data, true, channel);
                 }
                 Ok(SinkMsg::Retarget(t)) => {
                     self.targets = t;
@@ -253,7 +270,7 @@ impl Sink {
                     if self.h.keep_awake.load(Ordering::Relaxed) || recent {
                         // Feed silence: keeps device + Bluetooth transport warm, avoids underrun clicks.
                         let s = std::mem::take(&mut self.silence);
-                        self.play(cur_rate, &s, false);
+                        self.play(cur_rate, &s, false, Channel::Broadcast);
                         self.silence = s;
                     } else if self.open.is_some()
                         && self.last_pcm.is_none_or(|t| t.elapsed() > Duration::from_secs(10))
@@ -270,7 +287,7 @@ impl Sink {
         self.close();
     }
 
-    fn play(&mut self, rate: u32, data: &[i16], real: bool) {
+    fn play(&mut self, rate: u32, data: &[i16], real: bool, channel: Channel) {
         self.mirror(rate, data);
         if self.open.as_ref().is_some_and(|o| o.rate != rate) {
             self.close();
@@ -286,7 +303,11 @@ impl Sink {
             return;
         };
         // Perceptual volume curve (squared), Q16 fixed point.
-        let v = self.volume.load(Ordering::Relaxed).min(100) as u32;
+        let volume = match channel {
+            Channel::Broadcast => &self.volume,
+            Channel::Quran => &self.h.quran_volume,
+        };
+        let v = volume.load(Ordering::Relaxed).min(100) as u32;
         let gain = (v * v * 65536 / 10_000) as i32;
         self.bytes.clear();
         if gain == 65536 || !real {

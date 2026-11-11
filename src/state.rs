@@ -263,7 +263,7 @@ impl AppState {
             s.clone()
         };
         self.volume.store(snapshot.volume, Ordering::Relaxed);
-        crate::stream::local::QURAN_VOLUME.store(snapshot.quran_volume, Ordering::Relaxed);
+        self.sink.quran_volume.store(snapshot.quran_volume, Ordering::Relaxed);
         self.sink.set_keep_awake(snapshot.keep_awake);
         let (loc, last) = self.station_meta(snapshot.mount.as_deref());
         self.status.send_modify(|st| {

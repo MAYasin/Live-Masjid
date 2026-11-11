@@ -44,6 +44,7 @@
       <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></symbol>
       <symbol id="i-repeat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2.5 20.5 6 17 9.5"/><path d="M3.5 11.5V10a4 4 0 0 1 4-4h13"/><path d="M7 21.5 3.5 18 7 14.5"/><path d="M20.5 12.5V14a4 4 0 0 1-4 4h-13"/></symbol>
       <symbol id="i-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="m9 6 6 6-6 6"/></symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
       <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
       <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4L21 8"/><path d="M21 3v5h-5"/></symbol>
     </defs>
@@ -55,9 +56,7 @@
       <button data-view="now"><svg><use href="#i-home"/></svg>Now playing</button>
       <button data-view="masjids"><svg><use href="#i-list"/></svg>Masjids</button>
       <button data-view="quran"><svg><use href="#i-book"/></svg>Quran</button>
-      <button data-view="speaker"><svg><use href="#i-speaker"/></svg>Speaker</button>
       <button data-view="history"><svg><use href="#i-clock"/></svg>History</button>
-      <button data-view="system"><svg><use href="#i-chip"/></svg>System</button>
       <button data-view="settings"><svg><use href="#i-sliders"/></svg>Settings</button>
     </nav>
     <footer id="version">—</footer>
@@ -115,7 +114,7 @@
           </div>
           <div class="volume">
             <svg><use href="#i-volume"/></svg>
-            <input type="range" min="0" max="100" id="volume" aria-label="Volume">
+            <input type="range" min="0" max="100" id="volume" aria-label="Broadcast volume" title="Broadcast volume (the Quran has its own)">
             <output id="volume-value">–</output>
           </div>
           <div class="field">
@@ -180,6 +179,7 @@
 
       <!-- Speaker -->
       <section class="view" id="view-speaker">
+        <button class="back-link" data-go="settings"><svg><use href="#i-chevron"/></svg>Settings</button>
         <div class="notice error" id="speaker-error" hidden></div>
         <div class="notice repair" id="speaker-repair" hidden>
           <div><b>Your speaker has forgotten this Pi.</b> It accepts the connection but refuses audio, which happens after it pairs with
@@ -229,14 +229,28 @@
           <div class="stat"><div class="stat-key">Listening (7d)</div><div class="stat-value truncate" id="history-time">—</div></div>
         </div>
         <div class="tabs history-filter" id="history-filter">
-          <button class="active" data-scope="selected">This masjid</button>
+          <button class="active" data-scope="selected" id="history-mine">This masjid</button>
           <button data-scope="all">All masjids</button>
         </div>
         <div class="list" id="history"><div class="empty">Loading…</div></div>
+        <div class="history-footer"><button class="btn small" id="history-more" hidden>Show older</button><span class="xsmall text-3">The Pi keeps a year of history.</span></div>
       </section>
 
-      <!-- Settings -->
+      <!-- Settings: a hub of short rows, each opening a focused page -->
       <section class="view" id="view-settings">
+        <div class="panel hub">
+          <button class="hub-row" data-go="speaker"><svg><use href="#i-speaker"/></svg><span class="grow"><b>Speaker</b><span id="hub-speaker">—</span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
+          <button class="hub-row" data-go="playback"><svg><use href="#i-sliders"/></svg><span class="grow"><b>Playback</b><span id="hub-playback">—</span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
+          <button class="hub-row" data-go="system"><svg><use href="#i-chip"/></svg><span class="grow"><b>Device &amp; app</b><span id="hub-system">—</span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
+          <button class="hub-row" data-go="updates"><svg><use href="#i-refresh"/></svg><span class="grow"><b>Updates</b><span id="hub-updates">—</span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
+          <button class="hub-row" data-go="security"><svg><use href="#i-lock"/></svg><span class="grow"><b>Password</b><span id="hub-security">—</span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
+          <button class="hub-row" data-install><svg><use href="#i-plus"/></svg><span class="grow"><b>Install on this phone</b><span>Open Live Masjid from your home screen</span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
+        </div>
+      </section>
+
+      <!-- Settings › Playback -->
+      <section class="view" id="view-playback">
+        <button class="back-link" data-go="settings"><svg><use href="#i-chevron"/></svg>Settings</button>
         <div class="panel">
           <div class="field">
             <div class="field-label"><b>Delay behind live</b><span>How far behind the broadcast the speaker plays. A longer delay rides out Wi-Fi drop-outs without a gap.</span></div>
@@ -248,12 +262,91 @@
             <div class="field-label"><b>Listen in the browser</b><span>Lets anyone who opens this page play the stream or recordings on their own phone or computer. The Pi's speaker keeps playing as normal.</span></div>
             <label class="switch"><input type="checkbox" id="browser-listening" aria-label="Listen in the browser"><span></span></label>
           </div>
-          <div class="field" data-install-field>
-            <div class="field-label"><b>Install on your phone</b><span>Open Live Masjid from your home screen, full screen on iPhone.</span></div>
-            <button class="btn" data-install type="button">How to install</button>
+        </div>
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <div class="panel">
+            <div class="field">
+              <div class="field-label"><b>Stream format</b><span>Auto prefers Opus, which goes live a few seconds before MP3</span></div>
+              <select id="codec" aria-label="Stream format"><option value="auto">Auto</option><option value="opus">Opus</option><option value="mp3">MP3</option></select>
+            </div>
+            <div class="field">
+              <div class="field-label"><b>Status check interval</b><span>Backup to the live signal. Keep it gentle on livemasjid's servers.</span></div>
+              <select id="poll" aria-label="Status check interval">
+                <option value="10">10 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option>
+                <option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option>
+              </select>
+            </div>
+            <div class="field">
+              <div class="field-label"><b>Masjid directory</b><span id="directory-info">—</span></div>
+              <button class="btn" id="refresh-directory">Refresh</button>
+            </div>
+          </div>
+        </details>
+      </section>
+
+      <!-- Settings › Device & app: this app first, then the Pi, details collapsed -->
+      <section class="view" id="view-system">
+        <button class="back-link" data-go="settings"><svg><use href="#i-chevron"/></svg>Settings</button>
+        <div class="notice error" id="sys-power" hidden></div>
+        <div class="section-title" style="margin-top:0">Live Masjid app</div>
+        <div class="stats">
+          <div class="stat"><div class="stat-key">CPU</div><div class="stat-value" id="app-cpu">—</div><div class="meter"><i id="app-cpu-bar"></i></div></div>
+          <div class="stat"><div class="stat-key">Memory</div><div class="stat-value" id="app-mem">—</div><div class="meter"><i id="app-mem-bar"></i></div></div>
+          <div class="stat"><div class="stat-key">Running for</div><div class="stat-value" id="app-uptime">—</div></div>
+          <div class="stat"><div class="stat-key">Quran on the Pi</div><div class="stat-value" id="app-storage">—</div></div>
+        </div>
+        <div class="panel" style="margin-top:12px"><dl class="kv" id="sys-app"></dl></div>
+        <div class="section-title">Raspberry Pi</div>
+        <div class="stats">
+          <div class="stat"><div class="stat-key">CPU</div><div class="stat-value" id="sys-cpu">—</div><div class="meter"><i id="sys-cpu-bar"></i></div></div>
+          <div class="stat"><div class="stat-key">Memory</div><div class="stat-value" id="sys-mem">—</div><div class="meter"><i id="sys-mem-bar"></i></div></div>
+          <div class="stat"><div class="stat-key">Temperature</div><div class="stat-value" id="sys-temp">—</div><div class="meter"><i id="sys-temp-bar"></i></div></div>
+          <div class="stat"><div class="stat-key">Wi-Fi signal</div><div class="stat-value" id="sys-signal">—</div><div class="meter"><i id="sys-signal-bar"></i></div></div>
+        </div>
+        <div class="panel" style="margin-top:12px">
+          <div class="field">
+            <div class="field-label"><b>Restart</b><span>Restarts the player; playback resumes by itself</span></div>
+            <button class="btn danger" id="restart">Restart</button>
           </div>
         </div>
-        <div class="section-title">Security</div>
+        <details class="advanced">
+          <summary>Network, Bluetooth and device details</summary>
+          <div class="section-title" style="margin-top:4px">Network</div>
+          <div class="panel"><dl class="kv" id="sys-network"></dl></div>
+          <div class="section-title">Bluetooth</div>
+          <div class="panel"><dl class="kv" id="sys-bluetooth"></dl></div>
+          <div class="section-title">Device</div>
+          <div class="panel"><dl class="kv" id="sys-device"></dl></div>
+        </details>
+        <details class="advanced" id="activity">
+          <summary>Activity log</summary>
+          <div class="log-tools"><button class="btn ghost small" id="refresh-logs">Refresh</button></div>
+          <div class="log" id="logs"></div>
+        </details>
+      </section>
+
+      <!-- Settings › Updates -->
+      <section class="view" id="view-updates">
+        <button class="back-link" data-go="settings"><svg><use href="#i-chevron"/></svg>Settings</button>
+        <div class="panel">
+          <div class="field">
+            <div class="field-label"><b>Version <span class="tabular" id="upd-version"></span></b><span id="upd-info">—</span></div>
+            <div class="actions">
+              <button class="btn" id="check-updates">Check for updates</button>
+              <button class="btn primary" id="update-now" hidden>Update now</button>
+            </div>
+          </div>
+          <div class="field">
+            <div class="field-label"><b>Automatic updates</b><span>Installs a new version within an hour of its release</span></div>
+            <label class="switch"><input type="checkbox" id="auto-update" aria-label="Automatic updates"><span></span></label>
+          </div>
+        </div>
+      </section>
+
+      <!-- Settings › Password -->
+      <section class="view" id="view-security">
+        <button class="back-link" data-go="settings"><svg><use href="#i-chevron"/></svg>Settings</button>
         <div class="panel">
           <div class="field">
             <div class="field-label"><b>Password</b><span id="password-info">—</span></div>
@@ -264,64 +357,6 @@
             <button class="btn" id="logout">Sign out</button>
           </div>
         </div>
-        <details class="advanced">
-          <summary>Advanced</summary>
-          <div class="panel">
-          <div class="field">
-            <div class="field-label"><b>Stream format</b><span>Auto prefers Opus, which goes live a few seconds before MP3</span></div>
-            <select id="codec" aria-label="Stream format"><option value="auto">Auto</option><option value="opus">Opus</option><option value="mp3">MP3</option></select>
-          </div>
-          <div class="field">
-            <div class="field-label"><b>Status check interval</b><span>Backup to the live signal. Keep it gentle on livemasjid's servers.</span></div>
-            <select id="poll" aria-label="Status check interval">
-              <option value="10">10 seconds</option><option value="15">15 seconds</option><option value="20">20 seconds</option>
-              <option value="30">30 seconds</option><option value="60">1 minute</option><option value="120">2 minutes</option>
-            </select>
-          </div>
-          <div class="field">
-            <div class="field-label"><b>Masjid directory</b><span id="directory-info">—</span></div>
-            <button class="btn" id="refresh-directory">Refresh</button>
-          </div>
-          </div>
-        </details>
-      </section>
-
-      <!-- System -->
-      <section class="view" id="view-system">
-        <div class="stats">
-          <div class="stat"><div class="stat-key">CPU</div><div class="stat-value" id="sys-cpu">—</div><div class="meter"><i id="sys-cpu-bar"></i></div></div>
-          <div class="stat"><div class="stat-key">Memory</div><div class="stat-value" id="sys-mem">—</div><div class="meter"><i id="sys-mem-bar"></i></div></div>
-          <div class="stat"><div class="stat-key">Temperature</div><div class="stat-value" id="sys-temp">—</div><div class="meter"><i id="sys-temp-bar"></i></div></div>
-          <div class="stat"><div class="stat-key">Wi-Fi signal</div><div class="stat-value" id="sys-signal">—</div><div class="meter"><i id="sys-signal-bar"></i></div></div>
-        </div>
-        <div class="notice error" id="sys-power" hidden></div>
-        <div class="section-title">Network</div>
-        <div class="panel"><dl class="kv" id="sys-network"></dl></div>
-        <div class="section-title">Bluetooth</div>
-        <div class="panel"><dl class="kv" id="sys-bluetooth"></dl></div>
-        <div class="section-title">Device</div>
-        <div class="panel"><dl class="kv" id="sys-device"></dl></div>
-        <div class="section-title">App</div>
-        <div class="panel">
-          <dl class="kv" id="sys-app"></dl>
-          <div class="field">
-            <div class="field-label"><b>Automatic updates</b><span>Installs a new version within an hour of its release</span></div>
-            <label class="switch"><input type="checkbox" id="auto-update" aria-label="Automatic updates"><span></span></label>
-          </div>
-          <div class="field">
-            <div class="field-label"><b>Version <span class="tabular" id="upd-version"></span></b><span id="upd-info">—</span></div>
-            <div class="actions">
-              <button class="btn" id="check-updates">Check for updates</button>
-              <button class="btn primary" id="update-now" hidden>Update now</button>
-            </div>
-          </div>
-          <div class="field">
-            <div class="field-label"><b>Restart</b><span>Restarts the player; playback resumes by itself</span></div>
-            <button class="btn danger" id="restart">Restart</button>
-          </div>
-        </div>
-        <div class="section-title">Activity <button class="btn ghost small" id="refresh-logs">Refresh</button></div>
-        <div class="log" id="logs"></div>
       </section>
     </main>
   </div>
@@ -330,20 +365,9 @@
     <button data-view="now"><svg><use href="#i-home"/></svg>Now</button>
     <button data-view="masjids"><svg><use href="#i-list"/></svg>Masjids</button>
     <button data-view="quran"><svg><use href="#i-book"/></svg>Quran</button>
-    <button id="tab-more" aria-haspopup="dialog" aria-controls="more-sheet"><svg><use href="#i-more"/></svg>More</button>
+    <button data-view="history"><svg><use href="#i-clock"/></svg>History</button>
+    <button data-view="settings"><svg><use href="#i-sliders"/></svg>Settings</button>
   </nav>
-
-  <!-- Phone: the less frequent pages, each with its current state -->
-  <div class="sheet" id="more-sheet" hidden>
-    <div class="sheet-backdrop" data-sheet-close></div>
-    <div class="sheet-panel" role="dialog" aria-modal="true" aria-label="More">
-      <button class="sheet-row" data-view="speaker"><svg><use href="#i-speaker"/></svg><span class="grow"><b>Speaker</b><span id="more-speaker"></span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
-      <button class="sheet-row" data-view="history"><svg><use href="#i-clock"/></svg><span class="grow"><b>History</b><span id="more-history"></span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
-      <button class="sheet-row" data-view="system"><svg><use href="#i-chip"/></svg><span class="grow"><b>System</b><span id="more-system"></span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
-      <button class="sheet-row" data-view="settings"><svg><use href="#i-sliders"/></svg><span class="grow"><b>Settings</b><span id="more-settings"></span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
-      <button class="sheet-row" data-install><svg><use href="#i-plus"/></svg><span class="grow"><b>Install on this phone</b><span>Open Live Masjid from your home screen</span></span><svg class="chev"><use href="#i-chevron"/></svg></button>
-    </div>
-  </div>
 
   <audio id="local-audio" preload="none" hidden></audio>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>

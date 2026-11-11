@@ -194,7 +194,7 @@ impl Pipeline {
             position_ms: None,
             position_base_ms: 0,
             speed: None,
-            gain: None,
+            channel: crate::sink::Channel::Broadcast,
         };
         let decoder = std::thread::Builder::new()
             .name("decoder".into())

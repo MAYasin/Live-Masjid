@@ -1,6 +1,6 @@
 //! Play history: one JSON line per finished session, appended to history.jsonl.
 //! An in-progress session is also recorded on start (so "last heard" survives a crash)
-//! and rewritten when it ends.
+//! and rewritten when it ends. Sessions older than a year are pruned (at most 2000 kept).
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -23,9 +23,14 @@ pub struct Session {
     pub reason: String,
     #[serde(default)]
     pub reconnects: u32,
+    /// The salah this broadcast belonged to ("Esha", "Jumu'ah"…), from that day's times.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub salah: Option<String>,
 }
 
 const KEEP: usize = 2000;
+/// Sessions older than this are dropped.
+const KEEP_MS: u64 = 365 * 24 * 3600 * 1000;
 
 pub struct History {
     path: PathBuf,
@@ -97,6 +102,7 @@ impl History {
             trigger: trigger.into(),
             reason: String::new(),
             reconnects: 0,
+            salah: None,
         };
         self.append(&s);
         self.sessions.push(s);
@@ -116,6 +122,13 @@ impl History {
                 self.last_persist = now;
                 self.append(&s);
             }
+        }
+    }
+
+    /// Record which salah a session belongs to (saved with its next write).
+    pub fn set_salah(&mut self, id: u64, salah: Option<String>) {
+        if let Some(s) = self.sessions.iter_mut().rev().find(|s| s.id == id) {
+            s.salah = salah;
         }
     }
 
@@ -146,7 +159,10 @@ impl History {
 
     fn compact_if_needed(&mut self, force_check: bool) {
         let len = std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
-        if self.sessions.len() > KEEP || (force_check && len > 2_000_000) || len > 4_000_000 {
+        let cutoff = crate::state::now_ms().saturating_sub(KEEP_MS);
+        let expired = self.sessions.first().is_some_and(|s| s.end_ms < cutoff);
+        if expired || self.sessions.len() > KEEP || (force_check && len > 2_000_000) || len > 4_000_000 {
+            self.sessions.retain(|s| s.end_ms >= cutoff);
             let skip = self.sessions.len().saturating_sub(KEEP);
             self.sessions.drain(..skip);
             let mut buf = Vec::new();

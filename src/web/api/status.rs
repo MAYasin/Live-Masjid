@@ -53,9 +53,34 @@ pub struct HistoryQuery {
     mount: Option<String>,
 }
 
+/// Recent sessions, newest first. Sessions recorded before salah labels existed get an estimate
+/// from the followed masjid's current times (`salah_estimated`).
 pub async fn history(State(app): State<App>, Query(q): Query<HistoryQuery>) -> Json<Value> {
-    let h = app.history.lock().unwrap();
-    Json(json!({ "sessions": h.recent(q.limit.unwrap_or(200).min(2000), q.mount.as_deref()) }))
+    let sessions = app.history.lock().unwrap().recent(q.limit.unwrap_or(200).min(2000), q.mount.as_deref());
+    let followed = app.settings().mount;
+    let needs_estimate = sessions.iter().any(|s| s.salah.is_none() && Some(&s.mount) == followed.as_ref());
+    let times = match (&followed, needs_estimate) {
+        (Some(m), true) => Some(crate::integrations::salah::get(&app, m).await).filter(|t| t.status == "ok"),
+        _ => None,
+    };
+    let offset = crate::salah_match::utc_offset_s();
+    let out: Vec<Value> = sessions
+        .into_iter()
+        .map(|s| {
+            let mut v = serde_json::to_value(&s).unwrap_or(Value::Null);
+            if s.salah.is_none() && Some(&s.mount) == followed.as_ref() {
+                if let Some(t) = &times {
+                    let (weekday, minute) = crate::salah_match::local_day_minute(s.start_ms, offset);
+                    if let Some(label) = crate::salah_match::salah_for(t, weekday, minute) {
+                        v["salah"] = json!(label);
+                        v["salah_estimated"] = json!(true);
+                    }
+                }
+            }
+            v
+        })
+        .collect();
+    Json(json!({ "sessions": out }))
 }
 
 pub async fn logs(State(app): State<App>) -> Json<Value> {

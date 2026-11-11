@@ -4,7 +4,7 @@ use super::buffer::{ByteQueue, QueueReader};
 use crate::sink::{RATE, SinkHandle};
 use std::io::Read;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,8 +40,8 @@ pub struct DecodeCtx {
     pub position_base_ms: u64,
     /// Quran only: playback speed (f32 bits), applied without changing pitch.
     pub speed: Option<Arc<AtomicU32>>,
-    /// Quran only: its own volume, in percent of the main volume.
-    pub gain: Option<&'static AtomicU8>,
+    /// Which volume this audio follows.
+    pub channel: crate::sink::Channel,
 }
 
 /// Run a decoder until the buffer is closed and drained, or `stop` is raised.
@@ -104,7 +104,7 @@ impl PcmOut {
                 self.ctx.buffer_ms.store(ms as u64 + self.ctx.sink.queued_ms(), Ordering::Relaxed);
             }
         }
-        // Quran: speed (time-stretched, pitch kept) and its own volume. Position stays in
+        // Quran: speed (time-stretched, pitch kept). Position stays in
         // recitation time (counted above), whatever the speed.
         let mut stereo = stereo;
         if let Some(sp) = &self.ctx.speed {
@@ -116,18 +116,10 @@ impl PcmOut {
                 self.stretch = None;
             }
         }
-        if let Some(g) = self.ctx.gain {
-            let g = i32::from(g.load(Ordering::Relaxed).min(100));
-            if g < 100 {
-                for v in &mut stereo {
-                    *v = (i32::from(*v) * g / 100) as i16;
-                }
-            }
-        }
         if stereo.is_empty() {
             return true; // the stretcher is still collecting a segment
         }
-        self.ctx.sink.send_pcm(self.ctx.epoch, rate, stereo)
+        self.ctx.sink.send_pcm_on(self.ctx.channel, self.ctx.epoch, rate, stereo)
     }
 }
 

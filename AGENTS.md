@@ -21,12 +21,21 @@ that aren't obvious from the code.
 - **UI style.** Minimal and neutral, like a FAANG product: grayscale plus one dark primary colour, green only for "live",
   6 px radii, flat 1 px borders, no gradients or glows. It must not scroll sideways at 375 px. The sidebar appears at 900 px and wider.
 - **UX cleanup (2026-11-08, chosen by the owner):** home has no recent broadcasts, and shows one warning only when something is wrong
-  (`alertFor`). The owner missed the status tiles, so they came back as one compact row under the masjid card (`paintTiles`): plain-language
-  values (Speaker, Live signal, Internet, then Buffer while live or "Live now"), each tile a button that opens Speaker/System/Masjids. Settings and Speaker keep set-and-forget options under a collapsed "Advanced". A masjid row opens a
-  sheet (Listen / Follow / Recordings) and addresses are shortened (`shortPlace`). History drops the repeated name and shows a total per day.
-- **Phone navigation** (2026-11-08): four tabs (Now, Masjids, Quran, More). More opens a sheet with Speaker, History, System, Settings and
-  "Install on this phone", each with a one-line live status. The masjid card on Now always shows the broadcast; the Quran or a recording
-  has its own player card under it (`ui/js/miniplayer.js`, also at the top of the Quran page) with icon buttons.
+  (`alertFor`). The status tiles are one compact row under the masjid card (`paintTiles`): plain-language values (Speaker, Live signal,
+  Internet, then Buffer while live or "Live now"), each tile a button that opens Speaker/Device & app/Masjids. Pages keep set-and-forget
+  options under a collapsed "Advanced". A masjid row opens a sheet (Listen / Follow / Recordings) and addresses are shortened (`shortPlace`).
+- **Navigation (2026-11-11, chosen by the owner):** five items in the phone tab bar and the sidebar: Now, Masjids, Quran, History, Settings.
+  There is no More sheet. Settings is a hub (`views/settings.js`, one row per sub-page with a one-line live status) for Speaker, Playback
+  (`views/playback.js`), Device & app (`views/system.js`: the app's own CPU, memory, uptime and Quran storage first, then the Pi, then
+  collapsed details and the activity log), Updates (`views/updates.js`), Password (`views/security.js`) and "Install on this phone".
+  Sub-pages have `section: "settings"` in `VIEWS` (main.js), so the Settings item stays highlighted, and a `.back-link` (hidden at 900 px+).
+  The masjid card on Now always shows the broadcast; the Quran or a recording has its own player card under it (`ui/js/miniplayer.js`,
+  also at the top of the Quran page) with icon buttons.
+- **History (2026-11-11):** kept for 1 year (`history::KEEP_MS`) as well as the existing caps (2000 sessions, 4 MB file). Each session
+  gets a salah label (`Session.salah`) shortly after it starts: `salah_match::salah_for` matches the start against that day's times
+  (60 min before the adhān to 60 min after the iqāmah, closest wins, Zuhr on a Friday is Jumu'ah). Older sessions of the followed masjid
+  without a label get an estimate from today's times (`salah_estimated`, shown as a dashed "around X" tag). The page shows the masjid's
+  short name, day headers with totals, and "Show older" in pages of 150.
 - **Phone install over plain HTTP:** iPhone Safari "Add to Home Screen" gives a full-screen app (apple-touch-icon and meta tags). Chrome
   installs a real app only on HTTPS, so Android gets a shortcut. The owner chose "best effort on http" for now; HTTPS (own domain with
   DNS-01, or Tailscale) is the way to a real Android install. Home-screen widgets need native apps. PNG icons are drawn by a small Node
@@ -234,8 +243,9 @@ that aren't obvious from the code.
   10 ms crossfade, ±8 ms best-match search on every second sample) runs in `PcmOut::send` for Quran playback only; positions stay in
   recitation time. One speed value (`qspeed` in the player) is shared by every surah, so seek/next/resume keep it; a play sets it from the
   request, the playlist's `speed`, or `Settings::quran_speed`. Changing it in the card saves the default unless the playing playlist has its
-  own. Measured on the Pi: 1.5× advanced 30 s in 20 s, ~11% of one core. The Quran has its own volume (`Settings::quran_volume`, percent of
-  the main volume, `local::QURAN_VOLUME`) because recitations are mastered louder than broadcasts; the player card's slider controls it.
+  own. Measured on the Pi: 1.5× advanced 30 s in 20 s, ~11% of one core. The Quran has its own volume (`Settings::quran_volume`), fully
+  independent of the broadcast volume (2026-11-11): every PCM message carries a `sink::Channel` (Broadcast for live and recordings, Quran
+  for `local.rs`), and the sink applies `volume` or `quran_volume` per channel. The player card's slider controls it.
 - **Quran pause is instant:** pausing drops the ~2 s already queued for the speaker (`sink.new_epoch()`) and stores the *heard* position
   (`heard_ms` = decoded − `queued_ms` − `OUTPUT_LAG_MS` 700); resume restarts from the file at that position. Status positions are heard positions.
 - **Signed-release failures** (missing signature, bad signature, checksum mismatch) are reported in `update-status.json` with the reason.
@@ -309,14 +319,14 @@ that aren't obvious from the code.
 - `sink.rs` aplay output thread (epochs, keep-awake, failover)
 - `monitor/` `sse.rs` live push · `poll.rs` Icecast status · `site.rs` website back-off guard
 - `bluetooth/` `mod.rs` supervisor · `adapter.rs` power, rfkill and controller reset · `devices.rs` pair, use, forget, re-pair · `speaker.rs` audio-ready state machine · `agent.rs` persistent agent · `ctl.rs` bluetoothctl · `outputs.rs` ALSA targets
-- `sysinfo.rs` device, Wi-Fi, Bluetooth and app health for the System page
+- `sysinfo.rs` device, Wi-Fi, Bluetooth and app health (incl. Quran storage) for Device & app · `salah_match.rs` labels broadcasts with a salah
 - `integrations/` `mod.rs` curl fetch, caches and guards · `salah.rs` source choice + masjidscreen · `masjidboard.rs` masjidboardlive · `recordings.rs` RSS feed · `stream/recording.rs` playback
 - `quran.rs` Quran reciters, library, playlists and downloader · `schedule.rs` scheduled playlists · `stream/local.rs` file playback with seek (growing files) · `web/api/quran.rs`
 - `catalog.rs` directory scrape, cache and seed · `history.rs` JSONL sessions · `net.rs` raw Icecast HTTP and endpoints
 - `web/` `mod.rs` router and `ApiError` · `auth.rs` · `assets.rs` (embedded UI, ETag) · `api/{status,stations,player,speaker,system}.rs`
 - Device setup: `setup.sh` (wizard), `deploy.sh` (dev loop) · `deploy/install.sh` (generic installer) · `deploy/update.sh` (`--check`, `--force`) · `docs/SETUP.md`
 - `ui/` `index.html` markup only · `miniplayer.js` Quran/recording player card · `install.js` install guide · `icons/` PNG app icons · · `css/{base,layout,components,views}.css` · `js/` ES modules: `main.js` router, `store.js` live status,
-  `api.js`, `dom.js`, `format.js`, `views/{now,masjids,quran,speaker,history,settings,system,recordings,salah}.js`. New UI files must be added to `FILES` in `web/assets.rs`.
+  `api.js`, `dom.js`, `format.js`, `views/{now,masjids,quran,speaker,history,settings,playback,system,updates,security,recordings,salah}.js`. New UI files must be added to `FILES` in `web/assets.rs`.
 
 ## Signed releases
 

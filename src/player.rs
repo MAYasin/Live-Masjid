@@ -486,6 +486,16 @@ pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx:
                         if a.hist_id.is_none() {
                             let id = app.history.lock().unwrap().begin(&a.mount, &name, codec, a.trigger);
                             a.hist_id = Some(id);
+                            // Which salah this broadcast is for, from today's times (cached; off the loop).
+                            let (app2, mount) = (app.clone(), a.mount.clone());
+                            tokio::spawn(async move {
+                                let times = crate::integrations::salah::get(&app2, &mount).await;
+                                if times.status == "ok" {
+                                    let (weekday, minute) = crate::salah_match::local_day_minute(now_ms(), crate::salah_match::utc_offset_s());
+                                    let label = crate::salah_match::salah_for(&times, weekday, minute);
+                                    app2.history.lock().unwrap().set_salah(id, label);
+                                }
+                            });
                             app.log("info", format!("▶ Playing {name} ({codec}, via {})", a.trigger));
                         } else {
                             a.reconnects += 1;

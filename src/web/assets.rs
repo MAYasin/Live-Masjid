@@ -34,6 +34,9 @@ static FILES: &[(&str, &str, &str)] = embed![
     "js/views/salah.js",
     "js/views/recordings.js",
     "js/views/quran.js",
+    "js/views/playback.js",
+    "js/views/updates.js",
+    "js/views/security.js",
     "js/miniplayer.js",
     "js/install.js",
 ];

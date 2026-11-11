@@ -88,7 +88,7 @@ pub fn run(p: RecordingParams) {
         position_ms: Some(p.position_ms.clone()),
         position_base_ms: 0,
         speed: None,
-        gain: None,
+        channel: crate::sink::Channel::Broadcast,
     };
     decode::run(codec_for(&p.url), ctx);
 

@@ -6,6 +6,7 @@ mod config;
 mod history;
 mod integrations;
 mod quran;
+mod salah_match;
 mod schedule;
 mod monitor;
 mod net;
@@ -65,13 +66,13 @@ async fn run() -> anyhow::Result<()> {
     let paths_site = paths.site.clone();
     let data_dir = paths.site.parent().map(std::path::Path::to_path_buf).unwrap_or_default();
     let settings = config::Settings::load(&paths.settings);
-    stream::local::QURAN_VOLUME.store(settings.quran_volume, std::sync::atomic::Ordering::Relaxed);
     stream::LIVE_DELAY_MS.store(u64::from(settings.live_delay_s) * 1000, std::sync::atomic::Ordering::Relaxed);
     settings.save(&paths.settings)?; // persist generated secret / migrated defaults
     tracing::info!("livemasjid {VERSION} starting; data in {:?}", paths.settings.parent());
 
     let volume = Arc::new(AtomicU8::new(settings.volume));
     let sink = sink::SinkHandle::spawn(volume.clone(), settings.keep_awake);
+    sink.quran_volume.store(settings.quran_volume, std::sync::atomic::Ordering::Relaxed);
     let (player_tx, player_rx) = tokio::sync::mpsc::unbounded_channel();
     let (signal_tx, signal_rx) = tokio::sync::mpsc::unbounded_channel();
     let history = history::History::load(paths.history.clone());

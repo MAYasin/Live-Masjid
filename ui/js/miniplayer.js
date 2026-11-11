@@ -68,7 +68,7 @@ export function mount(box) {
     </div>
     <div class="mp-volume" data-f="volume" hidden>
       <svg aria-hidden="true"><use href="#i-volume"/></svg>
-      <input type="range" min="0" max="100" aria-label="Quran volume" title="Quran volume (the broadcast keeps its own)" data-f="vol">
+      <input type="range" min="0" max="100" aria-label="Quran volume" title="Quran volume (the broadcast has its own)" data-f="vol">
       <output class="tabular" data-f="volval">–</output>
     </div>
     <div class="mp-resume" data-f="resume" hidden>

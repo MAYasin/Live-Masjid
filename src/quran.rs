@@ -440,7 +440,8 @@ impl Library {
         removed
     }
 
-    fn stored_bytes(&self) -> u64 {
+    /// Bytes of recitations stored, across reciters (walks the folders: call off the async threads when possible).
+    pub fn stored_bytes(&self) -> u64 {
         let size = |p: PathBuf| {
             std::fs::read_dir(p).into_iter().flatten().flatten().filter_map(|e| e.metadata().ok()).filter(|m| m.is_file()).map(|m| m.len()).sum::<u64>()
         };

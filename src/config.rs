@@ -41,7 +41,7 @@ pub struct Settings {
     pub salah_boards: std::collections::BTreeMap<String, String>,
     /// Install new releases automatically (the hourly timer; "Update now" works either way).
     pub auto_update: bool,
-    /// Quran volume, in percent of the main volume (recitations are mastered louder than broadcasts).
+    /// Quran volume (0–100), independent of the broadcast volume (recitations are mastered louder).
     pub quran_volume: u8,
     /// Default Quran playback speed (0.5–2.0, pitch kept); playlists may set their own.
     pub quran_speed: f32,

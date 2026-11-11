@@ -35,9 +35,6 @@ pub struct LocalParams {
     pub events: UnboundedSender<RecordingEvent>,
 }
 
-/// The Quran's own volume, in percent of the main volume (setting `quran_volume`).
-pub static QURAN_VOLUME: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(100);
-
 /// Give up when a download makes no progress for this long.
 const STALL: Duration = Duration::from_secs(90);
 
@@ -237,7 +234,7 @@ pub fn run(p: LocalParams) {
         position_ms: Some(p.position_ms.clone()),
         position_base_ms: base,
         speed: Some(p.speed.clone()),
-        gain: Some(&QURAN_VOLUME),
+        channel: crate::sink::Channel::Quran,
     };
     decode::run(Codec::Mp3, ctx);
     queue.close();

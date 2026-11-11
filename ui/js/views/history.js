@@ -1,24 +1,38 @@
-// "History": every broadcast heard, grouped by day, with 7-day totals.
+// "History": the broadcasts heard, for the followed masjid or all masjids, grouped by day with
+// each day's listening time. Each broadcast shows the salah it belonged to ("Esha"), or an
+// estimate for older ones ("around Esha"). The Pi keeps a year of history.
 
 import { api } from "../api.js";
 import { $, $$, setActive } from "../dom.js";
 import { clockTime, dayHeading, duration, escapeHtml, timeAgo } from "../format.js";
 import { getStatus } from "../store.js";
 
+const PAGE = 150;
 let scope = "selected";
+let limit = PAGE;
 
-/** One broadcast as a list row. With `named`, the masjid's name leads (all masjids). */
+/** The masjid's short name: "Lakewood Estate Masjid, Ormonde, Jhb, RSA" → "Lakewood Estate Masjid". */
+const shortName = (name) => String(name || "").split(",")[0].trim();
+
+function salahTag(s) {
+  if (!s.salah) return "";
+  return s.salah_estimated
+    ? `<span class="salah-tag estimated" title="Estimated from the masjid's current times">around ${escapeHtml(s.salah)}</span>`
+    : `<span class="salah-tag">${escapeHtml(s.salah)}</span>`;
+}
+
+/** One broadcast. With `named`, the masjid's name is shown too (all masjids). */
 export function historyRow(s, named = true) {
   const live = !s.reason;
   const span = `${clockTime(s.start_ms)} – ${live ? "now" : clockTime(s.end_ms)}`;
-  const reconnects = s.reconnects ? ` · ${s.reconnects} reconnect${s.reconnects > 1 ? "s" : ""}` : "";
-  const meta = `${duration(s.end_ms - s.start_ms)}${reconnects}`;
-  return `<div class="item">
+  const reconnects = s.reconnects ? `${s.reconnects} reconnect${s.reconnects > 1 ? "s" : ""}` : "";
+  const meta = [named ? shortName(s.name) : "", reconnects].filter(Boolean).join(" · ");
+  return `<div class="item h-row">
     <div class="grow">
-      <div class="item-title truncate">${escapeHtml(named ? s.name : span)}</div>
-      <div class="item-meta">${named ? `${span} · ${meta}` : meta}</div>
+      <div class="item-title">${salahTag(s)}<span class="tabular">${span}</span></div>
+      ${meta ? `<div class="item-meta truncate">${escapeHtml(meta)}</div>` : ""}
     </div>
-    ${live ? '<span class="live-tag">LIVE</span>' : ""}
+    ${live ? '<span class="live-tag">LIVE</span>' : `<span class="h-dur tabular">${duration(s.end_ms - s.start_ms)}</span>`}
   </div>`;
 }
 
@@ -27,22 +41,29 @@ export function init() {
     const btn = e.target.closest("button");
     if (!btn) return;
     scope = btn.dataset.scope;
+    limit = PAGE;
     setActive($$("#history-filter button"), btn);
+    show();
+  });
+  $("#history-more").addEventListener("click", () => {
+    limit += PAGE;
     show();
   });
 }
 
 export async function show() {
-  const mount = getStatus()?.mount;
+  const status = getStatus();
+  const mount = status?.mount;
+  // Name the followed masjid instead of "This masjid".
+  $("#history-mine").textContent = shortName(status?.station_name) || "This masjid";
   const filter = scope === "selected" && mount ? `&mount=${encodeURIComponent(mount)}` : "";
   try {
-    const { sessions } = await api(`history?limit=300${filter}`);
+    const { sessions } = await api(`history?limit=${limit}${filter}`);
     const week = sessions.filter((s) => s.start_ms > Date.now() - 7 * 864e5);
     $("#history-last").textContent = sessions.length ? (sessions[0].reason ? timeAgo(sessions[0].end_ms) : "Live now") : "Never";
     $("#history-count").textContent = week.length;
     $("#history-time").textContent = duration(week.reduce((sum, s) => sum + (s.end_ms - s.start_ms), 0));
 
-    // Group by day; each day shows its total listening time.
     const named = !(scope === "selected" && mount);
     const days = new Map();
     for (const s of sessions) {
@@ -56,7 +77,9 @@ export async function show() {
       html += `<div class="group-label history-day"><span>${escapeHtml(heading)}</span><span>${escapeHtml(duration(total))}</span></div>`;
       html += list.map((s) => historyRow(s, named)).join("");
     }
-    $("#history").innerHTML = html || '<div class="empty">No broadcasts recorded yet.</div>';
+    $("#history").innerHTML = html || '<div class="empty">No broadcasts yet. They appear here automatically.</div>';
+    // Fewer than asked for means there is nothing older (the Pi keeps a year).
+    $("#history-more").hidden = sessions.length < limit;
   } catch (err) {
     $("#history").innerHTML = `<div class="empty">${escapeHtml(err.message)}</div>`;
   }
