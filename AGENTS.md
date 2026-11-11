@@ -187,7 +187,7 @@ that aren't obvious from the code.
   The API plays by **id from the cached list, never a raw URL** (no SSRF). A broadcast that starts during a recording interrupts it;
   stopping or finishing a recording resumes live if the masjid is on air. Verified: play, pause (position held), resume, stop, then back to live.
 
-- **Listening in the browser** (setting `browser_listening`, off by default). Both endpoints refuse while the setting is off.
+- **Listening in the browser** (setting `browser_listening`, on by default since 2026-11-11, the owner's choice). Both endpoints refuse while the setting is off.
   - **In sync with the speaker:** the sink copies exactly what it hands to the device (`SinkHandle::mirror`, a tokio broadcast) as mono 24 kHz s16.
     `/api/listen/live.wav` streams it as an endless WAV (at most 6 listeners; a lagging listener skips ahead). It is paced by the Pi's audio
     device, so it mirrors live and recordings alike.
@@ -293,7 +293,7 @@ that aren't obvious from the code.
 
 `socket → pump → OggFilter → ByteQueue (jitter buffer, up to 4 MB) → decoder thread → sink`
 
-- **Join at the live edge** (setting `live_delay_s`: 3 s by default, "Near live"; 8 "Balanced"; 20 "Extra steady"; `stream::LIVE_DELAY_MS`
+- **Join at the live edge** (setting `live_delay_s`: 3 "Near live"; 8 "Balanced"; 20 "Extra steady", the default since 2026-11-11 (owner's choice); `stream::LIVE_DELAY_MS`
   applies immediately). `read_burst` reads until a read waits more than 400 ms (150 ms split the burst on Wi-Fi), then
   `edge::opus_pages` keeps the header pages and the newest pages that start a fresh packet, and `edge::mp3_start` cuts at a frame confirmed
   by the next one. Before this the Pi played the whole burst and drifted to about 29 s behind live. MP3 reconnects also re-join at the edge.
@@ -310,7 +310,7 @@ that aren't obvious from the code.
 - **On reconnect, `OggFilter` skips** the replayed headers and every page whose granule is ≤ the last forwarded one. Playback resumes
   exactly where it stopped: no gap if the buffer lasted, never a repeat. A new serial means the encoder restarted upstream, so a fresh decoder is used.
   MP3 has no granules, so an MP3 reconnect may repeat up to the burst length.
-- **Verified (with the old 20 s buffer):** a 16 s blackhole of relay2 was inaudible. With the 3 s default, a stall longer than about 2 s is
+- **Verified (with the old 20 s buffer):** a 16 s blackhole of relay2 was inaudible. With a 3 s delay ("Near live"), a stall longer than about 2 s is
   audible as a gap. Users on weak Wi-Fi should pick "Extra steady".
 
 ## Open issues / next steps

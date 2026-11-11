@@ -72,7 +72,7 @@ pub static BYTES_RECEIVED: AtomicU64 = AtomicU64::new(0);
 pub const START_GRACE: Duration = Duration::from_secs(12);
 /// How far behind the live edge playback starts and is held, in ms (setting `live_delay_s`).
 /// Smaller is closer to live; larger rides out longer network drop-outs without a gap.
-pub static LIVE_DELAY_MS: AtomicU64 = AtomicU64::new(3_000);
+pub static LIVE_DELAY_MS: AtomicU64 = AtomicU64::new(20_000);
 
 fn live_delay_ms() -> u64 {
     LIVE_DELAY_MS.load(Ordering::Relaxed)

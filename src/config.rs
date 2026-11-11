@@ -25,12 +25,12 @@ pub struct Settings {
     pub keep_awake: bool,
     /// "auto" (Opus first – it goes live ~6 s before the MP3 mirror), "opus" or "mp3".
     pub codec: String,
-    /// Seconds behind the live edge to play (3 = near live, 8 = balanced, 20 = extra steady).
+    /// Seconds behind the live edge to play (3 = near live, 8 = balanced, 20 = extra steady, the default).
     /// Icecast's connect burst is ~17–28 s of audio; we keep only this much of it.
     pub live_delay_s: u32,
     /// Bluetooth SBC encoder quality: "high" (default) or "medium" (shown as "Low").
     pub bt_quality: String,
-    /// Let people who open the UI play the stream / recordings on their own device (off by default).
+    /// Let people who open the UI play the stream / recordings on their own device (on by default).
     /// The Pi's own output is unaffected.
     pub browser_listening: bool,
     /// Icecast status poll interval in seconds (backup to the server-sent events).
@@ -65,9 +65,9 @@ impl Default for Settings {
             fallback_output: "auto".into(),
             keep_awake: true,
             codec: "auto".into(),
-            live_delay_s: 3,
+            live_delay_s: 20,
             bt_quality: "high".into(),
-            browser_listening: false,
+            browser_listening: true,
             poll_secs: 20,
             salah_boards: Default::default(),
             quran_reciter: crate::quran::DEFAULT_RECITER.into(),
