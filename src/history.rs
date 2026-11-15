@@ -88,13 +88,7 @@ impl History {
     }
 
     pub fn recent(&self, limit: usize, mount: Option<&str>) -> Vec<Session> {
-        self.sessions
-            .iter()
-            .rev()
-            .filter(|s| mount.is_none_or(|m| s.mount == m))
-            .take(limit)
-            .cloned()
-            .collect()
+        self.sessions.iter().rev().filter(|s| mount.is_none_or(|m| s.mount == m)).take(limit).cloned().collect()
     }
 
     pub fn begin(&mut self, mount: &str, name: &str, codec: &str, trigger: &str) -> u64 {

@@ -14,8 +14,8 @@ pub mod masjidboard;
 pub mod recordings;
 pub mod salah;
 
-use crate::sync::LockExt;
 use crate::site::SiteGuard;
+use crate::sync::LockExt;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -30,7 +30,9 @@ pub enum Fetched {
     /// 404: the site doesn't have this masjid.
     NotFound,
     /// The site refused us (403/429) or we're backing off.
-    Blocked { until_ms: u64 },
+    Blocked {
+        until_ms: u64,
+    },
     Failed(String),
 }
 

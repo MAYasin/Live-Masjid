@@ -214,9 +214,9 @@ pub async fn speed(State(app): State<App>, Json(r): Json<SpeedReq>) -> ApiResult
 
 #[cfg(test)]
 mod tests {
-    use crate::sync::LockExt;
     use super::*;
     use crate::state::test_app;
+    use crate::sync::LockExt;
 
     fn app() -> App {
         let dir = std::env::temp_dir().join(format!("livemasjid-quran-api-{}", crate::config::random_hex(6)));
@@ -237,7 +237,16 @@ mod tests {
     }
 
     fn playlist(name: &str, surahs: Vec<u16>, reciter: Option<&str>, speed: Option<f32>) -> SavePlaylist {
-        SavePlaylist { id: None, name: name.into(), surahs, repeat: true, reciter: reciter.map(str::to_string), days: vec![], time: None, speed }
+        SavePlaylist {
+            id: None,
+            name: name.into(),
+            surahs,
+            repeat: true,
+            reciter: reciter.map(str::to_string),
+            days: vec![],
+            time: None,
+            speed,
+        }
     }
 
     #[tokio::test]
@@ -257,7 +266,11 @@ mod tests {
     #[tokio::test]
     async fn playlists_play_with_their_own_reciter_and_speed() {
         let (app, dir, mut rx) = app_with_catalogue();
-        let p = super::save_playlist(State(app.clone()), Json(playlist("Night", vec![1], Some("partial-r1"), Some(1.5)))).await.ok().expect("saved").0;
+        let p = super::save_playlist(State(app.clone()), Json(playlist("Night", vec![1], Some("partial-r1"), Some(1.5))))
+            .await
+            .ok()
+            .expect("saved")
+            .0;
         let req = PlayReq { surah: None, playlist: Some(p.id.clone()), index: 0, position_s: 3, reciter: None, speed: None };
         assert!(super::play(State(app.clone()), Json(req)).await.is_ok());
         match rx.try_recv() {
@@ -269,7 +282,11 @@ mod tests {
             other => panic!("unexpected {other:?}"),
         }
         // The pinned recitation lacks Yā-Sīn.
-        let p = super::save_playlist(State(app.clone()), Json(playlist("Yasin", vec![36], Some("partial-r1"), None))).await.ok().expect("saved").0;
+        let p = super::save_playlist(State(app.clone()), Json(playlist("Yasin", vec![36], Some("partial-r1"), None)))
+            .await
+            .ok()
+            .expect("saved")
+            .0;
         let req = PlayReq { surah: None, playlist: Some(p.id), index: 0, position_s: 0, reciter: None, speed: None };
         let Err(e) = super::play(State(app.clone()), Json(req)).await else { panic!("missing surah played") };
         assert!(e.1.contains("doesn't have"), "{}", e.1);
@@ -302,7 +319,10 @@ mod tests {
         assert!((app.settings().quran_speed - before).abs() < f32::EPSILON, "the playlist keeps its own speed");
 
         // Deleting everything keeps the surah that is playing.
-        let removed = super::delete(State(app.clone()), Json(DeleteReq { surah: Some(1), reciter: Some("partial-r1".into()) })).await.ok().expect("deleted");
+        let removed = super::delete(State(app.clone()), Json(DeleteReq { surah: Some(1), reciter: Some("partial-r1".into()) }))
+            .await
+            .ok()
+            .expect("deleted");
         assert_eq!(removed.0["removed"], 0);
         assert!(super::delete(State(app.clone()), Json(DeleteReq { surah: Some(200), reciter: None })).await.is_err());
         let _ = std::fs::remove_dir_all(dir);

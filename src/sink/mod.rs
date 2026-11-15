@@ -10,8 +10,8 @@ mod pcm;
 
 pub use pcm::{MIRROR_RATE, chime};
 
-use crate::sync::LockExt;
 use crate::state::OutputStatus;
+use crate::sync::LockExt;
 use device::Aplay;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, SyncSender, TrySendError, sync_channel};

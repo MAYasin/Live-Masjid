@@ -9,9 +9,9 @@
 //! * never while the site is refusing this network (shared [`crate::site::SiteGuard`]); then,
 //!   and on any other failure, the last good list is shown (`stale`) instead of an error.
 
-use crate::sync::LockExt;
 use super::{Fetched, fetch, valid_mount};
 use crate::state::{App, now_ms};
+use crate::sync::LockExt;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -64,7 +64,14 @@ impl From<&Recording> for SavedItem {
 
 impl From<SavedItem> for Recording {
     fn from(s: SavedItem) -> Self {
-        Self { id: short_id(&s.url), title: s.title, url: s.url, published: s.published, size_bytes: s.size_bytes, duration_s: s.duration_s }
+        Self {
+            id: short_id(&s.url),
+            title: s.title,
+            url: s.url,
+            published: s.published,
+            size_bytes: s.size_bytes,
+            duration_s: s.duration_s,
+        }
     }
 }
 
@@ -177,7 +184,8 @@ pub(crate) fn outcome(mount: &str, fetched: Fetched, saved: Option<&Saved>, now:
         Fetched::Ok(xml) => {
             let items = parse(&xml);
             if items.is_empty() {
-                let list = RecordingList { status: "empty".into(), message: Some("No recordings yet".into()), fetched_ms: Some(now), ..base };
+                let list =
+                    RecordingList { status: "empty".into(), message: Some("No recordings yet".into()), fetched_ms: Some(now), ..base };
                 (list, Duration::from_millis(FRESH_MS), None)
             } else {
                 let save = Saved { fetched_ms: now, items };
@@ -208,7 +216,12 @@ pub async fn list(app: &App, mount: &str) -> RecordingList {
 /// [`list`] with the feed at `url(mount)` (the real feed, or a local server in tests).
 async fn list_from(app: &App, mount: &str, url: impl FnOnce(&str) -> String) -> RecordingList {
     if !valid_mount(mount) {
-        return RecordingList { status: "error".into(), message: Some("invalid masjid".into()), mount: mount.to_string(), ..Default::default() };
+        return RecordingList {
+            status: "error".into(),
+            message: Some("invalid masjid".into()),
+            mount: mount.to_string(),
+            ..Default::default()
+        };
     }
     let it = &app.integrations;
     if let Some(hit) = it.recordings.get(mount) {
@@ -293,7 +306,10 @@ pub fn parse(xml: &str) -> Vec<Recording> {
             if !(url.starts_with("https://") || url.starts_with("http://")) {
                 return None;
             }
-            let title = tag(item, "title").map(unescape).filter(|t| !t.is_empty()).unwrap_or_else(|| url.rsplit('/').next().unwrap_or("Recording").to_string());
+            let title = tag(item, "title")
+                .map(unescape)
+                .filter(|t| !t.is_empty())
+                .unwrap_or_else(|| url.rsplit('/').next().unwrap_or("Recording").to_string());
             Some(Recording {
                 id: short_id(&url),
                 title,

@@ -183,8 +183,8 @@ fn ensure_routed(app: &App, sp: &mut Speaker) {
 
 #[cfg(test)]
 mod tests {
-    use crate::sync::LockExt;
     use super::*;
+    use crate::sync::LockExt;
 
     #[test]
     fn refusals_lead_to_repair_and_backoff_grows() {

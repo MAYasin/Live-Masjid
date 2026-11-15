@@ -12,11 +12,7 @@ use std::time::Duration;
 pub const STREAM_HOSTS: &[(&str, u16)] = &[("livemasjid.com", 8000), ("relay2.livemasjid.com", 8000)];
 
 pub fn www_bases() -> &'static [&'static str] {
-    if cfg!(feature = "tls") {
-        &["https://www.livemasjid.com", "http://www.livemasjid.com"]
-    } else {
-        &["http://www.livemasjid.com"]
-    }
+    if cfg!(feature = "tls") { &["https://www.livemasjid.com", "http://www.livemasjid.com"] } else { &["http://www.livemasjid.com"] }
 }
 
 /// Icecast status JSON sources, tried in order (each only when the previous one fails).
@@ -53,10 +49,7 @@ pub fn open_stream(host: &str, port: u16, path: &str) -> Result<StreamConn, Open
     let mut target = (host.to_string(), port, path.to_string());
     for _hop in 0..3 {
         let (h, p, path) = &target;
-        let addrs: Vec<_> = (h.as_str(), *p)
-            .to_socket_addrs()
-            .map_err(|e| OpenError::Other(format!("dns {h}: {e}")))?
-            .collect();
+        let addrs: Vec<_> = (h.as_str(), *p).to_socket_addrs().map_err(|e| OpenError::Other(format!("dns {h}: {e}")))?.collect();
         let mut last = OpenError::Other(format!("no address for {h}"));
         let mut sock = None;
         for a in addrs {
@@ -75,9 +68,7 @@ pub fn open_stream(host: &str, port: u16, path: &str) -> Result<StreamConn, Open
         sock.set_read_timeout(Some(Duration::from_secs(6))).map_err(io)?;
         sock.set_write_timeout(Some(Duration::from_secs(4))).map_err(io)?;
         // One write: Icecast resets connections whose request line arrives fragmented.
-        let req = format!(
-            "GET {path} HTTP/1.0\r\nHost: {h}\r\nUser-Agent: {USER_AGENT}\r\nAccept: */*\r\nConnection: close\r\n\r\n"
-        );
+        let req = format!("GET {path} HTTP/1.0\r\nHost: {h}\r\nUser-Agent: {USER_AGENT}\r\nAccept: */*\r\nConnection: close\r\n\r\n");
         (&sock).write_all(req.as_bytes()).map_err(io)?;
         let mut r = BufReader::with_capacity(32 * 1024, sock);
         let mut line = String::new();

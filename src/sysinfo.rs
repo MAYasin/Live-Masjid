@@ -2,8 +2,8 @@
 //! the app's own usage. Everything is read from /proc, /sys and a few cheap commands, on
 //! demand (only while someone has the page open).
 
-use crate::sync::LockExt;
 use crate::state::App;
+use crate::sync::LockExt;
 use serde::Serialize;
 use std::path::Path;
 use std::sync::Mutex;
@@ -200,11 +200,7 @@ fn meminfo() -> (u64, u64) {
 }
 
 fn parse_meminfo(s: &str) -> (u64, u64) {
-    let field = |k: &str| {
-        s.lines()
-            .find_map(|l| l.strip_prefix(k)?.split_whitespace().next()?.parse::<u64>().ok())
-            .unwrap_or(0)
-    };
+    let field = |k: &str| s.lines().find_map(|l| l.strip_prefix(k)?.split_whitespace().next()?.parse::<u64>().ok()).unwrap_or(0);
     (field("MemTotal:"), field("MemAvailable:"))
 }
 

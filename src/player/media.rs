@@ -78,12 +78,7 @@ impl Media {
 
     /// Position the listener is hearing.
     pub fn heard_ms(&self) -> u64 {
-        heard_ms(
-            self.controls.position_ms.load(Ordering::Relaxed),
-            self.controls.is_paused(),
-            self.sink.queued_ms(),
-            self.speed(),
-        )
+        heard_ms(self.controls.position_ms.load(Ordering::Relaxed), self.controls.is_paused(), self.sink.queued_ms(), self.speed())
     }
 
     /// The surah before/after (`by` = -1/+1) this one.

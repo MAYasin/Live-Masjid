@@ -5,12 +5,12 @@
 
 use super::buffer::ByteQueue;
 use super::decode::{self, Codec, DecodeCtx};
+use super::source::{Events, Source};
 use crate::sink::SinkHandle;
 use std::io::Read;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use super::source::{Events, Source};
 
 #[derive(Debug)]
 pub enum RecordingEvent {
@@ -67,19 +67,19 @@ fn run(p: &RecordingParams) {
     let feeder = {
         let (queue, stop) = (queue.clone(), p.stop.clone());
         crate::sync::spawn_named("rec-download", move || {
-                let mut buf = vec![0u8; 32 * 1024];
-                loop {
-                    match body.read(&mut buf) {
-                        Ok(0) | Err(_) => break,
-                        Ok(n) => {
-                            if !queue.push(buf[..n].to_vec(), &stop) {
-                                break;
-                            }
+            let mut buf = vec![0u8; 32 * 1024];
+            loop {
+                match body.read(&mut buf) {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        if !queue.push(buf[..n].to_vec(), &stop) {
+                            break;
                         }
                     }
                 }
-                queue.close();
-            })
+            }
+            queue.close();
+        })
     };
 
     let events = p.events.clone();
@@ -109,9 +109,7 @@ fn run(p: &RecordingParams) {
     if let Some(mut e) = child.stderr.take() {
         let _ = e.read_to_string(&mut err);
     }
-    let failed = !p.stop.load(Ordering::Relaxed)
-        && p.position_ms.load(Ordering::Relaxed) == 0
-        && status.map_or(true, |s| !s.success());
+    let failed = !p.stop.load(Ordering::Relaxed) && p.position_ms.load(Ordering::Relaxed) == 0 && status.map_or(true, |s| !s.success());
     let reason = failed.then(|| {
         let e = err.trim();
         if e.is_empty() { "could not download the recording".to_string() } else { e.lines().last().unwrap_or(e).to_string() }

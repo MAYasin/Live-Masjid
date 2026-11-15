@@ -53,9 +53,10 @@ pub fn run(codec: Codec, ctx: DecodeCtx) {
         Codec::Mp3 => decode_mp3(reader, &mut out),
     };
     if let Err(e) = result
-        && !out.ctx.stop.load(Ordering::Relaxed) {
-            tracing::warn!("{} decoder stopped: {e}", codec.name());
-        }
+        && !out.ctx.stop.load(Ordering::Relaxed)
+    {
+        tracing::warn!("{} decoder stopped: {e}", codec.name());
+    }
     out.ctx.buffer_ms.store(0, Ordering::Relaxed);
 }
 
@@ -172,12 +173,8 @@ fn decode_mp3(r: impl Read + Send + Sync + 'static, out: &mut PcmOut) -> Result<
     let mut fmt = symphonia::default::get_probe()
         .probe(&hint, mss, FormatOptions::default(), MetadataOptions::default())
         .map_err(|e| format!("mp3 probe: {e}"))?;
-    let params = fmt
-        .default_track(TrackType::Audio)
-        .and_then(|t| t.codec_params.as_ref())
-        .and_then(|c| c.audio())
-        .ok_or("no audio track")?
-        .clone();
+    let params =
+        fmt.default_track(TrackType::Audio).and_then(|t| t.codec_params.as_ref()).and_then(|c| c.audio()).ok_or("no audio track")?.clone();
     let mut dec = symphonia::default::get_codecs()
         .make_audio_decoder(&params, &AudioDecoderOptions::default())
         .map_err(|e| format!("mp3 decoder: {e}"))?;

@@ -1,10 +1,10 @@
 //! Optional password protection: a salted password hash in settings, and an HttpOnly
 //! session cookie derived from it (rotating the secret signs everyone out).
 
-use crate::sync::RwLockExt;
 use super::{ApiError, ok};
 use crate::config::{ct_eq, hash_password, hex, random_hex, verify_password};
 use crate::state::App;
+use crate::sync::RwLockExt;
 use axum::Json;
 use axum::extract::{Request, State};
 use axum::http::{HeaderMap, HeaderValue, header};
@@ -157,8 +157,12 @@ mod tests {
     #[test]
     fn an_unsendable_token_sets_no_cookie() {
         let mut resp = Response::new(Body::empty());
-        set_cookie(&mut resp, "bad
-token", 10);
+        set_cookie(
+            &mut resp,
+            "bad
+token",
+            10,
+        );
         assert!(resp.headers().get(header::SET_COOKIE).is_none());
     }
 
@@ -169,7 +173,9 @@ token", 10);
         let resp = login(State(app.clone()), Json(Login { password: "anything".into() })).await.ok().expect("open");
         assert_eq!(resp.status(), axum::http::StatusCode::OK);
         assert!(resp.headers().get(header::SET_COOKIE).is_none(), "no session without a password");
-        let Err(e) = set_password(State(app.clone()), Json(NewPassword { new_password: "abc".into() })).await else { panic!("short password") };
+        let Err(e) = set_password(State(app.clone()), Json(NewPassword { new_password: "abc".into() })).await else {
+            panic!("short password")
+        };
         assert_eq!(e.0, axum::http::StatusCode::BAD_REQUEST);
         assert!(app.settings().password_hash.is_none());
         let _ = std::fs::remove_dir_all(dir);

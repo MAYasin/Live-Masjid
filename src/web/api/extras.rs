@@ -1,9 +1,9 @@
 //! Salah times and recordings. All third-party fetching happens on the Pi, cached
 //! (see `crate::integrations`), so browsing the UI never adds load to those sites.
 
-use crate::sync::RwLockExt;
 use crate::integrations::{recordings, salah, valid_mount};
 use crate::state::{App, PlayerCmd};
+use crate::sync::RwLockExt;
 use crate::web::{ApiError, ApiResult, ok};
 use axum::Json;
 use axum::extract::{Query, State};
@@ -47,8 +47,7 @@ pub async fn salah_board(State(app): State<App>, Json(c): Json<BoardChoice>) -> 
         "" | "auto" => None,
         "none" => Some("none".to_string()),
         input => {
-            let id = masjidboard::parse_board_ref(input)
-                .ok_or_else(|| ApiError::bad("That doesn't look like a masjidboardlive link"))?;
+            let id = masjidboard::parse_board_ref(input).ok_or_else(|| ApiError::bad("That doesn't look like a masjidboardlive link"))?;
             match masjidboard::lookup(&app, &id).await {
                 // Save the board's canonical id (the link may use an alias).
                 Lookup::Found(t) => Some(t.board.map(|b| b.id).filter(|b| !b.is_empty()).unwrap_or(id)),
@@ -107,11 +106,7 @@ pub async fn stop(State(app): State<App>) -> ApiResult {
 // ------------------------------------------------------------------ listening in the browser
 
 fn browser_listening_enabled(app: &App) -> Result<(), ApiError> {
-    if app.settings().browser_listening {
-        Ok(())
-    } else {
-        Err(ApiError::bad("Listening in the browser is turned off (Settings)"))
-    }
+    if app.settings().browser_listening { Ok(()) } else { Err(ApiError::bad("Listening in the browser is turned off (Settings)")) }
 }
 
 /// Stream URLs for the visitor's own device. MP3 first (plays everywhere, incl. iOS Safari),
@@ -129,7 +124,10 @@ pub async fn listen(State(app): State<App>, Query(q): Query<MountQuery>) -> ApiR
             sources.push(json!({ "url": format!("http://{host}:{port}/{path}"), "type": kind }));
         }
     }
-    let playing = matches!(app.status.borrow().phase, crate::state::Phase::Playing | crate::state::Phase::Reconnecting | crate::state::Phase::Recording);
+    let playing = matches!(
+        app.status.borrow().phase,
+        crate::state::Phase::Playing | crate::state::Phase::Reconnecting | crate::state::Phase::Recording
+    );
     Ok(Json(json!({ "mount": base, "live": live || playing, "sources": sources })))
 }
 
@@ -366,7 +364,8 @@ mod tests {
         assert!(play("m", "unknown").await.is_err(), "only listed recordings");
         assert!(play("m", "r1").await.is_ok());
 
-        let url = |mount: &str, id: &str| super::recording_url(State(app.clone()), Query(RecordingRef { mount: mount.into(), id: id.into() }));
+        let url =
+            |mount: &str, id: &str| super::recording_url(State(app.clone()), Query(RecordingRef { mount: mount.into(), id: id.into() }));
         assert!(url("a/b", "r1").await.is_err());
         assert!(url("m", "unknown").await.is_err());
         let Json(v) = url("m", "r1").await.ok().expect("url");

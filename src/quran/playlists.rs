@@ -1,8 +1,8 @@
 //! Named playlists, shared by everyone using the Pi, optionally pinned to a reciter, given a
 //! speed and scheduled on weekdays.
 
-use crate::sync::LockExt;
 use super::valid;
+use crate::sync::LockExt;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -81,10 +81,7 @@ impl PlaylistCtx {
 
 /// "HH:MM", 24-hour.
 fn valid_time(t: &str) -> bool {
-    t.len() == 5
-        && t.as_bytes()[2] == b':'
-        && t[..2].parse::<u8>().is_ok_and(|h| h < 24)
-        && t[3..].parse::<u8>().is_ok_and(|m| m < 60)
+    t.len() == 5 && t.as_bytes()[2] == b':' && t[..2].parse::<u8>().is_ok_and(|h| h < 24) && t[3..].parse::<u8>().is_ok_and(|m| m < 60)
 }
 
 /// Check and tidy a playlist from the UI. `reciter_known` tells whether a recitation key exists.

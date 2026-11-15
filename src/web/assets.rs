@@ -76,10 +76,7 @@ fn serve(headers: &HeaderMap, content_type: &'static str, body: &str) -> Respons
     if headers.get(header::IF_NONE_MATCH).and_then(|v| v.to_str().ok()) == Some(tag.as_str()) {
         return StatusCode::NOT_MODIFIED.into_response();
     }
-    (
-        [(header::CONTENT_TYPE, content_type), (header::CACHE_CONTROL, "no-cache"), (header::ETAG, tag.as_str())],
-        body.to_string(),
-    )
+    ([(header::CONTENT_TYPE, content_type), (header::CACHE_CONTROL, "no-cache"), (header::ETAG, tag.as_str())], body.to_string())
         .into_response()
 }
 
@@ -144,7 +141,9 @@ static ICONS: &[(&str, &[u8])] = &[
 
 pub async fn png(axum::extract::Path(name): axum::extract::Path<String>) -> Response {
     match ICONS.iter().find(|(n, _)| *n == name) {
-        Some((_, body)) => ([(header::CONTENT_TYPE, "image/png"), (header::CACHE_CONTROL, "public, max-age=604800")], *body).into_response(),
+        Some((_, body)) => {
+            ([(header::CONTENT_TYPE, "image/png"), (header::CACHE_CONTROL, "public, max-age=604800")], *body).into_response()
+        }
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }
@@ -241,7 +240,10 @@ mod tests {
 
     #[tokio::test]
     async fn dev_stamp_tracks_the_newest_file() {
-        assert_eq!(super::dev_stamp().await.status(), if crate::platform::ui_dir().is_some() { StatusCode::OK } else { StatusCode::NOT_FOUND });
+        assert_eq!(
+            super::dev_stamp().await.status(),
+            if crate::platform::ui_dir().is_some() { StatusCode::OK } else { StatusCode::NOT_FOUND }
+        );
         assert_eq!(super::stamp(None).status(), StatusCode::NOT_FOUND);
 
         let dir = std::env::temp_dir().join(format!("lm-ui-{}", crate::config::random_hex(6)));

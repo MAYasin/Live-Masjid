@@ -36,13 +36,13 @@ fn spawn_writer(mut stdin: ChildStdin, broken: Arc<AtomicBool>) -> SyncSender<Ve
     // ~4 chunks (~80 ms) in flight on top of the 64 KB pipe buffer.
     let (tx, rx) = sync_channel::<Vec<u8>>(4);
     crate::sync::spawn_named("aplay-writer", move || {
-            for buf in rx {
-                if stdin.write_all(&buf).is_err() {
-                    broken.store(true, Ordering::Relaxed);
-                    return;
-                }
+        for buf in rx {
+            if stdin.write_all(&buf).is_err() {
+                broken.store(true, Ordering::Relaxed);
+                return;
             }
-        });
+        }
+    });
     tx
 }
 

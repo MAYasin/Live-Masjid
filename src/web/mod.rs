@@ -139,10 +139,7 @@ mod tests {
     }
 
     fn post_json(uri: &str, body: &str) -> Request<Body> {
-        request(Method::POST, uri)
-            .header(header::CONTENT_TYPE, "application/json")
-            .body(Body::from(body.to_owned()))
-            .unwrap()
+        request(Method::POST, uri).header(header::CONTENT_TYPE, "application/json").body(Body::from(body.to_owned())).unwrap()
     }
 
     #[tokio::test]
@@ -171,17 +168,11 @@ mod tests {
         let req = Request::builder().method(Method::GET).uri("/").header(header::HOST, "evil.example").body(Body::empty()).unwrap();
         assert_eq!(call(&app, req).await.0, StatusCode::FORBIDDEN);
 
-        let req = request(Method::POST, "/api/player/play")
-            .header(header::ORIGIN, "http://evil.example")
-            .body(Body::empty())
-            .unwrap();
+        let req = request(Method::POST, "/api/player/play").header(header::ORIGIN, "http://evil.example").body(Body::empty()).unwrap();
         assert_eq!(call(&app, req).await.0, StatusCode::FORBIDDEN);
 
         // An Origin naming this host is fine.
-        let req = request(Method::POST, "/api/player/play")
-            .header(header::ORIGIN, "http://localhost")
-            .body(Body::empty())
-            .unwrap();
+        let req = request(Method::POST, "/api/player/play").header(header::ORIGIN, "http://localhost").body(Body::empty()).unwrap();
         assert_eq!(call(&app, req).await.0, StatusCode::OK);
 
         let _ = std::fs::remove_dir_all(dir);
@@ -276,12 +267,27 @@ mod tests {
             .unwrap();
         assert_eq!(call(&app, req).await.0, StatusCode::BAD_REQUEST);
 
-        for uri in ["/api/history", "/api/logs", "/api/system", "/api/system/updates", "/api/outputs", "/api/listen", "/api/quran", "/api/quran/reciters", "/api/quran/playlists"] {
+        for uri in [
+            "/api/history",
+            "/api/logs",
+            "/api/system",
+            "/api/system/updates",
+            "/api/outputs",
+            "/api/listen",
+            "/api/quran",
+            "/api/quran/reciters",
+            "/api/quran/playlists",
+        ] {
             let (status, _, _) = call(&app, request(Method::GET, uri).body(Body::empty()).unwrap()).await;
             assert_eq!(status, StatusCode::OK, "{uri}");
         }
 
-        for (uri, want) in [("/api/player/play", StatusCode::OK), ("/api/player/nope", StatusCode::BAD_REQUEST), ("/api/system/clear-history", StatusCode::OK), ("/api/system/nope", StatusCode::BAD_REQUEST)] {
+        for (uri, want) in [
+            ("/api/player/play", StatusCode::OK),
+            ("/api/player/nope", StatusCode::BAD_REQUEST),
+            ("/api/system/clear-history", StatusCode::OK),
+            ("/api/system/nope", StatusCode::BAD_REQUEST),
+        ] {
             let (status, _, _) = call(&app, request(Method::POST, uri).body(Body::empty()).unwrap()).await;
             assert_eq!(status, want, "{uri}");
         }

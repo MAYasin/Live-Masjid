@@ -32,7 +32,13 @@ pub fn salah_for(times: &SalahTimes, weekday: u32, minute: i32) -> Option<String
             continue;
         }
         // Closest salah wins when windows overlap (Maghrib and Esha in winter).
-        let distance = if minute < start { start - minute } else if minute > end { minute - end } else { 0 };
+        let distance = if minute < start {
+            start - minute
+        } else if minute > end {
+            minute - end
+        } else {
+            0
+        };
         let label = if s.key == "zuhr" && friday { "Jumu'ah".to_string() } else { s.label.clone() };
         if best.as_ref().is_none_or(|(d, _)| distance < *d) {
             best = Some((distance, label));
@@ -79,7 +85,8 @@ mod tests {
     use crate::integrations::salah::{Salah, SalahTimes};
 
     fn times() -> SalahTimes {
-        let s = |k: &str, l: &str, a: &str, j: &str| Salah { key: k.into(), label: l.into(), athaan: Some(a.into()), jamaat: Some(j.into()) };
+        let s =
+            |k: &str, l: &str, a: &str, j: &str| Salah { key: k.into(), label: l.into(), athaan: Some(a.into()), jamaat: Some(j.into()) };
         SalahTimes {
             times: vec![
                 s("fajr", "Fajr", "04:30", "04:45"),

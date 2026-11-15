@@ -98,10 +98,7 @@ mod tests {
     #[test]
     fn parses_cards() {
         let s = " 0 [PCH            ]: HDA-Intel - HDA Intel PCH\n                      HDA Intel PCH at 0x1234 irq 5\n 1 [HDMI           ]: HDA-Intel - HDA Intel HDMI\n 2 [Device         ]: USB-Audio - USB Speaker\n";
-        assert_eq!(
-            parse_cards(s),
-            vec![card("PCH", "HDA Intel PCH"), card("HDMI", "HDA Intel HDMI"), card("Device", "USB Speaker")]
-        );
+        assert_eq!(parse_cards(s), vec![card("PCH", "HDA Intel PCH"), card("HDMI", "HDA Intel HDMI"), card("Device", "USB Speaker")]);
         assert!(parse_cards("no cards here\n").is_empty());
     }
 

@@ -48,11 +48,7 @@ pub fn is_native() -> bool {
 /// Bluetooth management runs unless turned off (`LIVEMASJID_BLUETOOTH=off`); in a container it
 /// also needs the host's D-Bus system socket.
 pub fn bluetooth_enabled() -> bool {
-    bt_enabled(
-        std::env::var("LIVEMASJID_BLUETOOTH").ok().as_deref(),
-        is_native(),
-        Path::new("/run/dbus/system_bus_socket").exists(),
-    )
+    bt_enabled(std::env::var("LIVEMASJID_BLUETOOTH").ok().as_deref(), is_native(), Path::new("/run/dbus/system_bus_socket").exists())
 }
 
 fn bt_enabled(off_var: Option<&str>, native: bool, dbus: bool) -> bool {
@@ -63,8 +59,7 @@ fn bt_enabled(off_var: Option<&str>, native: bool, dbus: bool) -> bool {
 /// Development: serve the UI from this folder instead of the copy built into the binary.
 pub fn ui_dir() -> Option<&'static Path> {
     static D: OnceLock<Option<PathBuf>> = OnceLock::new();
-    D.get_or_init(|| std::env::var_os("LIVEMASJID_UI_DIR").map(PathBuf::from).filter(|p| p.is_dir()))
-        .as_deref()
+    D.get_or_init(|| std::env::var_os("LIVEMASJID_UI_DIR").map(PathBuf::from).filter(|p| p.is_dir())).as_deref()
 }
 
 #[cfg(test)]

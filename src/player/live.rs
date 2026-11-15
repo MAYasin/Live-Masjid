@@ -85,10 +85,7 @@ mod tests {
 
     #[test]
     fn labels_match_the_stored_history_words() {
-        assert_eq!(
-            [Trigger::Manual, Trigger::Poll, Trigger::Probe].map(Trigger::as_str),
-            ["manual", "poll", "probe"]
-        );
+        assert_eq!([Trigger::Manual, Trigger::Poll, Trigger::Probe].map(Trigger::as_str), ["manual", "poll", "probe"]);
         assert_eq!(end_label(&EndReason::Finished, None), "ended");
         assert_eq!(end_label(&EndReason::Stopped, None), "stopped");
         assert_eq!(end_label(&EndReason::NotLive, None), "notlive");

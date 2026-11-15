@@ -1,9 +1,9 @@
 //! Layer 1: Icecast status polling (origin, then relay), politely.
 //! Also feeds the live badges for the whole directory in the UI.
 
-use crate::sync::RwLockExt;
 use super::jitter;
 use crate::state::{App, LiveInfo, Signal, now_ms};
+use crate::sync::RwLockExt;
 use std::collections::HashMap;
 use std::time::Duration;
 
@@ -78,15 +78,7 @@ pub fn is_live(map: &LiveMap, mount: &str) -> bool {
 }
 
 async fn fetch(app: &App, url: &str) -> anyhow::Result<LiveMap> {
-    let bytes = app
-        .http
-        .get(url)
-        .timeout(Duration::from_secs(8))
-        .send()
-        .await?
-        .error_for_status()?
-        .bytes()
-        .await?;
+    let bytes = app.http.get(url).timeout(Duration::from_secs(8)).send().await?.error_for_status()?.bytes().await?;
     parse(&bytes)
 }
 

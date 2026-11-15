@@ -1,10 +1,10 @@
 //! Shared application state. Everything the UI shows lives in one `Status` value
 //! published through a `watch` channel, so the UI gets push updates for free.
 
-use crate::sync::{LockExt, RwLockExt};
 use crate::catalog::Station;
 use crate::config::{Paths, Settings};
 use crate::history::History;
+use crate::sync::{LockExt, RwLockExt};
 use serde::Serialize;
 use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
@@ -12,9 +12,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::{mpsc, watch};
 
 pub fn now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| d.as_millis() as u64)
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -169,11 +167,22 @@ pub enum PlayerCmd {
     /// Selected mount changed (or settings that affect playback).
     Reconfigure,
     /// Play a listed recording on the speaker.
-    PlayRecording { mount: String, title: String, url: String, duration_s: Option<u64> },
+    PlayRecording {
+        mount: String,
+        title: String,
+        url: String,
+        duration_s: Option<u64>,
+    },
     PauseRecording(bool),
     StopRecording,
     /// Play a Quran surah (downloading it first if needed) from a position.
-    PlayQuran { surah: u16, position_ms: u64, playlist: Option<crate::quran::PlaylistCtx>, reciter: String, speed: f32 },
+    PlayQuran {
+        surah: u16,
+        position_ms: u64,
+        playlist: Option<crate::quran::PlaylistCtx>,
+        reciter: String,
+        speed: f32,
+    },
     /// Change the playing Quran's speed.
     QuranSpeed(f32),
     /// A playlist's scheduled time has come (playlist id).
@@ -271,13 +280,7 @@ impl AppState {
 
     pub fn station_meta(&self, mount: Option<&str>) -> (Option<String>, Option<u64>) {
         let Some(m) = mount else { return (None, None) };
-        let loc = self
-            .catalog
-            .read_lock()
-            .iter()
-            .find(|s| s.mount == m)
-            .map(|s| s.location.clone())
-            .filter(|l| !l.is_empty());
+        let loc = self.catalog.read_lock().iter().find(|s| s.mount == m).map(|s| s.location.clone()).filter(|l| !l.is_empty());
         let last = self.history.locked().last_heard(m);
         (loc, last)
     }

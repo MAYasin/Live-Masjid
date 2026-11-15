@@ -1,7 +1,7 @@
 //! Playback controls and settings.
 
-use crate::sync::RwLockExt;
 use crate::state::{App, PlayerCmd, Signal};
+use crate::sync::RwLockExt;
 use crate::web::{ApiError, ApiResult, ok};
 use axum::Json;
 use axum::extract::{Path, State};
@@ -22,7 +22,9 @@ pub async fn action(State(app): State<App>, Path(action): Path<String>) -> ApiRe
 /// Settings that aren't already part of the live status.
 pub async fn config(State(app): State<App>) -> ApiResult {
     let s = app.settings();
-    Ok(Json(json!({ "codec": s.codec, "live_delay_s": s.live_delay_s, "poll_secs": s.poll_secs, "fallback_output": s.fallback_output, "bt_quality": s.bt_quality, "browser_listening": s.browser_listening })))
+    Ok(Json(
+        json!({ "codec": s.codec, "live_delay_s": s.live_delay_s, "poll_secs": s.poll_secs, "fallback_output": s.fallback_output, "bt_quality": s.bt_quality, "browser_listening": s.browser_listening }),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -58,17 +60,39 @@ pub async fn settings(State(app): State<App>, Json(p): Json<SettingsPatch>) -> A
         return Err(ApiError::bad("quality must be medium or high"));
     }
     app.update_settings(|s| {
-        if let Some(v) = p.autoplay { s.autoplay = v; }
-        if let Some(v) = p.volume { s.volume = v; }
-        if let Some(v) = p.keep_awake { s.keep_awake = v; }
-        if let Some(v) = p.codec { s.codec = v; }
-        if let Some(v) = p.live_delay_s { s.live_delay_s = clamp_delay(v); }
-        if let Some(v) = p.auto_update { s.auto_update = v; }
-        if let Some(v) = p.quran_volume { s.quran_volume = v.min(100); }
-        if let Some(v) = p.poll_secs { s.poll_secs = v; }
-        if let Some(v) = p.fallback_output { s.fallback_output = v; }
-        if let Some(v) = quality.clone() { s.bt_quality = v; }
-        if let Some(v) = p.browser_listening { s.browser_listening = v; }
+        if let Some(v) = p.autoplay {
+            s.autoplay = v;
+        }
+        if let Some(v) = p.volume {
+            s.volume = v;
+        }
+        if let Some(v) = p.keep_awake {
+            s.keep_awake = v;
+        }
+        if let Some(v) = p.codec {
+            s.codec = v;
+        }
+        if let Some(v) = p.live_delay_s {
+            s.live_delay_s = clamp_delay(v);
+        }
+        if let Some(v) = p.auto_update {
+            s.auto_update = v;
+        }
+        if let Some(v) = p.quran_volume {
+            s.quran_volume = v.min(100);
+        }
+        if let Some(v) = p.poll_secs {
+            s.poll_secs = v;
+        }
+        if let Some(v) = p.fallback_output {
+            s.fallback_output = v;
+        }
+        if let Some(v) = quality.clone() {
+            s.bt_quality = v;
+        }
+        if let Some(v) = p.browser_listening {
+            s.browser_listening = v;
+        }
     })?;
     // Applies immediately: a buffer that is now too long is trimmed on the next packet.
     crate::stream::LIVE_DELAY_MS.store(u64::from(app.settings().live_delay_s) * 1000, std::sync::atomic::Ordering::Relaxed);
@@ -101,7 +125,8 @@ mod tests {
         assert!(!valid_quality(""));
     }
 
-    fn app_with_channels() -> (App, std::path::PathBuf, tokio::sync::mpsc::UnboundedReceiver<PlayerCmd>, tokio::sync::mpsc::UnboundedReceiver<Signal>) {
+    fn app_with_channels()
+    -> (App, std::path::PathBuf, tokio::sync::mpsc::UnboundedReceiver<PlayerCmd>, tokio::sync::mpsc::UnboundedReceiver<Signal>) {
         let dir = std::env::temp_dir().join(format!("lm-player-api-{}", crate::config::random_hex(6)));
         let mut app = crate::state::test_app(&dir);
         let (player_tx, player_rx) = tokio::sync::mpsc::unbounded_channel();

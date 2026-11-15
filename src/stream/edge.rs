@@ -23,10 +23,7 @@ pub fn opus_pages(pages: Vec<Vec<u8>>, delay: Duration) -> Vec<Vec<u8>> {
     let Some(newest) = pages.iter().map(|p| granule(p)).max() else { return pages };
     let cutoff = newest - delay.as_millis() as i64 * OPUS_RATE / 1000;
     let audio = &pages[headers..];
-    let Some(first) = audio
-        .iter()
-        .position(|p| granule(p) >= cutoff && p.get(5).is_some_and(|f| f & FLAG_CONTINUED == 0))
-    else {
+    let Some(first) = audio.iter().position(|p| granule(p) >= cutoff && p.get(5).is_some_and(|f| f & FLAG_CONTINUED == 0)) else {
         return pages;
     };
     if first == 0 {
@@ -53,7 +50,14 @@ pub(crate) fn mp3_frame(h: &[u8]) -> Option<(usize, u64)> {
     const BR_V2: [u32; 15] = [0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160];
     let mpeg1 = version == 3;
     let kbps = if mpeg1 { BR_V1[br_idx] } else { BR_V2[br_idx] };
-    let sr = [44_100u32, 48_000, 32_000][sr_idx] >> if mpeg1 { 0 } else if version == 2 { 1 } else { 2 };
+    let sr = [44_100u32, 48_000, 32_000][sr_idx]
+        >> if mpeg1 {
+            0
+        } else if version == 2 {
+            1
+        } else {
+            2
+        };
     let pad = u32::from((h[2] >> 1) & 1);
     let (len, samples) = if mpeg1 { (144 * kbps * 1000 / sr + pad, 1152) } else { (72 * kbps * 1000 / sr + pad, 576) };
     Some((len as usize, samples * 1_000_000 / u64::from(sr)))
@@ -69,9 +73,10 @@ pub fn mp3_start(data: &[u8], delay: Duration) -> usize {
             return 0;
         }
         if let Some((len, _)) = mp3_frame(&data[pos..])
-            && mp3_frame(data.get(pos + len..).unwrap_or(&[])).is_some() {
-                break pos;
-            }
+            && mp3_frame(data.get(pos + len..).unwrap_or(&[])).is_some()
+        {
+            break pos;
+        }
         pos += 1;
     };
     // Walk the frames.

@@ -59,12 +59,7 @@ fn hostname() -> &'static str {
 fn extra_hosts() -> &'static [String] {
     static E: OnceLock<Vec<String>> = OnceLock::new();
     E.get_or_init(|| {
-        std::env::var("LIVEMASJID_ALLOWED_HOSTS")
-            .unwrap_or_default()
-            .split(',')
-            .map(host_name)
-            .filter(|h| !h.is_empty())
-            .collect()
+        std::env::var("LIVEMASJID_ALLOWED_HOSTS").unwrap_or_default().split(',').map(host_name).filter(|h| !h.is_empty()).collect()
     })
 }
 
@@ -73,7 +68,10 @@ pub async fn check(req: Request, next: Next) -> Response {
     let host = headers.get(header::HOST).and_then(|v| v.to_str().ok()).unwrap_or("");
     if !host_allowed(host, hostname(), extra_hosts()) {
         tracing::warn!("refused a request for host {host:?} (add it to LIVEMASJID_ALLOWED_HOSTS if it is yours)");
-        let msg = format!("Live Masjid doesn't answer to \"{}\". Use the Pi's address, or add this name to LIVEMASJID_ALLOWED_HOSTS.", host_name(host));
+        let msg = format!(
+            "Live Masjid doesn't answer to \"{}\". Use the Pi's address, or add this name to LIVEMASJID_ALLOWED_HOSTS.",
+            host_name(host)
+        );
         return (StatusCode::FORBIDDEN, msg).into_response();
     }
     let changes = !matches!(*req.method(), Method::GET | Method::HEAD | Method::OPTIONS);
@@ -92,7 +90,9 @@ mod tests {
     #[test]
     fn hosts() {
         let none: Vec<String> = Vec::new();
-        for ok in ["192.168.1.101", "192.168.1.101:80", "[::1]:8080", "localhost:8080", "pi.local", "PI.local.", "pi", "pi.lan", "pi.home:80"] {
+        for ok in
+            ["192.168.1.101", "192.168.1.101:80", "[::1]:8080", "localhost:8080", "pi.local", "PI.local.", "pi", "pi.lan", "pi.home:80"]
+        {
             assert!(host_allowed(ok, "pi", &none), "{ok}");
         }
         for bad in ["evil.example", "rebind.attacker.net:80", "pie.lan", "", "192.168.1.101.evil.com"] {

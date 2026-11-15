@@ -1,8 +1,8 @@
 //! Masjid directory, scraped from livemasjid.com's index page (the site has no JSON
 //! API for it) and cached on disk so the UI works offline and instantly after boot.
 
-use crate::sync::RwLockExt;
 use crate::state::{App, now_ms};
+use crate::sync::RwLockExt;
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::Ordering;
 
@@ -28,11 +28,12 @@ const SEED: &str = include_str!("catalog_seed.json");
 pub fn load_cache(app: &App) {
     if let Ok(bytes) = std::fs::read(&app.paths.catalog)
         && let Ok(c) = serde_json::from_slice::<CacheFile>(&bytes)
-            && !c.stations.is_empty() {
-                *app.catalog.write_lock() = c.stations;
-                app.catalog_fetched_ms.store(c.fetched_ms, Ordering::Relaxed);
-                return;
-            }
+        && !c.stations.is_empty()
+    {
+        *app.catalog.write_lock() = c.stations;
+        app.catalog_fetched_ms.store(c.fetched_ms, Ordering::Relaxed);
+        return;
+    }
     if let Ok(seed) = serde_json::from_str::<Vec<Station>>(SEED) {
         *app.catalog.write_lock() = seed;
         // fetched_ms stays 0, so the background task refreshes it as soon as it can.
@@ -86,13 +87,7 @@ async fn refresh_from(app: &App, bases: &[&str]) -> anyhow::Result<usize> {
 }
 
 async fn fetch_text(app: &App, url: &str) -> anyhow::Result<String> {
-    let resp = app
-        .http
-        .get(url)
-        .timeout(std::time::Duration::from_secs(30))
-        .send()
-        .await?
-        .error_for_status()?;
+    let resp = app.http.get(url).timeout(std::time::Duration::from_secs(30)).send().await?.error_for_status()?;
     Ok(resp.text().await?)
 }
 
@@ -138,10 +133,7 @@ pub fn parse(html: &str) -> Vec<Station> {
     let mut out: Vec<Station> = Vec::new();
     for chunk in html.split("class=\"bs-component\"").skip(1) {
         let location = between(chunk, "class=\"location d-none\">", "</p>").unwrap_or("");
-        let genre = chunk
-            .find("class=\"genre\"")
-            .and_then(|i| between(&chunk[i..], "alt=\"", "\""))
-            .unwrap_or("Masjid");
+        let genre = chunk.find("class=\"genre\"").and_then(|i| between(&chunk[i..], "alt=\"", "\"")).unwrap_or("Masjid");
         let Some(i) = chunk.find("masjidname\" href=\"/") else { continue };
         let rest = &chunk[i + "masjidname\" href=\"/".len()..];
         let Some(end) = rest.find('"') else { continue };
@@ -155,12 +147,7 @@ pub fn parse(html: &str) -> Vec<Station> {
             "Aalim" => "Aalim",
             _ => "Masjid",
         };
-        out.push(Station {
-            mount,
-            name,
-            location: clean(location),
-            genre: genre.into(),
-        });
+        out.push(Station { mount, name, location: clean(location), genre: genre.into() });
     }
     out
 }

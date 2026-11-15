@@ -16,7 +16,7 @@ use crate::state::App;
 use serde_json::Value;
 use std::time::Duration;
 
-pub(super) const API: &str ="https://masjidboardlive.com/boards/api/board.php?id=";
+pub(super) const API: &str = "https://masjidboardlive.com/boards/api/board.php?id=";
 pub const SITE: &str = "https://masjidboardlive.com/boards/?id=";
 
 /// Result of looking a board id up (cached per id).
@@ -136,9 +136,11 @@ pub fn parse(body: &str) -> Option<SalahTimes> {
     }
 
     // Jumu'ah: up to three times with headings like "0,3,6" → Adhān, Sunan, Khutbah.
-    let headings: Vec<usize> = d.get("jumuahHeadings").and_then(Value::as_str).unwrap_or("0,3,6")
-        .split(',').filter_map(|s| s.trim().parse().ok()).collect();
-    let jumuah_times: Vec<Moment> = ["jumuahTime1", "jumuahTime2", "jumuahTime3"].iter().enumerate()
+    let headings: Vec<usize> =
+        d.get("jumuahHeadings").and_then(Value::as_str).unwrap_or("0,3,6").split(',').filter_map(|s| s.trim().parse().ok()).collect();
+    let jumuah_times: Vec<Moment> = ["jumuahTime1", "jumuahTime2", "jumuahTime3"]
+        .iter()
+        .enumerate()
         .filter_map(|(i, k)| {
             let t = time(d, k)?;
             let label = headings.get(i).and_then(|&h| JUMUAH_HEADINGS.get(h)).copied().unwrap_or("Jumu'ah");
@@ -165,11 +167,10 @@ pub fn parse(body: &str) -> Option<SalahTimes> {
         ("sunset", "Sunset"),
         ("eshaStarts", "Esha starts"),
     ];
-    let day = day_keys.iter()
-        .filter_map(|(k, l)| time(d, k).map(|t| Moment { key: (*k).into(), label: (*l).into(), time: t }))
-        .collect();
+    let day = day_keys.iter().filter_map(|(k, l)| time(d, k).map(|t| Moment { key: (*k).into(), label: (*l).into(), time: t })).collect();
 
-    let changes = [("fajr", "Fajr"), ("asr", "Asr"), ("esha", "Esha")].iter()
+    let changes = [("fajr", "Fajr"), ("asr", "Asr"), ("esha", "Esha")]
+        .iter()
         .filter_map(|(k, l)| {
             let date = text(d, &format!("{k}NextDate"))?;
             let time = time(d, &format!("{k}NextTime"))?;
@@ -236,7 +237,8 @@ mod tests {
         assert!(parse(r#"{"data":{}}"#).is_none(), "no ok flag");
         assert!(parse("not json").is_none());
         // Minimal board: defaults for every optional part.
-        let t = parse(r#"{"ok":true,"data":{"fajrAthan":"04:30","jumuahHeadings":"99","jumuahTime1":"12:30","jumuah_khateeb":"-"}}"#).unwrap();
+        let t =
+            parse(r#"{"ok":true,"data":{"fajrAthan":"04:30","jumuahHeadings":"99","jumuahTime1":"12:30","jumuah_khateeb":"-"}}"#).unwrap();
         assert_eq!(t.jumuah_times[0].label, "Jumu'ah", "unknown heading code");
         assert!(t.khateeb.is_none(), "'-' means no khateeb");
         let b = t.board.unwrap();

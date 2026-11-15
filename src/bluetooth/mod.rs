@@ -62,10 +62,12 @@ pub async fn set_quality(app: &App, quality: &str) -> anyhow::Result<()> {
 async fn sync_quality(app: &App) {
     let wanted = app.settings().bt_quality;
     let current = std::fs::read_to_string("/etc/livemasjid/bt-quality").unwrap_or_default();
-    if !current.trim().is_empty() && current.trim() != wanted
-        && let Err(e) = set_quality(app, &wanted).await {
-            tracing::warn!("could not apply Bluetooth quality: {e}");
-        }
+    if !current.trim().is_empty()
+        && current.trim() != wanted
+        && let Err(e) = set_quality(app, &wanted).await
+    {
+        tracing::warn!("could not apply Bluetooth quality: {e}");
+    }
 }
 
 pub async fn run(app: App) {

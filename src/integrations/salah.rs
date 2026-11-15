@@ -183,14 +183,16 @@ async fn masjidscreen(app: &App, mount: &str, site: &str) -> SalahTimes {
     let source = format!("{site}/{mount}/");
     let it = &app.integrations;
     if let Some(hit) = it.salah.get(mount)
-        && (hit.status != "ok" || hit.date.as_deref() == Some(&today())) {
-            return hit;
-        }
+        && (hit.status != "ok" || hit.date.as_deref() == Some(&today()))
+    {
+        return hit;
+    }
     let _one = it.masjidscreen_gate.lock().await;
     if let Some(hit) = it.salah.get(mount)
-        && (hit.status != "ok" || hit.date.as_deref() == Some(&today())) {
-            return hit; // fetched by a concurrent request while we waited
-        }
+        && (hit.status != "ok" || hit.date.as_deref() == Some(&today()))
+    {
+        return hit; // fetched by a concurrent request while we waited
+    }
     let url = format!("{site}/{mount}/api/prayertimes.php");
     let (result, ttl) = match fetch(&url, Duration::from_secs(10), &it.masjidscreen).await {
         Fetched::Ok(body) => match parse(&body) {
@@ -200,8 +202,14 @@ async fn masjidscreen(app: &App, mount: &str, site: &str) -> SalahTimes {
             }
             None => (failure("error", "Unexpected answer from masjidscreen.co.za", &source), Duration::from_secs(1800)),
         },
-        Fetched::NotFound => (failure("not_listed", "This masjid doesn't publish salah times on masjidscreen.co.za", &source), Duration::from_secs(24 * 3600)),
-        Fetched::Blocked { .. } => (failure("blocked", "masjidscreen.co.za is not answering requests from this network right now", &source), Duration::from_secs(3600)),
+        Fetched::NotFound => (
+            failure("not_listed", "This masjid doesn't publish salah times on masjidscreen.co.za", &source),
+            Duration::from_secs(24 * 3600),
+        ),
+        Fetched::Blocked { .. } => (
+            failure("blocked", "masjidscreen.co.za is not answering requests from this network right now", &source),
+            Duration::from_secs(3600),
+        ),
         Fetched::Failed(e) => {
             tracing::debug!("salah times for {mount}: {e}");
             (failure("error", "Couldn't reach masjidscreen.co.za", &source), Duration::from_secs(900))
@@ -212,7 +220,13 @@ async fn masjidscreen(app: &App, mount: &str, site: &str) -> SalahTimes {
 }
 
 fn failure(status: &str, message: &str, source: &str) -> SalahTimes {
-    SalahTimes { status: status.into(), message: Some(message.into()), source: source.into(), provider: "masjidscreen".into(), ..Default::default() }
+    SalahTimes {
+        status: status.into(),
+        message: Some(message.into()),
+        source: source.into(),
+        provider: "masjidscreen".into(),
+        ..Default::default()
+    }
 }
 
 fn date_fmt(fmt: &str) -> String {
@@ -328,7 +342,12 @@ mod source_rules {
 
     fn board(id: &str, stream: Option<&str>) -> Lookup {
         let b = Board { id: id.into(), name: id.into(), city: None, url: String::new(), stream: stream.map(Into::into) };
-        Lookup::Found(Box::new(SalahTimes { status: "ok".into(), provider: "masjidboardlive".into(), board: Some(b), ..SalahTimes::default() }))
+        Lookup::Found(Box::new(SalahTimes {
+            status: "ok".into(),
+            provider: "masjidboardlive".into(),
+            board: Some(b),
+            ..SalahTimes::default()
+        }))
     }
 
     fn run(src: &Fake, choice: Option<&str>) -> SalahTimes {
@@ -355,7 +374,8 @@ mod source_rules {
 
     #[test]
     fn the_users_choice_wins() {
-        let src = Fake { boards: vec![("lakewood", board("lakewood", Some("lakewood"))), ("kauthar", board("kauthar", None))], screen: "ok" };
+        let src =
+            Fake { boards: vec![("lakewood", board("lakewood", Some("lakewood"))), ("kauthar", board("kauthar", None))], screen: "ok" };
         let t = run(&src, Some("kauthar"));
         assert_eq!((t.provider.as_str(), t.manual), ("masjidboardlive", true));
         assert_eq!(t.board.map(|b| b.id).as_deref(), Some("kauthar"));
@@ -385,7 +405,8 @@ mod live_sources {
     use super::*;
     use std::sync::atomic::Ordering;
 
-    const BOARD: &str = r#"{"ok":true,"data":{"fajrAthan":"04:30","dhuhrJamaah":"12:45","liveStreamURL":"lakewood","meta":{"web_url":"lakewood"}}}"#;
+    const BOARD: &str =
+        r#"{"ok":true,"data":{"fajrAthan":"04:30","dhuhrJamaah":"12:45","liveStreamURL":"lakewood","meta":{"web_url":"lakewood"}}}"#;
 
     #[tokio::test]
     async fn fetches_and_caches_each_source() {
@@ -394,7 +415,9 @@ mod live_sources {
         let today = today();
         let (base, hits) = crate::integrations::test_http::serve(move |path| {
             let screen = |date: &str| {
-                format!(r#"{{"masjid":{{"name":"M"}},"date":"{date}","salaah_times":{{"fajr":{{"athaan":"04:45:00","jamaat":"05:00:00"}}}}}}"#)
+                format!(
+                    r#"{{"masjid":{{"name":"M"}},"date":"{date}","salaah_times":{{"fajr":{{"athaan":"04:45:00","jamaat":"05:00:00"}}}}}}"#
+                )
             };
             match path {
                 "/board?id=lakewood" => (200, BOARD.to_string()),

@@ -4,19 +4,19 @@
 //! Seeking: the surahs are constant-bitrate MP3, so a time maps to a byte offset
 //! (after the ID3 tag); playback restarts there at the next verified frame boundary.
 
-use crate::sync::LockExt;
 use super::buffer::ByteQueue;
 use super::decode::{self, Codec, DecodeCtx};
 use super::edge::mp3_frame;
 use super::recording::RecordingEvent;
+use super::source::{Events, Source};
 use crate::quran::Library;
 use crate::sink::SinkHandle;
+use crate::sync::LockExt;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use super::source::{Events, Source};
 
 pub struct LocalParams {
     pub lib: Arc<Library>,
@@ -207,23 +207,23 @@ fn run(p: &LocalParams) {
     let feeder = {
         let (queue, stop, failure) = (queue.clone(), p.stop.clone(), failure.clone());
         crate::sync::spawn_named("quran-read", move || {
-                let mut buf = vec![0u8; 32 * 1024];
-                loop {
-                    match reader.read(&mut buf) {
-                        Ok(0) => break,
-                        Ok(k) => {
-                            if !queue.push(buf[..k].to_vec(), &stop) {
-                                break;
-                            }
-                        }
-                        Err(e) => {
-                            *failure.locked() = Some(e.to_string());
+            let mut buf = vec![0u8; 32 * 1024];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(k) => {
+                        if !queue.push(buf[..k].to_vec(), &stop) {
                             break;
                         }
                     }
+                    Err(e) => {
+                        *failure.locked() = Some(e.to_string());
+                        break;
+                    }
                 }
-                queue.close();
-            })
+            }
+            queue.close();
+        })
     };
 
     let events = p.events.clone();

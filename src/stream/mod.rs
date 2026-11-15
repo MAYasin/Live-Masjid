@@ -10,8 +10,8 @@
 mod buffer;
 mod decode;
 mod edge;
-mod ogg;
 pub mod local;
+mod ogg;
 pub mod recording;
 pub mod source;
 mod stretch;
@@ -22,12 +22,12 @@ use crate::net::{OpenError, STREAM_HOSTS, StreamConn, open_stream};
 use crate::sink::SinkHandle;
 use buffer::ByteQueue;
 use ogg::{Feed, OggFilter};
+pub use source::{Events, Source};
 use std::io::Read;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
-pub use source::{Events, Source};
 
 #[derive(Debug)]
 pub enum StreamEvent {
@@ -90,10 +90,7 @@ pub fn candidates(mount: &str, codec: &str) -> Vec<(&'static str, u16, String)> 
         None => (base.to_string(), format!("{base}.mp3")),
     };
     let order = if codec == "mp3" { [&mp3, &ogg] } else { [&ogg, &mp3] };
-    STREAM_HOSTS
-        .iter()
-        .flat_map(|(h, p)| order.iter().map(move |m| (*h, *p, format!("/{m}"))))
-        .collect()
+    STREAM_HOSTS.iter().flat_map(|(h, p)| order.iter().map(move |m| (*h, *p, format!("/{m}")))).collect()
 }
 
 fn codec_of(c: &StreamConn) -> Codec {
@@ -252,9 +249,10 @@ fn pump(conn: &mut StreamConn, pipe: &mut Pipeline, p: &SessionParams, carry: Op
         }
     };
     if let Some(bytes) = carry
-        && let Some(r) = deliver(&bytes, pipe) {
-            return r;
-        }
+        && let Some(r) = deliver(&bytes, pipe)
+    {
+        return r;
+    }
     if std::mem::take(&mut pipe.fresh) {
         let raw = match read_burst(conn, p) {
             Ok(raw) => raw,
@@ -581,7 +579,14 @@ mod tests {
         let (head, tail) = opus.split_at(opus.len() * 2 / 3);
         let (port, _accepted) = icecast(vec![
             // Burst, a pause (the live edge), then real-time audio, then the server closes.
-            vec![ok("audio/mpeg"), Step::Send(mp3_frames(40)), Step::Wait(600), Step::Send(mp3_frames(10)), Step::Wait(100), Step::Send(mp3_frames(10))],
+            vec![
+                ok("audio/mpeg"),
+                Step::Send(mp3_frames(40)),
+                Step::Wait(600),
+                Step::Send(mp3_frames(10)),
+                Step::Wait(100),
+                Step::Send(mp3_frames(10)),
+            ],
             // Same codec again: a reconnect.
             vec![ok("audio/mpeg"), Step::Send(mp3_frames(20))],
             // Now only Opus answers: a new pipeline.
@@ -608,7 +613,14 @@ mod tests {
         let (a1, a2) = a.split_at(a.len() / 2);
         let (port, _accepted) = icecast(vec![
             // A new serial arrives after the burst.
-            vec![ok("application/ogg"), Step::Send(a1.to_vec()), Step::Wait(600), Step::Send(a2.to_vec()), Step::Wait(100), Step::Send(b.clone())],
+            vec![
+                ok("application/ogg"),
+                Step::Send(a1.to_vec()),
+                Step::Wait(600),
+                Step::Send(a2.to_vec()),
+                Step::Wait(100),
+                Step::Send(b.clone()),
+            ],
             // Reconnect: the same stream is replayed, then a restart inside the burst... of the next session.
             vec![ok("application/ogg"), Step::Send(b.clone())],
         ]);

@@ -1,6 +1,6 @@
 //! User-facing device operations: list, scan, pair/use, release, forget.
 
-use super::ctl::{Bt, System, devices_with, device_info_with, parse_devices, quick_with, valid_mac};
+use super::ctl::{Bt, System, device_info_with, devices_with, parse_devices, quick_with, valid_mac};
 use crate::state::App;
 use serde::Serialize;
 use std::time::Duration;
@@ -149,8 +149,8 @@ async fn release_with<B: Bt>(bt: &B, app: &App, mac: &str, forget: bool) -> anyh
 
 #[cfg(test)]
 mod tests {
-    use crate::sync::LockExt;
     use super::*;
+    use crate::sync::LockExt;
 
     fn dev(mac: &str, name: &str, paired: bool, connected: bool, preferred: bool) -> Device {
         Device { mac: mac.into(), name: name.into(), paired, connected, preferred }
@@ -253,9 +253,7 @@ mod tests {
     async fn uses_a_paired_speaker() {
         let (dir, app) = app("use");
         let bt = FakeBt::default();
-        bt.ready(MAC, &[false, true])
-            .reply("devices Paired", Ok(&format!("Device {MAC} VSW07")))
-            .reply("info", Ok("\tName: VSW07\n"));
+        bt.ready(MAC, &[false, true]).reply("devices Paired", Ok(&format!("Device {MAC} VSW07"))).reply("info", Ok("\tName: VSW07\n"));
         assert_eq!(use_device_with(&bt, &app, MAC).await.unwrap(), "Connected to VSW07");
         assert!(!bt.calls().iter().any(|c| c.contains("pair ")), "already paired: no pairing");
         assert!(bt.called(&format!("trust {MAC}")) && bt.called("pairable off"));

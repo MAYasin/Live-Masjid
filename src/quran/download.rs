@@ -4,8 +4,8 @@
 //!
 //! The network side is the [`Fetcher`] trait: [`Curl`] on the Pi, a fake in the tests.
 
-use crate::sync::LockExt;
 use super::{Item, Library, name, valid};
+use crate::sync::LockExt;
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
 use std::path::Path;

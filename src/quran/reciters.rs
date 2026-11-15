@@ -1,8 +1,8 @@
 //! The reciter catalogue from mp3quran.net (about 300 recitations), cached on disk and refreshed
 //! monthly. Each recitation (a reciter's "moshaf") is keyed by its server path.
 
-use crate::sync::LockExt;
 use super::{DEFAULT_RECITER, valid, valid_key};
+use crate::sync::LockExt;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -14,9 +14,18 @@ const CATALOG_URL: &str = "https://www.mp3quran.net/api/v3/reciters?language=eng
 const MAX_AGE: Duration = Duration::from_secs(30 * 86400);
 /// Shown first in the picker: the best-known reciters.
 const POPULAR: [&str; 12] = [
-    "abdulrahman-sudais-r1", "mishary-alafasy-r1", "saad-ghamdi-r1", "maher-muaiqly-r1", "abdulbasit-abdulsamad-r3",
-    "mahmoud-husary-r1", "muhammad-minshawi-r1", "saud-shuraim-r1", "yasser-dosari-r1", "ahmad-ajmi-r1",
-    "abubakr-shatri-r1", "nasser-qatami-r1",
+    "abdulrahman-sudais-r1",
+    "mishary-alafasy-r1",
+    "saad-ghamdi-r1",
+    "maher-muaiqly-r1",
+    "abdulbasit-abdulsamad-r3",
+    "mahmoud-husary-r1",
+    "muhammad-minshawi-r1",
+    "saud-shuraim-r1",
+    "yasser-dosari-r1",
+    "ahmad-ajmi-r1",
+    "abubakr-shatri-r1",
+    "nasser-qatami-r1",
 ];
 
 /// One recitation (a reciter's moshaf) on mp3quran.net.
@@ -69,12 +78,8 @@ fn key_of(server: &str) -> Option<String> {
         return None; // only ever download from mp3quran's servers
     }
     let path = path.strip_prefix("audio/").unwrap_or(path);
-    let key: String = path
-        .trim_matches('/')
-        .to_ascii_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
+    let key: String =
+        path.trim_matches('/').to_ascii_lowercase().chars().map(|c| if c.is_ascii_alphanumeric() { c } else { '-' }).collect();
     valid_key(&key).then_some(key)
 }
 
@@ -118,10 +123,7 @@ pub fn parse_catalog(body: &str) -> Option<Vec<Reciter>> {
     }
     out.sort_by(|a, b| {
         let rank = |r: &Reciter| POPULAR.iter().position(|p| *p == r.key).unwrap_or(usize::MAX);
-        rank(a)
-            .cmp(&rank(b))
-            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
-            .then_with(|| a.style.cmp(&b.style))
+        rank(a).cmp(&rank(b)).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())).then_with(|| a.style.cmp(&b.style))
     });
     out.dedup_by(|a, b| a.key == b.key);
     Some(out)

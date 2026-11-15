@@ -39,9 +39,7 @@ impl Bt for System {
 /// Run `program` (stdin closed), killing it after `timeout`.
 async fn output(program: &str, args: &[&str], timeout: Duration) -> anyhow::Result<Output> {
     let fut = Command::new(program).args(args).stdin(Stdio::null()).kill_on_drop(true).output();
-    Ok(tokio::time::timeout(timeout, fut)
-        .await
-        .map_err(|_| anyhow::anyhow!("{program} {} timed out", args.join(" ")))??)
+    Ok(tokio::time::timeout(timeout, fut).await.map_err(|_| anyhow::anyhow!("{program} {} timed out", args.join(" ")))??)
 }
 
 /// stdout then stderr, without escape codes.
@@ -135,8 +133,8 @@ fn battery_percent(v: &str) -> Option<u8> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::fake::FakeBt;
+    use super::*;
 
     #[tokio::test]
     async fn runs_a_program_and_keeps_stdout_then_stderr_without_escapes() {
@@ -177,7 +175,10 @@ mod tests {
     #[tokio::test]
     async fn reads_device_info() {
         let bt = FakeBt::default();
-        bt.reply("info AA:BB:CC:DD:EE:FF", Ok("Device AA:BB:CC:DD:EE:FF\n\tName: VSW07\n\tConnected: yes\n\tBattery Percentage: 0x5a (90)\n"));
+        bt.reply(
+            "info AA:BB:CC:DD:EE:FF",
+            Ok("Device AA:BB:CC:DD:EE:FF\n\tName: VSW07\n\tConnected: yes\n\tBattery Percentage: 0x5a (90)\n"),
+        );
         let i = device_info_with(&bt, "AA:BB:CC:DD:EE:FF").await.unwrap();
         assert!(i.connected);
         assert_eq!(i.name.as_deref(), Some("VSW07"));
@@ -257,8 +258,8 @@ mod tests {
 /// listings (the last one repeats), and a log of every command.
 #[cfg(test)]
 pub mod fake {
-    use crate::sync::LockExt;
     use super::Bt;
+    use crate::sync::LockExt;
     use std::collections::VecDeque;
     use std::sync::{Arc, Mutex};
     use std::time::Duration;

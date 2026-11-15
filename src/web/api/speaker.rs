@@ -43,10 +43,8 @@ pub async fn forget(State(app): State<App>, Json(r): Json<Mac>) -> ApiResult {
 }
 
 pub async fn outputs() -> ApiResult {
-    let cards: Vec<_> = bluetooth::wired_cards()
-        .into_iter()
-        .map(|(id, label)| json!({ "device": format!("default:CARD={id}"), "label": label }))
-        .collect();
+    let cards: Vec<_> =
+        bluetooth::wired_cards().into_iter().map(|(id, label)| json!({ "device": format!("default:CARD={id}"), "label": label })).collect();
     Ok(Json(json!({ "cards": cards })))
 }
 

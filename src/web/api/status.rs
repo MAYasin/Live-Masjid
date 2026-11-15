@@ -1,7 +1,7 @@
 //! Health, live status (snapshot + server-sent events), history and activity log.
 
-use crate::sync::LockExt;
 use crate::state::{App, now_ms};
+use crate::sync::LockExt;
 use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -97,10 +97,8 @@ pub async fn history(State(app): State<App>, Query(q): Query<HistoryQuery>) -> J
         .filter(|(s, _)| q.salah.as_deref().is_none_or(|f| salah_matches(s.salah.as_deref(), f)))
         .collect();
     let days = per_day(labelled.iter().map(|(s, _)| s), offset);
-    let in_range: Vec<&(crate::history::Session, bool)> = labelled
-        .iter()
-        .filter(|(s, _)| q.from.is_none_or(|f| s.start_ms >= f) && q.to.is_none_or(|t| s.start_ms < t))
-        .collect();
+    let in_range: Vec<&(crate::history::Session, bool)> =
+        labelled.iter().filter(|(s, _)| q.from.is_none_or(|f| s.start_ms >= f) && q.to.is_none_or(|t| s.start_ms < t)).collect();
     let listened_ms: u64 = in_range.iter().map(|(s, _)| s.end_ms.saturating_sub(s.start_ms)).sum();
     let sessions: Vec<Value> = in_range
         .iter()

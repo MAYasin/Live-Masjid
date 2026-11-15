@@ -336,7 +336,7 @@ that aren't obvious from the code.
 - `sink/` `mod.rs` `SinkHandle` and the output thread (epochs, keep-awake, failover, per-channel volume) · `device.rs` one `aplay` process with a non-blocking writer and stall detection · `pcm.rs` gain, encoding, browser mirror, chime (pure, tested)
 - `monitor/` `poll.rs` Icecast status · `site.rs` website back-off guard
 - `bluetooth/` `mod.rs` supervisor · `adapter.rs` power, rfkill and controller reset · `devices.rs` pair, use, forget, re-pair · `speaker.rs` audio-ready state machine · `agent.rs` persistent agent · `ctl.rs` bluetoothctl · `outputs.rs` ALSA targets
-- `sysinfo.rs` device, Wi-Fi, Bluetooth and app health (incl. Quran storage) for Device & app · `salah_match.rs` labels broadcasts with a salah
+- `sync.rs` lock helpers and `spawn_named` · `sysinfo.rs` device, Wi-Fi, Bluetooth and app health (incl. Quran storage) for Device & app · `salah_match.rs` labels broadcasts with a salah
 - `integrations/` `mod.rs` curl fetch, caches and guards · `salah.rs` source rules (`choose`, over the `Sources` trait: masjidboardlive + masjidscreen; tested with a fake) and masjidscreen · `masjidboard.rs` masjidboardlive · `recordings.rs` RSS feed · `stream/recording.rs` playback
 - `quran/` `mod.rs` `Library` (files, delete, info) · `reciters.rs` catalogue · `playlists.rs` playlists and `validate` · `download.rs` queue and worker behind the `Fetcher` trait (`Curl` on the Pi, a fake in tests) · `schedule.rs` scheduled playlists · `stream/local.rs` file playback with seek (growing files) · `web/api/quran.rs`
 - `catalog.rs` directory scrape, cache and seed · `history.rs` JSONL sessions · `net.rs` raw Icecast HTTP and endpoints
@@ -358,6 +358,11 @@ that aren't obvious from the code.
 
 - **Clippy-clean** (`cargo clippy --release --target aarch64-unknown-linux-musl --all-targets` gives no warnings). Keep it that way.
   The MSRV is 1.88: don't use newer std APIs (e.g. `Atomic*::try_update`); clippy flags them.
+- **Lint and format policy** (2026-11-15, `.agents/skills/rust-best-practices`): `[lints]` in `Cargo.toml` (clippy::all plus
+  `unwrap_used`/`expect_used`, `allow_attributes`, `unchecked_time_subtraction`, `needless_pass_by_value`, …), `clippy.toml` lets tests
+  unwrap, `rustfmt.toml` (width 140) is checked in CI. No `unwrap`/`expect` in production code: use `crate::sync` (`locked()`,
+  `read_lock()`, `write_lock()` recover a poisoned lock; `spawn_named` for threads) and return errors. Silence a lint only with
+  `#[expect(lint, reason = "…")]`, never `#[allow]`.
 - **Coverage floor 90% lines** (CI `coverage` job, `cargo llvm-cov`; 98% on 2026-11-15). Only `main.rs` and the hardware glue
   (`bluetooth/{mod,agent,adapter}.rs`, `sink/device.rs`) are left out (`COVERAGE_IGNORE` in `release.yml`). Locally:
   `cargo llvm-cov --all-targets --ignore-filename-regex 'src/(main|bluetooth/(mod|agent|adapter)|sink/device).rs' --summary-only`

@@ -5,8 +5,8 @@
 //! build); `update.sh` reports progress in `<data>/update-status.json`. Automatic (timer) updates
 //! follow the `auto_update` setting, which `update.sh` reads from `settings.json`.
 
-use crate::sync::LockExt;
 use crate::state::App;
+use crate::sync::LockExt;
 use crate::web::{ApiError, ApiResult, ok};
 use axum::Json;
 use axum::extract::{Path, Query, State};
@@ -83,10 +83,8 @@ pub struct UpdatesQuery {
 
 /// Installed version, automatic-update setting, the last update run, and (on request) the latest release.
 pub async fn updates(State(app): State<App>, Query(q): Query<UpdatesQuery>) -> ApiResult<Json<Value>> {
-    let last: Value = std::fs::read(data_file(&app, "update-status.json"))
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .unwrap_or(Value::Null);
+    let last: Value =
+        std::fs::read(data_file(&app, "update-status.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or(Value::Null);
     let mut latest = Value::Null;
     if q.check && !crate::platform::is_native() {
         let tag = latest_release().await?;
@@ -150,8 +148,11 @@ async fn latest_release() -> Result<String, ApiError> {
     let repo = std::env::var("LIVEMASJID_REPO").unwrap_or_else(|_| "MAYasin/Live-Masjid".into());
     let url = format!("https://api.github.com/repos/{repo}/releases/latest");
     let mut cmd = tokio::process::Command::new("curl");
-    cmd.args(["-sSL", "--fail", "--max-time", "20", "-H", "Accept: application/vnd.github+json"])
-        .args(["-A", crate::integrations::USER_AGENT, &url]);
+    cmd.args(["-sSL", "--fail", "--max-time", "20", "-H", "Accept: application/vnd.github+json"]).args([
+        "-A",
+        crate::integrations::USER_AGENT,
+        &url,
+    ]);
     release_tag(cmd).await
 }
 
@@ -159,10 +160,7 @@ async fn latest_release() -> Result<String, ApiError> {
 async fn release_tag(mut cmd: tokio::process::Command) -> Result<String, ApiError> {
     let unreachable = || ApiError::bad("Couldn't reach GitHub to check for updates");
     let out = cmd.kill_on_drop(true).output().await.map_err(|_| unreachable())?;
-    serde_json::from_slice::<Value>(&out.stdout)
-        .ok()
-        .and_then(|v| v.get("tag_name")?.as_str().map(str::to_string))
-        .ok_or_else(unreachable)
+    serde_json::from_slice::<Value>(&out.stdout).ok().and_then(|v| v.get("tag_name")?.as_str().map(str::to_string)).ok_or_else(unreachable)
 }
 
 #[cfg(test)]

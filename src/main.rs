@@ -5,19 +5,19 @@ mod catalog;
 mod config;
 mod history;
 mod integrations;
-mod quran;
-mod salah_match;
-mod schedule;
 mod monitor;
 mod net;
 mod platform;
 mod player;
+mod quran;
+mod salah_match;
+mod schedule;
 mod sink;
 mod site;
-mod sysinfo;
 mod state;
 mod stream;
 mod sync;
+mod sysinfo;
 mod web;
 
 use crate::sync::LockExt;
@@ -65,9 +65,7 @@ fn main() -> anyhow::Result<()> {
         Cli::Run => {}
     }
     tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_env("LIVEMASJID_LOG").unwrap_or_else(|_| "livemasjid=info".into()),
-        )
+        .with_env_filter(tracing_subscriber::EnvFilter::try_from_env("LIVEMASJID_LOG").unwrap_or_else(|_| "livemasjid=info".into()))
         // journald adds its own timestamps
         .without_time()
         .with_ansi(false)
@@ -77,12 +75,7 @@ fn main() -> anyhow::Result<()> {
     #[cfg(feature = "tls")]
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .thread_stack_size(512 * 1024)
-        .enable_all()
-        .build()?
-        .block_on(run())
+    tokio::runtime::Builder::new_multi_thread().worker_threads(2).thread_stack_size(512 * 1024).enable_all().build()?.block_on(run())
 }
 
 async fn run() -> anyhow::Result<()> {

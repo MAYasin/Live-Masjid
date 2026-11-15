@@ -26,12 +26,8 @@ pub async fn run() {
 }
 
 async fn spawn() -> anyhow::Result<Child> {
-    let mut child = Command::new("bluetoothctl")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null())
-        .kill_on_drop(true)
-        .spawn()?;
+    let mut child =
+        Command::new("bluetoothctl").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null()).kill_on_drop(true).spawn()?;
     let mut stdin = child.stdin.take().ok_or_else(|| anyhow::anyhow!("no stdin"))?;
     let stdout = child.stdout.take().ok_or_else(|| anyhow::anyhow!("no stdout"))?;
     send(&mut stdin, "agent NoInputNoOutput").await?;

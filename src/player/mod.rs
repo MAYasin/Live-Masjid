@@ -8,13 +8,13 @@
 mod live;
 mod media;
 
-use crate::sync::{LockExt, RwLockExt};
 use crate::config::Settings;
 use crate::quran::{PlaylistCtx, Reciter};
 use crate::state::{App, Phase, PlayerCmd, QuranResume, Signal, now_ms};
 use crate::stream::local::LocalParams;
 use crate::stream::recording::{RecordingEvent, RecordingParams};
 use crate::stream::{EndReason, Events, SessionParams, StreamEvent};
+use crate::sync::{LockExt, RwLockExt};
 use live::{LiveSession, StopReason, Trigger, end_label};
 use media::{Controls, Media, Surah, first_available};
 use std::sync::Arc;
@@ -328,10 +328,11 @@ impl Player {
             PlayerCmd::Reconfigure => {
                 let s = self.app.settings();
                 if let Some(a) = self.live.as_mut()
-                    && Some(&a.mount) != s.mount.as_ref() {
-                        a.request_stop(StopReason::Switched);
-                        self.app.sink.new_epoch();
-                    }
+                    && Some(&a.mount) != s.mount.as_ref()
+                {
+                    a.request_stop(StopReason::Switched);
+                    self.app.sink.new_epoch();
+                }
                 self.suppressed_at = None;
                 self.retry_after = Instant::now();
                 if self.live.is_none() {
@@ -412,7 +413,8 @@ impl Player {
             self.forget_resume_point();
             self.set_quran_speed(speed);
             let surah = ctx.surah();
-            let title = self.start_quran(QuranStart { reciter, surah, playlist: Some(ctx), position_ms: 0, paused: false, live_at_start: false });
+            let title =
+                self.start_quran(QuranStart { reciter, surah, playlist: Some(ctx), position_ms: 0, paused: false, live_at_start: false });
             self.app.log("info", format!("▶ Scheduled: {title}"));
         }
     }
@@ -426,11 +428,14 @@ impl Player {
                 // A broadcast that starts while a recording plays takes priority.
                 if self.media.as_ref().is_some_and(|m| !m.live_at_start) && s.autoplay && self.suppressed_at.is_none() {
                     if let Some(res) = self.keep_resume_point() {
-                        self.app.log("info", format!(
-                            "Live broadcast started; Quran paused at {}:{:02} (continues when the broadcast ends)",
-                            res.position_s / 60,
-                            res.position_s % 60
-                        ));
+                        self.app.log(
+                            "info",
+                            format!(
+                                "Live broadcast started; Quran paused at {}:{:02} (continues when the broadcast ends)",
+                                res.position_s / 60,
+                                res.position_s % 60
+                            ),
+                        );
                     } else {
                         self.app.log("info", "Live broadcast started; stopping the recording");
                     }
@@ -567,7 +572,14 @@ impl Player {
                 let m = self.media.take()?;
                 let (surah, playlist) = m.neighbour(1)?;
                 let reciter = m.surah?.reciter;
-                let title = self.start_quran(QuranStart { reciter, surah, playlist, position_ms: 0, paused: false, live_at_start: m.live_at_start });
+                let title = self.start_quran(QuranStart {
+                    reciter,
+                    surah,
+                    playlist,
+                    position_ms: 0,
+                    paused: false,
+                    live_at_start: m.live_at_start,
+                });
                 self.app.log("info", format!("▶ Quran: {title}"));
                 None
             }
@@ -653,7 +665,14 @@ impl Player {
         let Some(q) = self.quran_resume.take() else { return };
         let reciter = self.app.quran.resolve(Some(&q.reciter));
         self.set_quran_speed(q.speed);
-        let start = QuranStart { reciter, surah: q.surah, playlist: q.playlist, position_ms: q.position_s * 1000, paused: false, live_at_start: false };
+        let start = QuranStart {
+            reciter,
+            surah: q.surah,
+            playlist: q.playlist,
+            position_ms: q.position_s * 1000,
+            paused: false,
+            live_at_start: false,
+        };
         let title = self.start_quran(start);
         self.app.log("info", format!("Broadcast over; continuing the Quran: {title}"));
         self.closed_since = None;
@@ -751,15 +770,7 @@ mod tests {
     }
 
     fn resume(app: &App, surah: u16, auto: bool) -> QuranResume {
-        QuranResume {
-            surah,
-            title: "t".into(),
-            position_s: 30,
-            auto,
-            playlist: None,
-            reciter: app.quran.resolve(None).key,
-            speed: 1.5,
-        }
+        QuranResume { surah, title: "t".into(), position_s: 30, auto, playlist: None, reciter: app.quran.resolve(None).key, speed: 1.5 }
     }
 
     fn save_playlist(app: &App, surahs: &[u16]) -> String {

@@ -1,7 +1,7 @@
 //! Masjid directory and selection.
 
-use crate::sync::{LockExt, RwLockExt};
 use crate::state::{App, PlayerCmd};
+use crate::sync::{LockExt, RwLockExt};
 use crate::web::{ApiError, ApiResult, ok};
 use axum::Json;
 use axum::extract::State;

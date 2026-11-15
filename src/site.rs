@@ -6,8 +6,8 @@
 //! for hours — never retry in a loop, never disguise the client. The back-off is saved to
 //! disk so restarts and reboots don't reset it.
 
-use crate::sync::LockExt;
 use crate::state::now_ms;
+use crate::sync::LockExt;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -29,10 +29,7 @@ pub struct SiteGuard {
 impl SiteGuard {
     /// Restore the back-off state from `path` (if present) and persist changes there.
     pub fn load(path: PathBuf) -> Self {
-        let state = std::fs::read(&path)
-            .ok()
-            .and_then(|b| serde_json::from_slice(&b).ok())
-            .unwrap_or_default();
+        let state = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
         Self { state: Mutex::new(state), path: Some(path) }
     }
 
@@ -74,9 +71,7 @@ impl SiteGuard {
 
 /// Does this error mean "you are not welcome / slow down"?
 pub fn is_refusal(e: &anyhow::Error) -> bool {
-    e.downcast_ref::<reqwest::Error>()
-        .and_then(reqwest::Error::status)
-        .is_some_and(|s| matches!(s.as_u16(), 403 | 429))
+    e.downcast_ref::<reqwest::Error>().and_then(reqwest::Error::status).is_some_and(|s| matches!(s.as_u16(), 403 | 429))
 }
 
 #[cfg(test)]
