@@ -48,8 +48,16 @@ pub fn is_native() -> bool {
 /// Bluetooth management runs unless turned off (`LIVEMASJID_BLUETOOTH=off`); in a container it
 /// also needs the host's D-Bus system socket.
 pub fn bluetooth_enabled() -> bool {
-    let off = std::env::var("LIVEMASJID_BLUETOOTH").is_ok_and(|v| matches!(v.as_str(), "off" | "0" | "false"));
-    !off && (is_native() || Path::new("/run/dbus/system_bus_socket").exists())
+    bt_enabled(
+        std::env::var("LIVEMASJID_BLUETOOTH").ok().as_deref(),
+        is_native(),
+        Path::new("/run/dbus/system_bus_socket").exists(),
+    )
+}
+
+fn bt_enabled(off_var: Option<&str>, native: bool, dbus: bool) -> bool {
+    let off = off_var.is_some_and(|v| matches!(v, "off" | "0" | "false"));
+    !off && (native || dbus)
 }
 
 /// Development: serve the UI from this folder instead of the copy built into the binary.
@@ -68,7 +76,38 @@ mod tests {
         assert_eq!(detect(None, false), Platform::Native);
         assert_eq!(detect(None, true), Platform::Container);
         assert_eq!(detect(Some("container"), false), Platform::Container);
+        assert_eq!(detect(Some("docker"), false), Platform::Container);
         assert_eq!(detect(Some("native"), true), Platform::Native, "explicit setting wins");
         assert_eq!(detect(Some("other"), false), Platform::Native);
+    }
+
+    #[test]
+    fn platform_names() {
+        assert_eq!(Platform::Native.as_str(), "native");
+        assert_eq!(Platform::Container.as_str(), "container");
+    }
+
+    #[test]
+    fn bluetooth_switch() {
+        assert!(bt_enabled(None, true, false), "native always manages Bluetooth");
+        assert!(bt_enabled(None, false, true), "a container needs the host's D-Bus");
+        assert!(!bt_enabled(None, false, false));
+        for off in ["off", "0", "false"] {
+            assert!(!bt_enabled(Some(off), true, true), "{off} turns it off");
+        }
+        assert!(bt_enabled(Some("on"), true, false));
+        assert!(bt_enabled(Some("true"), false, true));
+    }
+
+    #[test]
+    fn the_detected_platform_is_stable() {
+        assert_eq!(get(), get());
+        assert_eq!(is_native(), get() == Platform::Native);
+        let expected = bt_enabled(
+            std::env::var("LIVEMASJID_BLUETOOTH").ok().as_deref(),
+            is_native(),
+            Path::new("/run/dbus/system_bus_socket").exists(),
+        );
+        assert_eq!(bluetooth_enabled(), expected);
     }
 }

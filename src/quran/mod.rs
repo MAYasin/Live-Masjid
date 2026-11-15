@@ -299,4 +299,135 @@ mod tests {
         assert_eq!(name(0), "");
         assert!(!valid(115));
     }
+
+    #[test]
+    fn surah_numbers_are_one_to_114() {
+        assert!(valid(1) && valid(114));
+        assert!(!valid(0) && !valid(115) && !valid(u16::MAX));
+        assert_eq!(name(115), "");
+        assert_eq!(name(36), "Yā Sīn");
+    }
+
+    #[test]
+    fn recitation_keys_are_path_safe() {
+        assert!(valid_key(DEFAULT_RECITER));
+        assert!(valid_key("a-b-9"));
+        assert!(valid_key(&"a".repeat(80)));
+        assert!(!valid_key(""));
+        assert!(!valid_key(&"a".repeat(81)));
+        assert!(!valid_key("Sudais"), "uppercase is rejected");
+        assert!(!valid_key("a/b"));
+        assert!(!valid_key("a b"));
+        assert!(!valid_key("é"));
+    }
+
+    fn library() -> (Arc<Library>, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("lm-lib-{}", crate::config::random_hex(6)));
+        (Library::new(&dir), dir)
+    }
+
+    #[test]
+    fn the_old_sudais_folder_is_adopted() {
+        let dir = std::env::temp_dir().join(format!("lm-lib-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(dir.join("quran").join("sudais")).unwrap();
+        std::fs::write(dir.join("quran").join("sudais").join("001.mp3"), b"x").unwrap();
+        let lib = Library::new(&dir);
+        assert!(lib.is_ready(DEFAULT_RECITER, 1));
+        assert!(!dir.join("quran").join("sudais").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn progress_and_totals() {
+        let (lib, dir) = library();
+        let key = DEFAULT_RECITER;
+        std::fs::create_dir_all(lib.dir(key)).unwrap();
+        assert_eq!(lib.progress(key, 2), None, "size unknown");
+        std::fs::write(lib.part_path(key, 2), vec![0u8; 512]).unwrap();
+        lib.queue.lock().unwrap().totals.insert((key.to_string(), 2), 1024);
+        assert_eq!(lib.progress(key, 2), Some(50));
+        assert_eq!(lib.total(key, 2), Some(1024));
+        std::fs::write(lib.final_path(key, 2), vec![0u8; 1000]).unwrap();
+        assert_eq!(lib.progress(key, 2), None, "ready");
+        assert_eq!(lib.total(key, 2), Some(1000), "the file's own size");
+        assert_eq!(lib.total(key, 3), None);
+        assert_eq!(lib.stored_bytes(), 1512);
+        assert_eq!(lib.reciters().len(), 1);
+        assert_eq!(lib.reciter(key).unwrap().key, key);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn delete_one_or_everything_but_the_playing_surah() {
+        let (lib, dir) = library();
+        let key = DEFAULT_RECITER;
+        std::fs::create_dir_all(lib.dir(key)).unwrap();
+        std::fs::create_dir_all(lib.dir("other-r1")).unwrap();
+        for n in [1, 2, 3] {
+            std::fs::write(lib.final_path(key, n), b"x").unwrap();
+        }
+        std::fs::write(lib.part_path("other-r1", 5), b"x").unwrap();
+        std::fs::create_dir_all(lib.root.join("Not-A-Key")).unwrap();
+
+        assert_eq!(lib.delete(Some((key.to_string(), 1)), None), 1);
+        assert_eq!(lib.delete(Some((key.to_string(), 1)), None), 0, "already gone");
+
+        let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        {
+            let mut q = lib.queue.lock().unwrap();
+            q.active = Some((("other-r1".to_string(), 5), cancel.clone()));
+            q.priority.push_back((key.to_string(), 3));
+            q.all = Some(key.to_string());
+        }
+        assert_eq!(lib.delete(None, Some((key.to_string(), 2))), 2);
+        assert!(cancel.load(Ordering::Relaxed), "the download being deleted stops");
+        assert!(lib.is_ready(key, 2), "the playing surah is kept");
+        let q = lib.queue.lock().unwrap();
+        assert!(q.all.is_none() && q.priority.is_empty());
+        drop(q);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn info_reports_each_surah_state() {
+        let (lib, dir) = library();
+        let key = DEFAULT_RECITER;
+        std::fs::create_dir_all(lib.dir(key)).unwrap();
+        std::fs::write(lib.final_path(key, 1), b"ready").unwrap();
+        std::fs::write(lib.part_path(key, 2), b"pa").unwrap();
+        std::fs::write(lib.part_path(key, 3), b"par").unwrap();
+        {
+            let mut q = lib.queue.lock().unwrap();
+            q.active = Some(((key.to_string(), 2), Arc::new(std::sync::atomic::AtomicBool::new(false))));
+            q.priority.push_back((key.to_string(), 4));
+        }
+        let info = lib.info(key);
+        let state = |n: usize| info.surahs[n - 1].state;
+        assert_eq!([state(1), state(2), state(3), state(4), state(5)], ["ready", "downloading", "partial", "queued", "none"]);
+        assert_eq!((info.ready, info.available, info.downloading_all), (1, 114, false));
+        assert_eq!(info.surahs[0].total, Some(5));
+        lib.download_all(Some(key));
+        assert!(lib.info(key).downloading_all);
+
+        // A recitation that lacks some surahs.
+        let partial = r#"[{"key":"partial-r1","name":"P","style":"","server":"https://cdn.mp3quran.net/p/","surahs":[1]}]"#;
+        std::fs::write(lib.root.join("reciters.json"), partial).unwrap();
+        let lib = Library::new(&dir);
+        let info = lib.info("partial-r1");
+        assert_eq!((info.surahs[0].state, info.surahs[1].state, info.available), ("none", "unavailable", 1));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn playlists_are_validated_and_stored() {
+        let (lib, dir) = library();
+        let p = Playlist { name: "Fajr".into(), surahs: vec![1, 36], ..Playlist::default() };
+        let saved = lib.save_playlist(p.clone()).unwrap();
+        assert_eq!(lib.playlists().len(), 1);
+        assert_eq!(lib.playlist(&saved.id).unwrap().name, "Fajr");
+        assert!(lib.save_playlist(Playlist { reciter: Some("nobody".into()), ..p }).is_err());
+        assert!(lib.delete_playlist(&saved.id).unwrap());
+        assert!(lib.playlists().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

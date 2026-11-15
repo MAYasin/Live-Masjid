@@ -76,7 +76,8 @@ that aren't obvious from the code.
   `arm-unknown-linux-musleabihf` (ARMv6). This is pure Rust, linked with `rust-lld` (`.cargo/config.toml`), so no C toolchain or zig
   is needed. The Pi Zero 2 W can run the 32-bit binaries too, which is handy for testing them.
 - **CI** (`release.yml`): a matrix over the three targets on `ubuntu-24.04-arm`; 32-bit tests run under `qemu-arm-static`. One release
-  holds `livemasjid-{aarch64,armv7,armv6}-linux.tar.gz`, and `update.sh` picks the asset by `uname -m`.
+  holds `livemasjid-{aarch64,armv7,armv6}-linux.tar.gz`, and `update.sh` picks the asset by `uname -m`. Pull requests run the same tests
+  and builds, but the `release` and `image` jobs are skipped there.
 - **`deploy/CONFIG_VERSION`:** bump it whenever system configuration changes in `install.sh`. `update.sh` then runs
   `install.sh --skip-binary` once on every device.
 - **`install.sh` must read `/etc/os-release` in a subshell.** That file defines its own `VERSION=`, which once clobbered the build label.
@@ -99,13 +100,12 @@ that aren't obvious from the code.
 
 ## livemasjid.com — verified behaviour (Nov 2026)
 
-- **Live push (SSE):** `www.livemasjid.com/stateQuery.php?mount=<m>`.
-  - While the mount is offline it sends nothing at all, not even headers.
-  - When it goes live it sends repeated `data: {"msg":"online","id":"<m>"}` events, with the JSON split across several `data:` lines, then closes.
-  - The site's own JavaScript closes its EventSource after "online". **We only hold SSE while in the `Waiting` phase.**
-    Reconnecting in a loop while live is what got us blocked.
+- **Live push (SSE), no longer used (removed 2026-11-15):** `www.livemasjid.com/stateQuery.php?mount=<m>`. It sent nothing while offline
+  and repeated `data: {"msg":"online","id":"<m>"}` events once live. Even used politely (only while `Waiting`), www answered 403 every time
+  the back-off ended (2026-11-13/14/15), and the UI kept showing the block notice. **The app no longer calls it**; the Icecast status poll
+  (≤ 20 s) and the direct probe detect broadcasts. Don't bring it back.
 - **Status:** Icecast `status-json.xsl` on the origin `http://livemasjid.com:8000`, then the relay `http://relay2.livemasjid.com:8000`
-  (a subset of mounts), then `www/api/status-json.xsl`.
+  (a subset of mounts). Never `www/api/status-json.xsl`: the status poll uses the Icecast servers only (`net::status_urls`).
   - A mount is live when its `source` has `stream_start`.
   - `source` can be a single object instead of an array.
   - The site's page polls every 60 s. **Our default is 20 s, with jitter and back-off on 403/429/refused.**
@@ -121,14 +121,15 @@ that aren't obvious from the code.
   across the Masjid, Institution and Aalim categories. A snapshot is embedded as `src/catalog_seed.json`. To regenerate it, run
   `livemasjid --parse-catalog index.html > src/catalog_seed.json`.
 - **We got the home IP banned by the site owner (Cloudflare error 1006, 2026-11-06).** The cause was our development traffic:
-  4 s polling plus the SSE reconnect loop. `www` returns 403 and the origin :8000 refuses connections; relay2 keeps working.
+  4 s polling plus the SSE reconnect loop (the SSE push has since been removed). `www` returns 403 and the origin :8000 refuses connections; relay2 keeps working.
   - **Never work around a block** with a spoofed User-Agent, a VPN or a proxy. Only the site owner can lift it; the owner was asked to contact them.
-  - `site.rs` (`SiteGuard`): any 403/429 from `www` pauses **all** website traffic (SSE, directory, www status) for 6 h, then 12 h, then 24 h.
+  - `site.rs` (`SiteGuard`): any 403/429 from `www` pauses **all** website traffic (directory refresh, recordings feed) for 6 h, then 12 h, then 24 h.
     The back-off is saved to `site.json`, so restarts don't reset it.
-    The UI shows a notice. Playback needs only the Icecast servers, so it is unaffected.
+    Only the recordings section mentions it (with the last saved list); the Now page shows nothing. Playback needs only the Icecast servers.
   - Request budget:
     - status poll at most once per 20 s with jitter (to the Icecast servers, not the website)
-    - SSE only while `Waiting`, and at least 15 s between reconnects
+    - **no** live push and **no** www status: the website is only asked for the directory and recordings
+    - recordings feed only when a masjid's recordings are opened, at most once per 6 h per masjid (saved on disk)
     - directory refresh monthly; after a failure, 6 h doubling up to 7 days
     - direct probe only after 2 minutes with no signal
 
@@ -181,7 +182,8 @@ that aren't obvious from the code.
     triggers a resume. Verified: interrupted at 0:10 → live attempt ended → resumed at 0:10 about 15 s later.
   - Verified on the Pi: An-Nās downloaded in under 2 s; Al-Baqarah started within 8 s while downloading; seek to 2:00 → 2:09; pause held; next; stop.
 - **Recordings:** the RSS feed at `https://www.livemasjid.com/api/get_mountrecordings.php?mountname=<m>&feeditems=40` (iso-8859-1,
-  single-quoted `enclosure url=` on `cdn.livemasjid.com` .mp3, no durations), cached 15 min. Override it with `LIVEMASJID_RECORDINGS_FEED`
+  single-quoted `enclosure url=` on `cdn.livemasjid.com` .mp3, no durations). A good list is kept 6 h in memory **and on disk** (`recordings.json`, `recordings::Store`, 50 masjids), so restarts
+  don't refetch; on a refusal or failure the last good list is shown with `stale: true` ("Saved list from …"). Unknown masjids: 24 h. Override it with `LIVEMASJID_RECORDINGS_FEED`
   (`{mount}`, `{n}`) for testing. **The livemasjid IP block was lifted by 2026-11-07 15:40** (the feed returns 200 again).
 - **Recording playback** (`stream/recording.rs`): `curl` → `ByteQueue` → the shared decoder, with pause/position on `DecodeCtx`.
   The API plays by **id from the cached list, never a raw URL** (no SSRF). A broadcast that starts during a recording interrupts it;
@@ -332,7 +334,7 @@ that aren't obvious from the code.
 - `player/` `mod.rs` the `Player` state machine: one handler per input (commands, signals, live events, on-demand events, tick), live precedence, Quran resume, schedules, probe · `live.rs` `LiveSession`, `Trigger`, `StopReason`, history end labels · `media.rs` on-demand item (recording or surah), heard position, next surah (pure, tested)
 - `stream/` `source.rs` the `Source` trait (every playback kind runs on its own thread via `source::spawn`) and `Events<E>` (events tagged with the session token, so stale ones are ignored) · `mod.rs` live session and reconnect · `buffer.rs` jitter buffer · `ogg.rs` seamless page filter · `decode.rs` Opus and MP3 decoding
 - `sink/` `mod.rs` `SinkHandle` and the output thread (epochs, keep-awake, failover, per-channel volume) · `device.rs` one `aplay` process with a non-blocking writer and stall detection · `pcm.rs` gain, encoding, browser mirror, chime (pure, tested)
-- `monitor/` `sse.rs` live push · `poll.rs` Icecast status · `site.rs` website back-off guard
+- `monitor/` `poll.rs` Icecast status · `site.rs` website back-off guard
 - `bluetooth/` `mod.rs` supervisor · `adapter.rs` power, rfkill and controller reset · `devices.rs` pair, use, forget, re-pair · `speaker.rs` audio-ready state machine · `agent.rs` persistent agent · `ctl.rs` bluetoothctl · `outputs.rs` ALSA targets
 - `sysinfo.rs` device, Wi-Fi, Bluetooth and app health (incl. Quran storage) for Device & app · `salah_match.rs` labels broadcasts with a salah
 - `integrations/` `mod.rs` curl fetch, caches and guards · `salah.rs` source rules (`choose`, over the `Sources` trait: masjidboardlive + masjidscreen; tested with a fake) and masjidscreen · `masjidboard.rs` masjidboardlive · `recordings.rs` RSS feed · `stream/recording.rs` playback
@@ -356,6 +358,12 @@ that aren't obvious from the code.
 
 - **Clippy-clean** (`cargo clippy --release --target aarch64-unknown-linux-musl --all-targets` gives no warnings). Keep it that way.
   The MSRV is 1.88: don't use newer std APIs (e.g. `Atomic*::try_update`); clippy flags them.
+- **Coverage floor 90% lines** (CI `coverage` job, `cargo llvm-cov`; 98% on 2026-11-15). Only `main.rs` and the hardware glue
+  (`bluetooth/{mod,agent,adapter}.rs`, `sink/device.rs`) are left out (`COVERAGE_IGNORE` in `release.yml`). Locally:
+  `cargo llvm-cov --all-targets --ignore-filename-regex 'src/(main|bluetooth/(mod|agent|adapter)|sink/device).rs' --summary-only`
+  in the dev container (install `cargo-llvm-cov` and `llvm-tools-preview` there).
+- **Unit tests must never touch the real system**: no internet (serve fakes on 127.0.0.1), and on the Pi no real Bluetooth adapter,
+  sudo or systemctl (a test that ran `bluetoothctl scan` on the Pi was caught on 2026-11-15). Run the test binary on the Pi before merging.
 - **Rules live in pure functions with unit tests**; I/O sits behind small traits so the rules can be tested with fakes:
   `stream::Source` (playback kinds), `quran::Fetcher` (downloads), `integrations::salah::Sources` (salah providers).
 - **Behaviour-preserving refactors are checked on the Pi**: the test binary (see Build), then the real paths (Quran play/pause/seek/
@@ -376,7 +384,7 @@ that aren't obvious from the code.
 - **Dev hot reload:** `LIVEMASJID_UI_DIR` makes `web/assets.rs` read UI files from disk on each request (still only the paths in `FILES`).
   It also injects a script that polls `/__dev/stamp` (newest mtime under the folder) and reloads the page. `cargo watch --poll` restarts
   on Rust changes (measured about 5 s); polling is used because file events from a Windows host don't reliably reach the container.
-- **`docker compose -f compose.dev.yaml run --rm dev cargo test`** runs the tests on Linux x86 (68 passed), with no copy to the Pi.
+- **`docker compose -f compose.dev.yaml run --rm dev cargo test`** runs the tests on Linux x86 (402 passed), with no copy to the Pi.
 - **The dev container adds to the livemasjid.com traffic from the home IP:** stop it after use.
 
 ## Security (2026-11-11)

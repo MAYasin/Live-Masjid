@@ -283,4 +283,155 @@ mod tests {
         assert_eq!(days["1970-01-11"], DayTotal { count: 2, ms: 35 * 60_000 });
         assert_eq!(days["1970-01-12"], DayTotal { count: 1, ms: 5 * 60_000 });
     }
+
+    fn temp_path(tag: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("lm-history-{tag}-{}.jsonl", crate::config::random_hex(8)))
+    }
+
+    #[test]
+    fn records_and_reloads_a_session() {
+        let path = temp_path("session");
+        {
+            let mut h = History::load(path.clone());
+            let id = h.begin("lakewood", "Lakewood", "opus", "sse");
+            assert!(h.last_heard("lakewood").is_some());
+            h.set_salah(id, Some("Esha".into()));
+            h.touch(id, 2);
+            h.finish(id, "ended", 3);
+            assert_eq!(h.recent(10, None).len(), 1);
+            assert!(h.recent(10, Some("other")).is_empty());
+        }
+        let h = History::load(path.clone());
+        let all = h.recent(10, None);
+        assert_eq!(all.len(), 1);
+        let s = &all[0];
+        assert_eq!(s.mount, "lakewood");
+        assert_eq!(s.name, "Lakewood");
+        assert_eq!(s.trigger, "sse");
+        assert_eq!(s.reason, "ended");
+        assert_eq!(s.reconnects, 3);
+        assert_eq!(s.salah.as_deref(), Some("Esha"));
+        assert!(h.last_heard("lakewood").is_some());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn unfinished_session_is_a_restart() {
+        let path = temp_path("restart");
+        History::load(path.clone()).begin("m", "M", "opus", "poll");
+        let h = History::load(path.clone());
+        let s = &h.recent(1, None)[0];
+        assert_eq!(s.reason, "restart");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn ids_are_unique_and_increasing() {
+        let path = temp_path("ids");
+        let mut h = History::load(path.clone());
+        let a = h.begin("m", "M", "opus", "poll");
+        let b = h.begin("m", "M", "opus", "poll");
+        assert!(b > a);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn recent_limits_and_filters() {
+        let path = temp_path("recent");
+        let mut h = History::load(path.clone());
+        for mount in ["a", "b", "a"] {
+            let id = h.begin(mount, mount, "opus", "poll");
+            h.finish(id, "ended", 0);
+        }
+        assert_eq!(h.recent(10, None).len(), 3);
+        assert_eq!(h.recent(2, None).len(), 2, "newest first");
+        assert_eq!(h.recent(10, Some("a")).len(), 2);
+        assert!(h.recent(10, Some("b"))[0].mount == "b");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn clear_forgets_everything() {
+        let path = temp_path("clear");
+        let mut h = History::load(path.clone());
+        let id = h.begin("m", "M", "opus", "poll");
+        h.finish(id, "ended", 0);
+        h.clear();
+        assert!(h.recent(10, None).is_empty());
+        assert_eq!(h.last_heard("m"), None);
+        assert!(History::load(path.clone()).recent(10, None).is_empty());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn touch_keeps_last_heard_current() {
+        let path = temp_path("touch");
+        let mut h = History::load(path.clone());
+        let id = h.begin("m", "M", "opus", "poll");
+        let start = h.recent(1, None)[0].end_ms;
+        h.touch(id, 1);
+        assert!(h.last_heard("m").is_some_and(|t| t >= start));
+        assert_eq!(h.recent(1, None)[0].reconnects, 1);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn unknown_ids_and_bad_lines_are_ignored() {
+        let path = temp_path("unknown");
+        std::fs::write(&path, "not json\n{\"id\":1}\n").unwrap();
+        let mut h = History::load(path.clone());
+        assert!(h.recent(10, None).is_empty(), "unreadable lines are skipped");
+        h.touch(42, 1);
+        h.set_salah(42, Some("Fajr".into()));
+        h.finish(42, "ended", 0);
+        assert!(h.recent(10, None).is_empty());
+        assert!(h.all_last_heard().is_empty());
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn a_history_that_cannot_be_written_still_works_in_memory() {
+        let path = std::env::temp_dir().join(format!("lm-history-missing-{}", crate::config::random_hex(8))).join("h.jsonl");
+        let mut h = History::load(path.clone());
+        let id = h.begin("m", "M", "opus", "poll");
+        h.finish(id, "ended", 0);
+        assert_eq!(h.recent(10, None).len(), 1);
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn old_and_excess_sessions_are_pruned_on_load() {
+        let path = temp_path("prune");
+        let now = crate::state::now_ms();
+        let mut text = String::new();
+        // A session from two years ago, then more than KEEP recent ones.
+        text.push_str(&serde_json::to_string(&session(now - 2 * KEEP_MS, 30)).unwrap());
+        text.push('\n');
+        for i in 0..=KEEP as u64 {
+            let s = Session { reason: "ended".into(), ..session(now - 3_600_000 + i, 1) };
+            text.push_str(&serde_json::to_string(&s).unwrap());
+            text.push('\n');
+        }
+        std::fs::write(&path, text).unwrap();
+        let h = History::load(path.clone());
+        let all = h.recent(usize::MAX, None);
+        assert_eq!(all.len(), KEEP, "the expired one and the oldest extra are dropped");
+        assert!(all.iter().all(|s| s.start_ms > now - KEEP_MS));
+        let again = History::load(path.clone());
+        assert_eq!(again.recent(usize::MAX, None).len(), KEEP, "rewritten on disk");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn touch_saves_at_most_once_a_minute() {
+        let path = temp_path("persist");
+        let mut h = History::load(path.clone());
+        let id = h.begin("m", "M", "opus", "poll");
+        h.touch(id, 1);
+        let lines = std::fs::read_to_string(&path).unwrap().lines().count();
+        assert_eq!(lines, 2, "begin, then the first touch");
+        h.touch(id, 2);
+        assert_eq!(std::fs::read_to_string(&path).unwrap().lines().count(), lines, "not again within a minute");
+        let _ = std::fs::remove_file(path);
+    }
 }

@@ -253,6 +253,112 @@ fn run(p: LocalParams) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::stream::recording::RecordingEvent;
+
+    fn frames(n: usize) -> Vec<u8> {
+        let mut out = Vec::with_capacity(n * 417);
+        for _ in 0..n {
+            let mut f = vec![0xFF, 0xFB, 0x90, 0x00];
+            f.resize(417, 0);
+            out.extend(f);
+        }
+        out
+    }
+
+    fn params(
+        app: &crate::state::App,
+        start_ms: u64,
+    ) -> (LocalParams, tokio::sync::mpsc::UnboundedReceiver<(u64, RecordingEvent)>, Arc<AtomicU64>) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let duration = Arc::new(AtomicU64::new(0));
+        let p = LocalParams {
+            lib: app.quran.clone(),
+            reciter: "test".into(),
+            surah: 1,
+            start_ms,
+            sink: app.sink.clone(),
+            epoch: 0,
+            stop: Arc::new(AtomicBool::new(false)),
+            paused: Arc::new(AtomicBool::new(false)),
+            position_ms: Arc::new(AtomicU64::new(0)),
+            duration_ms: duration.clone(),
+            speed: Arc::new(std::sync::atomic::AtomicU32::new(1.0f32.to_bits())),
+            events: Events::new(1, &tx),
+        };
+        (p, rx, duration)
+    }
+
+    fn write_surah(dir: &std::path::Path, data: &[u8]) {
+        let d = dir.join("quran").join("test");
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join("001.mp3"), data).unwrap();
+    }
+
+    #[test]
+    fn plays_a_complete_surah_and_reports_its_duration() {
+        let dir = std::env::temp_dir().join(format!("lm-local-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_surah(&dir, &frames(40));
+        let app = crate::state::test_app(&dir);
+        let (p, mut rx, duration) = params(&app, 0);
+        Source::run(p);
+
+        assert!(duration.load(Ordering::Relaxed) > 0);
+        assert!(matches!(rx.try_recv().unwrap().1, RecordingEvent::Started));
+        assert!(matches!(rx.try_recv().unwrap().1, RecordingEvent::Ended(None)));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn seeks_to_a_start_position() {
+        let dir = std::env::temp_dir().join(format!("lm-local-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_surah(&dir, &frames(40));
+        let app = crate::state::test_app(&dir);
+        let (p, mut rx, _duration) = params(&app, 500);
+        let position = p.position_ms.clone();
+        run(p);
+
+        assert!(position.load(Ordering::Relaxed) >= 400);
+        assert!(matches!(rx.try_recv().unwrap().1, RecordingEvent::Started));
+        assert!(matches!(rx.try_recv().unwrap().1, RecordingEvent::Ended(None)));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_a_file_that_is_not_mp3() {
+        let dir = std::env::temp_dir().join(format!("lm-local-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        write_surah(&dir, &[0u8; 64]);
+        let app = crate::state::test_app(&dir);
+        let (p, mut rx, _duration) = params(&app, 0);
+        run(p);
+
+        match rx.try_recv().unwrap().1 {
+            RecordingEvent::Ended(Some(e)) => assert!(e.contains("MP3")),
+            other => panic!("unexpected event: {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_stopped_session_ends_without_an_error() {
+        let dir = std::env::temp_dir().join(format!("lm-local-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let app = crate::state::test_app(&dir);
+        let (p, mut rx, _duration) = params(&app, 0);
+        p.stop.store(true, Ordering::Relaxed);
+        run(p);
+
+        assert!(matches!(rx.try_recv().unwrap().1, RecordingEvent::Ended(None)));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn id3_and_frames() {
         // ID3v2 header with a 0x0101 syncsafe size = 129 bytes.
@@ -268,5 +374,77 @@ mod tests {
         }
         let (off, len, _) = super::find_frame(&buf).unwrap();
         assert_eq!((off, len), (3, 417));
+    }
+
+    fn wait_event(rx: &mut tokio::sync::mpsc::UnboundedReceiver<(u64, RecordingEvent)>) -> RecordingEvent {
+        let until = Instant::now() + Duration::from_secs(5);
+        loop {
+            match rx.try_recv() {
+                Ok((_, e)) => return e,
+                Err(_) if Instant::now() < until => std::thread::sleep(Duration::from_millis(10)),
+                Err(e) => panic!("no event: {e:?}"),
+            }
+        }
+    }
+
+    fn append(path: &std::path::Path, data: &[u8]) {
+        use std::io::Write;
+        std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap().write_all(data).unwrap();
+    }
+
+    #[test]
+    fn plays_a_surah_while_it_is_still_downloading() {
+        let dir = std::env::temp_dir().join(format!("lm-local-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(dir.join("quran").join("test")).unwrap();
+        let app = crate::state::test_app(&dir);
+        let (part, done) = (app.quran.part_path("test", 1), app.quran.final_path("test", 1));
+        let (p, mut rx, _duration) = params(&app, 0);
+        let player = std::thread::spawn(move || run(p));
+
+        // No file yet, then a few bytes, then enough for the header, then the rest.
+        let audio = frames(40);
+        std::thread::sleep(Duration::from_millis(300));
+        append(&part, &audio[..5]);
+        std::thread::sleep(Duration::from_millis(300));
+        append(&part, &audio[5..417 * 25]);
+        assert!(matches!(wait_event(&mut rx), RecordingEvent::Started));
+        std::thread::sleep(Duration::from_millis(300));
+        append(&part, &audio[417 * 25..]);
+        std::fs::rename(&part, &done).unwrap();
+        player.join().unwrap();
+        assert!(matches!(wait_event(&mut rx), RecordingEvent::Ended(None)));
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn stopping_while_waiting_for_the_download_is_not_an_error() {
+        let dir = std::env::temp_dir().join(format!("lm-local-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(dir.join("quran").join("test")).unwrap();
+        let app = crate::state::test_app(&dir);
+        let part = app.quran.part_path("test", 1);
+
+        // Waiting for the header.
+        append(&part, &frames(1)[..5]);
+        let (p, mut rx, _duration) = params(&app, 0);
+        let stop = p.stop.clone();
+        let player = std::thread::spawn(move || run(p));
+        std::thread::sleep(Duration::from_millis(300));
+        stop.store(true, Ordering::Relaxed);
+        player.join().unwrap();
+        assert!(matches!(wait_event(&mut rx), RecordingEvent::Ended(None)));
+
+        // Playing, then waiting for more of the file.
+        std::fs::write(&part, frames(25)).unwrap();
+        let (p, mut rx, _duration) = params(&app, 0);
+        let stop = p.stop.clone();
+        let player = std::thread::spawn(move || run(p));
+        assert!(matches!(wait_event(&mut rx), RecordingEvent::Started));
+        std::thread::sleep(Duration::from_millis(300));
+        stop.store(true, Ordering::Relaxed);
+        player.join().unwrap();
+        assert!(matches!(wait_event(&mut rx), RecordingEvent::Ended(None)));
+
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -1,10 +1,14 @@
-name: release
+name: ci
 
-# Every push to main builds and tests all architectures, then publishes one GitHub release.
-# Devices running livemasjid-update.timer pick up the asset for their CPU within the hour.
+# Every push to main is linted, tested with a coverage floor, cross-tested on all three
+# architectures, then built and published as one GitHub release. Devices running
+# livemasjid-update.timer pick up the asset for their CPU within the hour.
+# Pull requests run the same checks and builds but never publish a release or image.
 on:
   push:
     branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
     paths-ignore: ["**.md", "docs/**"]
   workflow_dispatch:
 
@@ -12,15 +16,84 @@ permissions:
   contents: read
 
 concurrency:
-  group: release
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  # Never cancel a release build on main; superseded PR runs are fine to cancel.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+  COVERAGE_IGNORE: 'src/(main|bluetooth/(mod|agent|adapter)|sink/device)\.rs'
 
 jobs:
-  build:
-    name: build (${{ matrix.arch }})
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: lint
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+  coverage:
+    name: test + coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: llvm-tools-preview
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: coverage
+
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2
+        with:
+          tool: cargo-llvm-cov
+
+      # Left out of the measure: main.rs (process entrypoint: signals, watchdog, serve) and the
+      # hardware glue that needs a real Pi (the Bluetooth supervisor, agent and adapter recovery,
+      # and the aplay writer). Those are covered by the device tests in AGENTS.md, not unit tests.
+      - name: Test with coverage
+        run: |
+          cargo llvm-cov --locked --all-targets \
+            --ignore-filename-regex "$COVERAGE_IGNORE" \
+            --lcov --output-path lcov.info
+
+      - name: Coverage summary
+        run: |
+          cargo llvm-cov report --summary-only --ignore-filename-regex "$COVERAGE_IGNORE" | tee coverage.txt
+          {
+            echo '### Coverage'
+            echo '```'
+            cat coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: coverage
+          path: |
+            lcov.info
+            coverage.txt
+          retention-days: 14
+
+      - name: Enforce coverage floor
+        run: cargo llvm-cov report --summary-only --ignore-filename-regex "$COVERAGE_IGNORE" --fail-under-lines 90
+
+  test:
+    name: test (${{ matrix.arch }})
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: true
@@ -29,13 +102,52 @@ jobs:
           # 64-bit: Pi Zero 2 W / 3 / 4 / 5 and other aarch64 boards. Native tests; HTTPS enabled.
           - arch: aarch64
             target: aarch64-unknown-linux-musl
-            features: --features tls
           # 32-bit ARMv7 (Pi 2, 32-bit images on newer boards). Tests run under QEMU.
+          - arch: armv7
+            target: armv7-unknown-linux-musleabihf
+            runner: qemu-arm-static
+          # 32-bit ARMv6 (original Pi Zero / Zero W / Pi 1). Tests run under QEMU.
+          - arch: armv6
+            target: arm-unknown-linux-musleabihf
+            runner: qemu-arm-static
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq musl-tools qemu-user-static
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Test
+        env:
+          CC_aarch64_unknown_linux_musl: musl-gcc
+          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_RUNNER: ${{ matrix.runner }}
+          CARGO_TARGET_ARM_UNKNOWN_LINUX_MUSLEABIHF_RUNNER: ${{ matrix.runner }}
+        run: cargo test --locked --release --target ${{ matrix.target }}
+
+  build:
+    name: build (${{ matrix.arch }})
+    needs: [lint, coverage, test]
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - arch: aarch64
+            target: aarch64-unknown-linux-musl
+            features: --features tls
           - arch: armv7
             target: armv7-unknown-linux-musleabihf
             features: ""
             runner: qemu-arm-static
-          # 32-bit ARMv6 (original Pi Zero / Zero W / Pi 1). Tests run under QEMU.
           - arch: armv6
             target: arm-unknown-linux-musleabihf
             features: ""
@@ -62,13 +174,6 @@ jobs:
           base=$(grep -m1 '^version' Cargo.toml | sed -E 's/version = "(.*)"/\1/')
           echo "tag=v${base}-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
 
-      - name: Test
-        env:
-          CC_aarch64_unknown_linux_musl: musl-gcc
-          CARGO_TARGET_ARMV7_UNKNOWN_LINUX_MUSLEABIHF_RUNNER: ${{ matrix.runner }}
-          CARGO_TARGET_ARM_UNKNOWN_LINUX_MUSLEABIHF_RUNNER: ${{ matrix.runner }}
-        run: cargo test --locked --release --target ${{ matrix.target }}
-
       - name: Build
         env:
           CC_aarch64_unknown_linux_musl: musl-gcc
@@ -93,6 +198,7 @@ jobs:
           retention-days: 7
 
   release:
+    if: github.event_name != 'pull_request'
     permissions:
       contents: write
     needs: build
@@ -135,6 +241,7 @@ jobs:
   # Container image for home servers and clusters (the Pi keeps the native install).
   # ghcr.io/<owner>/live-masjid:latest and :<release tag>, for amd64, arm64 and armv7.
   image:
+    if: github.event_name != 'pull_request'
     permissions:
       contents: read
       packages: write

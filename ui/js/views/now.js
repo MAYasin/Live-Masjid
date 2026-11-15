@@ -3,7 +3,7 @@
 
 import { api } from "../api.js";
 import { $, runAction, setStat, toast } from "../dom.js";
-import { clockTime, duration, lowerFirst, timeAgo } from "../format.js";
+import { duration, lowerFirst, timeAgo } from "../format.js";
 import { getStatus, subscribe } from "../store.js";
 import * as local from "../local.js";
 import * as miniplayer from "../miniplayer.js";
@@ -118,24 +118,16 @@ function render(s) {
 
   paintTiles(s, active);
 
-  const blocked = $("#site-blocked");
-  blocked.hidden = !s.site_blocked_until_ms;
-  if (s.site_blocked_until_ms) {
-    blocked.innerHTML = `<b>livemasjid.com is refusing requests from this network.</b> Playback is unaffected: it uses the
-      public stream servers. The instant live signal and directory updates are paused until about
-      ${clockTime(s.site_blocked_until_ms)}. If this persists, ask the livemasjid team to lift the block.`;
-  }
   document.title = s.phase === "playing" ? `● ${s.station_name ?? "Live Masjid"}` : "Live Masjid";
 }
 
 /** One short warning for the home screen, or "" when all is well. */
 function alertFor(s) {
-  if (s.site_blocked_until_ms) return ""; // has its own notice
   if (s.bt.needs_repair) return 'Your speaker forgot this Pi. Put it in pairing mode and <a href="#speaker">pair it again</a>.';
   if (!s.output.open && s.output.error) return 'No speaker is connected, so nothing can play. <a href="#speaker">Check the speaker</a>.';
   const sig = s.signals;
   const silentFor = Date.now() - Math.max(sig.poll_last_ms || 0, s.started_ms || 0);
-  if (s.mount && !sig.poll_ok && !sig.sse_connected && silentFor > 3 * 60 * 1000) {
+  if (s.mount && !sig.poll_ok && silentFor > 3 * 60 * 1000) {
     return `Can't reach the livemasjid servers to watch for broadcasts. Check the Pi's internet connection on <a href="#system">System</a>.`;
   }
   return "";
@@ -155,12 +147,10 @@ function paintTiles(s, active) {
     setStat("stat-output", out.error ? "Off" : "Ready", out.error ? "err" : "");
   }
   // Live signal: how the Pi hears that the masjid went live
-  if (s.site_blocked_until_ms) setStat("stat-signal", "Paused", "warn");
-  else if (!s.mount) setStat("stat-signal", "—");
+  if (!s.mount) setStat("stat-signal", "—");
   else if (["playing", "reconnecting", "connecting"].includes(s.phase)) setStat("stat-signal", "On air", "ok");
-  else if (sig.sse_connected) setStat("stat-signal", "Listening", "ok");
   else if (!sig.poll_last_ms) setStat("stat-signal", "Starting");
-  else setStat("stat-signal", sig.poll_ok ? "Checking" : "Offline", sig.poll_ok ? "ok" : "warn");
+  else setStat("stat-signal", sig.poll_ok ? "Watching" : "Offline", sig.poll_ok ? "ok" : "warn");
   // Internet: the latest check against the stream servers (neutral until the first one ran)
   if (!sig.poll_last_ms) setStat("stat-poll", "Checking");
   else setStat("stat-poll", sig.poll_ok ? "OK" : "Down", sig.poll_ok ? "ok" : "err");

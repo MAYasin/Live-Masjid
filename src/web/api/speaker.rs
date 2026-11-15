@@ -49,3 +49,29 @@ pub async fn outputs() -> ApiResult {
         .collect();
     Ok(Json(json!({ "cards": cards })))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Only the validation paths: a malformed address is refused before bluetoothctl runs.
+    #[tokio::test]
+    async fn malformed_addresses_are_refused() {
+        let dir = std::env::temp_dir().join(format!("lm-speaker-api-{}", crate::config::random_hex(6)));
+        let app = crate::state::test_app(&dir);
+        let mac = || Json(Mac { mac: "not-a-mac; reboot".into() });
+        assert!(use_device(State(app.clone()), mac()).await.is_err());
+        assert!(repair(State(app.clone()), mac()).await.is_err());
+        assert!(release(State(app.clone()), mac()).await.is_err());
+        assert!(forget(State(app.clone()), mac()).await.is_err());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn outputs_list_wired_cards() {
+        let Json(v) = outputs().await.ok().expect("outputs");
+        for card in v["cards"].as_array().expect("cards") {
+            assert!(card["device"].as_str().is_some_and(|d| d.starts_with("default:CARD=")));
+        }
+    }
+}

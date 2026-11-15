@@ -73,8 +73,12 @@ async function loadRecordings() {
   try {
     const list = await api(`recordings?mount=${encodeURIComponent(forMount)}`);
     if (forMount !== mount) return;
+    // A stale list is the last one the Pi saved while livemasjid.com couldn't be asked.
+    const stale = list.stale
+      ? `<div class="item"><div class="item-meta">Saved list from ${lowerFirst(timeAgo(list.fetched_ms))}. New recordings appear once livemasjid.com can be reached.</div></div>`
+      : "";
     box.innerHTML = list.status === "ok"
-      ? recordings.rows(list) || emptyState("No recordings yet.", { small: true })
+      ? stale + (recordings.rows(list) || emptyState("No recordings yet.", { small: true }))
       : recordings.fallback(list);
   } catch (err) {
     if (forMount === mount) box.innerHTML = recordings.fallback({ message: err.message });

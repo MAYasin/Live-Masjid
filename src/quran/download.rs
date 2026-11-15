@@ -35,48 +35,58 @@ pub struct Curl;
 
 impl Fetcher for Curl {
     async fn content_length(&self, url: &str) -> Option<u64> {
-        let out = Command::new("curl")
-            .args(["-sSI", "-L", "--max-redirs", "3", "--proto", "=https", "--max-time", "20", "-A", crate::integrations::USER_AGENT, url])
-            .kill_on_drop(true)
-            .output()
-            .await
-            .ok()?;
-        last_content_length(&String::from_utf8_lossy(&out.stdout))
+        curl_content_length(url, "=https").await
     }
 
     async fn fetch(&self, url: &str, dest: &Path, cancel: &AtomicBool) -> Result<(), String> {
-        let mut child = Command::new("curl")
-            .args(["-sS", "-L", "--fail", "--max-redirs", "3", "--proto", "=https", "--retry", "2"])
-            .args(["--limit-rate", RATE_LIMIT, "--speed-limit", "1000", "--speed-time", "60", "-C", "-"])
-            .args(["-A", crate::integrations::USER_AGENT, "-o"])
-            .arg(dest)
-            .arg(url)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| format!("curl: {e}"))?;
-        loop {
-            tokio::select! {
-                status = child.wait() => {
-                    let status = status.map_err(|e| e.to_string())?;
-                    if status.success() {
-                        return Ok(());
-                    }
-                    let mut err = String::new();
-                    if let Some(mut e) = child.stderr.take() {
-                        use tokio::io::AsyncReadExt;
-                        let _ = e.read_to_string(&mut err).await;
-                    }
-                    let err = err.trim().lines().last().unwrap_or("").to_string();
-                    return Err(if err.is_empty() { format!("curl exit {status}") } else { err });
+        curl_fetch(url, dest, cancel, "=https").await
+    }
+}
+
+/// [`Curl::content_length`], allowing only the protocols in `proto` (tests use a local http server).
+async fn curl_content_length(url: &str, proto: &str) -> Option<u64> {
+    let out = Command::new("curl")
+        .args(["-sSI", "-L", "--max-redirs", "3", "--proto", proto, "--max-time", "20", "-A", crate::integrations::USER_AGENT, url])
+        .kill_on_drop(true)
+        .output()
+        .await
+        .ok()?;
+    last_content_length(&String::from_utf8_lossy(&out.stdout))
+}
+
+/// [`Curl::fetch`], allowing only the protocols in `proto`.
+async fn curl_fetch(url: &str, dest: &Path, cancel: &AtomicBool, proto: &str) -> Result<(), String> {
+    let mut child = Command::new("curl")
+        .args(["-sS", "-L", "--fail", "--max-redirs", "3", "--proto", proto, "--retry", "2"])
+        .args(["--limit-rate", RATE_LIMIT, "--speed-limit", "1000", "--speed-time", "60", "-C", "-"])
+        .args(["-A", crate::integrations::USER_AGENT, "-o"])
+        .arg(dest)
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("curl: {e}"))?;
+    loop {
+        tokio::select! {
+            status = child.wait() => {
+                let status = status.map_err(|e| e.to_string())?;
+                if status.success() {
+                    return Ok(());
                 }
-                () = tokio::time::sleep(Duration::from_millis(500)) => {
-                    if cancel.load(Ordering::Relaxed) {
-                        let _ = child.kill().await;
-                        return Err("cancelled".into());
-                    }
+                let mut err = String::new();
+                if let Some(mut e) = child.stderr.take() {
+                    use tokio::io::AsyncReadExt;
+                    let _ = e.read_to_string(&mut err).await;
+                }
+                let err = err.trim().lines().last().unwrap_or("").to_string();
+                return Err(if err.is_empty() { format!("curl exit {status}") } else { err });
+            }
+            () = tokio::time::sleep(Duration::from_millis(500)) => {
+                if cancel.load(Ordering::Relaxed) {
+                    let _ = child.kill().await;
+                    return Err("cancelled".into());
                 }
             }
         }
@@ -257,6 +267,8 @@ mod tests {
     struct Fake {
         size: u64,
         fail: bool,
+        /// Behave as if the download was paused while running.
+        cancelled: bool,
         fetched: Mutex<Vec<String>>,
     }
 
@@ -265,8 +277,12 @@ mod tests {
             Some(self.size)
         }
 
-        async fn fetch(&self, url: &str, dest: &Path, _cancel: &AtomicBool) -> Result<(), String> {
+        async fn fetch(&self, url: &str, dest: &Path, cancel: &AtomicBool) -> Result<(), String> {
             self.fetched.lock().unwrap().push(url.to_string());
+            if self.cancelled {
+                cancel.store(true, Ordering::Relaxed);
+                return Err("cancelled".into());
+            }
             if self.fail {
                 return Err("network unreachable".into());
             }
@@ -274,9 +290,17 @@ mod tests {
         }
     }
 
+    fn fake(size: u64, fail: bool) -> Fake {
+        Fake { size, fail, cancelled: false, fetched: Mutex::new(Vec::new()) }
+    }
+
     fn library(size: u64, fail: bool) -> (Arc<Library<Fake>>, std::path::PathBuf) {
+        fake_library(fake(size, fail))
+    }
+
+    fn fake_library(fake: Fake) -> (Arc<Library<Fake>>, std::path::PathBuf) {
         let dir = std::env::temp_dir().join(format!("lm-quran-test-{}", crate::config::random_hex(6)));
-        let lib = Library::with_fetcher(&dir, Fake { size, fail, fetched: Mutex::new(Vec::new()) });
+        let lib = Library::with_fetcher(&dir, fake);
         (lib, dir)
     }
 
@@ -350,6 +374,169 @@ mod tests {
         assert_eq!(block_on(lib.run_job(&(key.to_string(), 2), &mut failures)), None);
         assert!(lib.is_ready(key, 2));
         assert!(lib.fetcher.fetched.lock().unwrap().is_empty());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn requests_for_ready_invalid_or_active_surahs_change_nothing() {
+        let (lib, dir) = library(2048, false);
+        let key = super::super::DEFAULT_RECITER;
+        lib.request(key, 0);
+        lib.request(key, 115);
+        assert_eq!(lib.next_job(), None, "invalid surahs are ignored");
+        std::fs::create_dir_all(lib.dir(key)).unwrap();
+        std::fs::write(lib.final_path(key, 3), b"x").unwrap();
+        lib.request(key, 3);
+        assert_eq!(lib.next_job(), None, "already downloaded");
+
+        // A surah that is downloading isn't queued again.
+        let cancel = Arc::new(AtomicBool::new(false));
+        lib.queue.lock().unwrap().active = Some(((key.to_string(), 5), cancel.clone()));
+        lib.request(key, 5);
+        assert!(lib.queue.lock().unwrap().priority.is_empty());
+        assert!(!cancel.load(Ordering::Relaxed));
+        // Another surah pauses it.
+        lib.request(key, 6);
+        assert!(cancel.load(Ordering::Relaxed), "the active download yields");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn stopping_download_all_cancels_background_work_but_not_a_listened_surah() {
+        let (lib, dir) = library(2048, false);
+        let key = super::super::DEFAULT_RECITER;
+        let bg = Arc::new(AtomicBool::new(false));
+        lib.queue.lock().unwrap().active = Some(((key.to_string(), 10), bg.clone()));
+        lib.download_all(Some(key));
+        lib.download_all(None);
+        assert!(bg.load(Ordering::Relaxed), "background download stopped");
+
+        let listened = Arc::new(AtomicBool::new(false));
+        {
+            let mut q = lib.queue.lock().unwrap();
+            q.active = Some(((key.to_string(), 11), listened.clone()));
+            q.priority.push_back((key.to_string(), 11));
+        }
+        lib.download_all(None);
+        assert!(!listened.load(Ordering::Relaxed), "the surah being listened to continues");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn finished_requests_are_skipped_and_download_all_ends() {
+        let (lib, dir) = library(2048, false);
+        let key = super::super::DEFAULT_RECITER;
+        lib.request(key, 7);
+        std::fs::create_dir_all(lib.dir(key)).unwrap();
+        std::fs::write(lib.final_path(key, 7), b"x").unwrap();
+        assert_eq!(lib.next_job(), None, "a request that finished meanwhile is dropped");
+        assert!(lib.queue.lock().unwrap().priority.is_empty());
+
+        for n in 1..=114 {
+            std::fs::write(lib.final_path(key, n), b"x").unwrap();
+        }
+        lib.download_all(Some(key));
+        assert_eq!(lib.next_job(), None);
+        assert!(lib.queue.lock().unwrap().all.is_none(), "nothing left: download-all ends");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_paused_download_is_not_a_failure() {
+        let (lib, dir) = fake_library(Fake { cancelled: true, ..fake(2048, false) });
+        let mut failures = 0;
+        let item = (super::super::DEFAULT_RECITER.to_string(), 9);
+        assert_eq!(block_on(lib.run_job(&item, &mut failures)), None);
+        assert_eq!(failures, 0);
+        assert!(lib.info(&item.0).error.is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn unknown_reciters_and_missing_surahs_fail() {
+        let (lib, dir) = library(2048, false);
+        let mut failures = 0;
+        assert!(block_on(lib.run_job(&("nobody".to_string(), 1), &mut failures)).is_some());
+        assert!(lib.queue.lock().unwrap().error.as_deref().unwrap().contains("unknown reciter"));
+        // A recitation without surah 2.
+        let partial = r#"[{"key":"partial-r1","name":"P","style":"","server":"https://cdn.mp3quran.net/p/","surahs":[1]}]"#;
+        std::fs::write(dir.join("quran").join("reciters.json"), partial).unwrap();
+        let lib = Library::with_fetcher(&dir, fake(2048, false));
+        assert!(block_on(lib.run_job(&("partial-r1".to_string(), 2), &mut failures)).is_some());
+        assert!(lib.info("partial-r1").error.unwrap().contains("doesn't have"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_known_size_is_not_asked_again() {
+        let (lib, dir) = library(2048, false);
+        let item = (super::super::DEFAULT_RECITER.to_string(), 4);
+        lib.queue.lock().unwrap().totals.insert(item.clone(), 2048);
+        let mut failures = 0;
+        assert_eq!(block_on(lib.run_job(&item, &mut failures)), None);
+        assert!(lib.is_ready(&item.0, 4));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    async fn wait_until(mut done: impl FnMut() -> bool) {
+        for _ in 0..150 {
+            if done() {
+                return;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn the_worker_downloads_requests_and_wakes_from_a_back_off() {
+        let key = super::super::DEFAULT_RECITER;
+        let (lib, dir) = library(2048, false);
+        let task = tokio::spawn(lib.clone().run());
+        lib.request(key, 113);
+        wait_until(|| lib.is_ready(key, 113)).await;
+        assert!(lib.is_ready(key, 113));
+        task.abort();
+        let _ = std::fs::remove_dir_all(dir);
+
+        let (lib, dir) = library(2048, true);
+        let task = tokio::spawn(lib.clone().run());
+        lib.request(key, 114);
+        wait_until(|| lib.queue.lock().unwrap().error.is_some()).await;
+        // Backing off now (30 s); a new request wakes it at once.
+        lib.request(key, 112);
+        wait_until(|| lib.fetcher.fetched.lock().unwrap().len() >= 2).await;
+        assert!(lib.fetcher.fetched.lock().unwrap().len() >= 2, "woken from the back-off");
+        task.abort();
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn curl_downloads_reports_errors_and_can_be_cancelled() {
+        let body = "x".repeat(2048);
+        let (base, _) = crate::integrations::test_http::serve(move |path| match path {
+            "/ok.mp3" => (200, body.clone()),
+            "/hang.mp3" => (0, String::new()),
+            _ => (404, String::new()),
+        })
+        .await;
+        let dir = std::env::temp_dir().join(format!("lm-curl-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let no = AtomicBool::new(false);
+
+        assert_eq!(curl_content_length(&format!("{base}/ok.mp3"), "=http").await, Some(2048));
+        let dest = dir.join("ok.part");
+        curl_fetch(&format!("{base}/ok.mp3"), &dest, &no, "=http").await.unwrap();
+        assert_eq!(std::fs::metadata(&dest).unwrap().len(), 2048);
+
+        let err = curl_fetch(&format!("{base}/missing.mp3"), &dir.join("m.part"), &no, "=http").await.unwrap_err();
+        assert!(err.contains("404"), "{err}");
+        // The real fetcher only speaks https.
+        assert!(Curl.fetch(&format!("{base}/ok.mp3"), &dir.join("h.part"), &no).await.is_err());
+        assert_eq!(Curl.content_length(&format!("{base}/ok.mp3")).await, None);
+
+        let cancel = AtomicBool::new(true);
+        let err = curl_fetch(&format!("{base}/hang.mp3"), &dir.join("c.part"), &cancel, "=http").await.unwrap_err();
+        assert_eq!(err, "cancelled");
         let _ = std::fs::remove_dir_all(dir);
     }
 }

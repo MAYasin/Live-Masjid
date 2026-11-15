@@ -217,10 +217,246 @@ pub fn to_stereo(pcm: &[i16], ch: usize) -> Vec<i16> {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
+    use super::*;
+    use std::sync::atomic::AtomicU64;
+
     #[test]
     fn stereo_conversion() {
         assert_eq!(super::to_stereo(&[1, 2], 1), vec![1, 1, 2, 2]);
+        assert_eq!(super::to_stereo(&[1, 2], 2), vec![1, 2]);
         assert_eq!(super::to_stereo(&[1, 2, 3, 4, 5, 6], 3), vec![1, 2, 4, 5]);
+    }
+
+    /// Silent MPEG-1 Layer III frames (128 kbps, 44.1 kHz, stereo).
+    pub(crate) fn mp3_frames(n: usize) -> Vec<u8> {
+        let mut out = Vec::with_capacity(n * 417);
+        for _ in 0..n {
+            let mut frame = vec![0xFF, 0xFB, 0x90, 0x00];
+            frame.resize(417, 0);
+            out.extend(frame);
+        }
+        out
+    }
+
+    fn make_ctx(app: &crate::state::App, audio: Vec<u8>) -> (DecodeCtx, Arc<AtomicU64>) {
+        let queue = ByteQueue::new();
+        queue.push(audio, &AtomicBool::new(false));
+        queue.close();
+        let first = Arc::new(AtomicU64::new(0));
+        let f = first.clone();
+        let ctx = DecodeCtx {
+            queue,
+            stop: Arc::new(AtomicBool::new(false)),
+            sink: app.sink.clone(),
+            epoch: 0,
+            buffer_ms: Arc::new(AtomicU64::new(0)),
+            on_first_audio: Box::new(move || {
+                f.fetch_add(1, Ordering::Relaxed);
+            }),
+            paused: None,
+            position_ms: None,
+            position_base_ms: 0,
+            speed: None,
+            channel: crate::sink::Channel::Broadcast,
+        };
+        (ctx, first)
+    }
+
+    #[test]
+    fn decodes_mp3_frames_until_the_buffer_ends() {
+        let dir = std::env::temp_dir().join(format!("lm-decode-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let app = crate::state::test_app(&dir);
+        let (ctx, _first) = make_ctx(&app, mp3_frames(6));
+        run(Codec::Mp3, ctx);
+
+        // An empty buffer ends cleanly, too.
+        let (ctx, _first) = make_ctx(&app, Vec::new());
+        run(Codec::Mp3, ctx);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn reports_bad_ogg_data_and_stops_on_request() {
+        let dir = std::env::temp_dir().join(format!("lm-decode-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let app = crate::state::test_app(&dir);
+
+        let (ctx, _first) = make_ctx(&app, b"not an ogg stream".to_vec());
+        run(Codec::Opus, ctx);
+
+        let stopped = make_ctx(&app, mp3_frames(2)).0;
+        stopped.stop.store(true, Ordering::Relaxed);
+        run(Codec::Mp3, stopped);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn pause_position_and_speed_paths_run() {
+        let dir = std::env::temp_dir().join(format!("lm-decode-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let app = crate::state::test_app(&dir);
+        let (mut ctx, _first) = make_ctx(&app, mp3_frames(4));
+        ctx.paused = Some(Arc::new(AtomicBool::new(false)));
+        ctx.position_ms = Some(Arc::new(AtomicU64::new(0)));
+        ctx.position_base_ms = 1_000;
+        ctx.speed = Some(Arc::new(std::sync::atomic::AtomicU32::new(1.5f32.to_bits())));
+        run(Codec::Mp3, ctx);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// One real 20 ms mono Opus packet (a quiet tone), encoded once.
+    pub(crate) fn opus_packet() -> Vec<u8> {
+        use opus_pure::{Application, OpusEncoder};
+        let mut enc = OpusEncoder::new(48_000, 1, Application::Audio).unwrap();
+        let input: Vec<f32> = (0..960).map(|i| (i as f32 * 0.05).sin() * 0.1).collect();
+        let mut buf = vec![0u8; 1500];
+        let mut n = 0;
+        for _ in 0..3 {
+            n = enc.encode(&input, 960, &mut buf).unwrap();
+        }
+        buf.truncate(n);
+        buf
+    }
+
+    /// An Ogg Opus stream (serial `serial`) of `packets` copies of `packet`, `per_page` packets a page.
+    pub(crate) fn opus_stream(serial: u32, packet: &[u8], packets: usize, per_page: usize) -> Vec<u8> {
+        use opus_pure::{OggOpusWriter, OpusHead, OpusTags};
+        let mut w = OggOpusWriter::with_serial(Vec::new(), OpusHead::new(1, 48_000).unwrap(), OpusTags::new(), serial).unwrap();
+        w.set_page_target(packet.len() * per_page);
+        for _ in 0..packets {
+            w.write_packet(packet).unwrap();
+        }
+        w.finish().unwrap()
+    }
+
+    fn temp_app() -> (std::path::PathBuf, crate::state::App) {
+        let dir = std::env::temp_dir().join(format!("lm-decode-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let app = crate::state::test_app(&dir);
+        (dir, app)
+    }
+
+    #[test]
+    fn decodes_an_ogg_opus_stream() {
+        let (dir, app) = temp_app();
+        let (mut ctx, first) = make_ctx(&app, opus_stream(7, &opus_packet(), 25, 5));
+        let position = Arc::new(AtomicU64::new(0));
+        ctx.position_ms = Some(position.clone());
+        run(Codec::Opus, ctx);
+        assert_eq!(first.load(Ordering::Relaxed), 1, "first audio reported once");
+        assert!(position.load(Ordering::Relaxed) >= 400, "{}", position.load(Ordering::Relaxed));
+        assert_eq!(Codec::Opus.name(), "opus");
+        assert_eq!(Codec::Mp3.name(), "mp3");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn gives_up_on_a_run_of_undecodable_opus_packets() {
+        use opus_pure::{OggOpusWriter, OpusHead};
+        let (dir, app) = temp_app();
+        let mut w = OggOpusWriter::new(Vec::new(), OpusHead::new(1, 48_000).unwrap()).unwrap();
+        // A code-3 packet without its frame-count byte is malformed.
+        for _ in 0..60 {
+            w.write_packet_with_duration(&[0xFF], 960).unwrap();
+        }
+        let (ctx, first) = make_ctx(&app, w.finish().unwrap());
+        run(Codec::Opus, ctx);
+        assert_eq!(first.load(Ordering::Relaxed), 0, "nothing decoded");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn rejects_opus_with_more_than_two_channels() {
+        use opus_pure::{OggOpusWriter, OpusHead, OpusTags};
+        let (dir, app) = temp_app();
+        let mut head = OpusHead::new(2, 48_000).unwrap();
+        head.channel_count = 3;
+        head.mapping_family = 1;
+        head.stream_count = 2;
+        head.coupled_count = 1;
+        head.channel_mapping = vec![0, 2, 1];
+        let data = OggOpusWriter::with_tags(Vec::new(), head, OpusTags::new()).and_then(|mut w| {
+            w.write_packet(&opus_packet())?;
+            w.finish()
+        });
+        if let Ok(data) = data {
+            let (ctx, first) = make_ctx(&app, data);
+            run(Codec::Opus, ctx);
+            assert_eq!(first.load(Ordering::Relaxed), 0);
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_corrupt_page_after_the_headers_is_reported() {
+        let (dir, app) = temp_app();
+        let mut data = opus_stream(3, &opus_packet(), 20, 2);
+        // Damage the capture pattern of a page in the middle.
+        let pages: Vec<usize> = data.windows(4).enumerate().filter(|(_, w)| w == b"OggS").map(|(i, _)| i).collect();
+        let at = pages[pages.len() / 2];
+        data[at + 4] = 9; // unsupported stream structure version
+        let (ctx, _first) = make_ctx(&app, data);
+        run(Codec::Opus, ctx);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    /// Silent MPEG-1 Layer III frames (128 kbps, 44.1 kHz, mono).
+    fn mono_mp3_frames(n: usize) -> Vec<u8> {
+        let mut out = Vec::with_capacity(n * 417);
+        for _ in 0..n {
+            let mut frame = vec![0xFF, 0xFB, 0x90, 0xC0];
+            frame.resize(417, 0);
+            out.extend(frame);
+        }
+        out
+    }
+
+    #[test]
+    fn mono_mp3_at_normal_speed() {
+        let (dir, app) = temp_app();
+        let (mut ctx, first) = make_ctx(&app, mono_mp3_frames(8));
+        ctx.speed = Some(Arc::new(std::sync::atomic::AtomicU32::new(1.0f32.to_bits())));
+        run(Codec::Mp3, ctx);
+        assert_eq!(first.load(Ordering::Relaxed), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn publishes_buffer_statistics_after_a_second() {
+        let (dir, app) = temp_app();
+        // ~2.9 s of audio: the sink takes it in real time behind a ~1.7 s queue, so decoding
+        // lasts over a second.
+        let (ctx, _first) = make_ctx(&app, mp3_frames(110));
+        let buffer_ms = ctx.buffer_ms.clone();
+        let decoder = std::thread::spawn(move || run(Codec::Mp3, ctx));
+        let mut seen = 0;
+        while !decoder.is_finished() {
+            seen = seen.max(buffer_ms.load(Ordering::Relaxed));
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        decoder.join().unwrap();
+        assert!(seen > 0, "buffer statistics were published");
+        assert_eq!(buffer_ms.load(Ordering::Relaxed), 0, "reset when the decoder ends");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_paused_decoder_wakes_up_when_stopped() {
+        let (dir, app) = temp_app();
+        let (mut ctx, first) = make_ctx(&app, mp3_frames(8));
+        let paused = Arc::new(AtomicBool::new(true));
+        ctx.paused = Some(paused);
+        let stop = ctx.stop.clone();
+        let decoder = std::thread::spawn(move || run(Codec::Mp3, ctx));
+        std::thread::sleep(Duration::from_millis(250));
+        stop.store(true, Ordering::Relaxed);
+        decoder.join().unwrap();
+        assert_eq!(first.load(Ordering::Relaxed), 1, "the paused send still went through once stopped");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

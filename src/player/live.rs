@@ -9,8 +9,6 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 pub(super) enum Trigger {
     /// The user pressed Play.
     Manual,
-    /// The website's live push.
-    Sse,
     /// The Icecast status poll (also used to resume after a recording or a switch).
     Poll,
     /// A direct connection attempt while both signal sources are down.
@@ -21,7 +19,6 @@ impl Trigger {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Manual => "manual",
-            Self::Sse => "sse",
             Self::Poll => "poll",
             Self::Probe => "probe",
         }
@@ -89,8 +86,8 @@ mod tests {
     #[test]
     fn labels_match_the_stored_history_words() {
         assert_eq!(
-            [Trigger::Manual, Trigger::Sse, Trigger::Poll, Trigger::Probe].map(Trigger::as_str),
-            ["manual", "sse", "poll", "probe"]
+            [Trigger::Manual, Trigger::Poll, Trigger::Probe].map(Trigger::as_str),
+            ["manual", "poll", "probe"]
         );
         assert_eq!(end_label(&EndReason::Finished, None), "ended");
         assert_eq!(end_label(&EndReason::Stopped, None), "stopped");

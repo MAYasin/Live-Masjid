@@ -115,6 +115,8 @@ pub struct Integrations {
     pub boards: Cache<masjidboard::Lookup>,
     pub livemasjid_gate: OneAtATime,
     pub recordings: Cache<recordings::RecordingList>,
+    /// Last good recording lists, on disk (`recordings.json`).
+    pub recordings_saved: recordings::Store,
 }
 
 impl Integrations {
@@ -128,6 +130,7 @@ impl Integrations {
             boards: Cache::default(),
             livemasjid_gate: OneAtATime::default(),
             recordings: Cache::default(),
+            recordings_saved: recordings::Store::load(data_dir.join("recordings.json")),
         }
     }
 }
@@ -137,9 +140,139 @@ pub fn valid_mount(m: &str) -> bool {
     !m.is_empty() && m.len() <= 80 && m.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))
 }
 
+/// A local HTTP server for tests (127.0.0.1 only, never a real host).
+#[cfg(test)]
+pub(crate) mod test_http {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// Answers every request with `route(path)` → (status code, body); status 0 holds the
+    /// connection open without answering. Returns the base URL and a request counter.
+    pub async fn serve<F>(route: F) -> (String, Arc<AtomicUsize>)
+    where
+        F: Fn(&str) -> (u16, String) + Send + Sync + 'static,
+    {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let route = Arc::new(route);
+        let hits = Arc::new(AtomicUsize::new(0));
+        let count = hits.clone();
+        tokio::spawn(async move {
+            while let Ok((mut sock, _)) = listener.accept().await {
+                let route = route.clone();
+                let count = count.clone();
+                tokio::spawn(async move {
+                    let mut req = Vec::new();
+                    let mut buf = [0u8; 2048];
+                    while !req.windows(4).any(|w| w == b"\r\n\r\n") {
+                        match sock.read(&mut buf).await {
+                            Ok(0) | Err(_) => return,
+                            Ok(n) => req.extend_from_slice(&buf[..n]),
+                        }
+                    }
+                    count.fetch_add(1, Ordering::SeqCst);
+                    let text = String::from_utf8_lossy(&req);
+                    let path = text.split_whitespace().nth(1).unwrap_or("/").to_string();
+                    let (code, body) = route(&path);
+                    if code == 0 {
+                        tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+                        return;
+                    }
+                    let response = format!(
+                        "HTTP/1.1 {code} X\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                        body.len()
+                    );
+                    let _ = sock.write_all(response.as_bytes()).await;
+                    let _ = sock.shutdown().await;
+                });
+            }
+        });
+        (format!("http://{addr}"), hits)
+    }
+
+    /// A URL on 127.0.0.1 where nothing listens.
+    pub fn refused_url() -> String {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = l.local_addr().unwrap().port();
+        drop(l);
+        format!("http://127.0.0.1:{port}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn guard() -> SiteGuard {
+        SiteGuard::default()
+    }
+
+    #[tokio::test]
+    async fn fetch_classifies_answers() {
+        let (base, hits) = test_http::serve(|path| match path {
+            "/ok" => (200, "hello\nworld".into()),
+            "/missing" => (404, "no".into()),
+            "/forbidden" => (403, "".into()),
+            "/slow-down" => (429, "".into()),
+            _ => (500, "boom".into()),
+        })
+        .await;
+        let g = guard();
+        let t = Duration::from_secs(5);
+        assert!(matches!(fetch(&format!("{base}/ok"), t, &g).await, Fetched::Ok(b) if b == "hello\nworld"));
+        assert!(matches!(fetch(&format!("{base}/missing"), t, &g).await, Fetched::NotFound));
+        assert!(matches!(fetch(&format!("{base}/other"), t, &g).await, Fetched::Failed(e) if e == "HTTP 500"));
+        assert!(g.blocked_until().is_none());
+        assert!(matches!(fetch(&format!("{base}/forbidden"), t, &g).await, Fetched::Blocked { .. }));
+        let until = g.blocked_until().expect("a 403 trips the guard");
+        // While blocked, nothing is sent at all.
+        let before = hits.load(std::sync::atomic::Ordering::SeqCst);
+        assert!(matches!(fetch(&format!("{base}/ok"), t, &g).await, Fetched::Blocked { until_ms } if until_ms == until));
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), before);
+
+        let g2 = guard();
+        assert!(matches!(fetch(&format!("{base}/slow-down"), t, &g2).await, Fetched::Blocked { .. }));
+        assert!(g2.blocked_until().is_some(), "429 trips it too");
+    }
+
+    #[tokio::test]
+    async fn fetch_reports_connection_failures() {
+        let g = guard();
+        match fetch(&format!("{}/x", test_http::refused_url()), Duration::from_secs(3), &g).await {
+            Fetched::Failed(e) => assert!(!e.is_empty(), "curl's own error is passed on"),
+            other => panic!("unexpected {other:?}"),
+        }
+        assert!(g.blocked_until().is_none(), "a network failure is not a refusal");
+    }
+
+    #[tokio::test]
+    async fn fetch_gives_up_on_a_server_that_never_answers() {
+        let (base, _) = test_http::serve(|_| (0, String::new())).await;
+        let started = Instant::now();
+        let r = fetch(&format!("{base}/hang"), Duration::from_millis(500), &guard()).await;
+        assert!(matches!(r, Fetched::Failed(_)), "{r:?}");
+        assert!(started.elapsed() < Duration::from_secs(4));
+    }
+
+    #[tokio::test]
+    async fn one_at_a_time_serialises() {
+        let gate = OneAtATime::default();
+        let first = gate.lock().await;
+        assert!(gate.0.try_lock().is_err());
+        drop(first);
+        let _second = gate.lock().await;
+    }
+
+    #[test]
+    fn integrations_load_from_the_data_folder() {
+        let dir = std::env::temp_dir().join(format!("lm-int-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let it = Integrations::new(&dir);
+        assert!(it.masjidscreen.blocked_until().is_none() && it.masjidboard.blocked_until().is_none());
+        assert!(it.salah.get("x").is_none() && it.boards.get("x").is_none() && it.recordings.get("x").is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn cache_expires() {
@@ -149,5 +282,42 @@ mod tests {
         assert_eq!(c.get("a"), Some(1));
         assert_eq!(c.get("b"), None);
         assert!(valid_mount("lakewood") && !valid_mount("a/b") && !valid_mount(""));
+    }
+
+    #[test]
+    fn cache_overwrites_and_misses() {
+        let c: Cache<u32> = Cache::default();
+        c.put("a", 1, Duration::from_secs(60));
+        c.put("a", 2, Duration::from_secs(60));
+        assert_eq!(c.get("a"), Some(2));
+        assert_eq!(c.get("missing"), None);
+    }
+
+    #[test]
+    fn cache_prunes_expired_entries_when_large() {
+        let c: Cache<u32> = Cache::default();
+        {
+            let mut m = c.map.lock().unwrap();
+            m.insert("keep".into(), (Instant::now() + Duration::from_secs(60), 7));
+            for i in 0..600 {
+                m.insert(format!("k{i}"), (Instant::now() - Duration::from_secs(1), i));
+            }
+        }
+        c.put("fresh", 9, Duration::from_secs(60));
+        assert_eq!(c.map.lock().unwrap().len(), 2, "expired entries dropped");
+        assert_eq!(c.get("keep"), Some(7));
+        assert_eq!(c.get("fresh"), Some(9));
+    }
+
+    #[test]
+    fn mount_names_are_url_safe() {
+        assert!(valid_mount("lakewood-kauthar"));
+        assert!(valid_mount("a_b.c-d"));
+        assert!(valid_mount(&"a".repeat(80)));
+        assert!(!valid_mount(&"a".repeat(81)), "too long");
+        assert!(!valid_mount("a b"));
+        assert!(!valid_mount("a/b"));
+        assert!(!valid_mount("münchen"));
+        assert!(!valid_mount(""));
     }
 }

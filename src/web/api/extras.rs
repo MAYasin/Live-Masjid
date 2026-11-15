@@ -207,6 +207,14 @@ pub async fn listen_live(State(app): State<App>) -> Result<axum::response::Respo
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use crate::state::test_app;
+
+    fn app() -> App {
+        let dir = std::env::temp_dir().join(format!("livemasjid-extras-api-{}", crate::config::random_hex(6)));
+        test_app(&dir)
+    }
+
     #[test]
     fn wav_header_is_well_formed() {
         let h = super::wav_header(24_000);
@@ -215,5 +223,205 @@ mod tests {
         assert_eq!(&h[8..16], b"WAVEfmt ");
         assert_eq!(u32::from_le_bytes(h[24..28].try_into().unwrap()), 24_000);
         assert_eq!(&h[36..40], b"data");
+    }
+
+    #[test]
+    fn mount_selection_rules() {
+        let app = app();
+        assert!(super::mount_or_selected(&app, MountQuery { mount: None }).is_err(), "none selected");
+        assert_eq!(super::mount_or_selected(&app, MountQuery { mount: Some("m".into()) }).ok(), Some("m".into()));
+        assert!(super::mount_or_selected(&app, MountQuery { mount: Some("a/b".into()) }).is_err());
+        app.update_settings(|s| s.mount = Some("selected".into())).unwrap();
+        assert_eq!(super::mount_or_selected(&app, MountQuery { mount: None }).ok(), Some("selected".into()));
+    }
+
+    #[tokio::test]
+    async fn browser_listening_switch_and_simple_commands() {
+        let app = app();
+        assert!(super::browser_listening_enabled(&app).is_ok());
+        assert!(super::pause(State(app.clone()), Json(PauseReq { pause: true })).await.is_ok());
+        assert!(super::stop(State(app.clone())).await.is_ok());
+        app.update_settings(|s| s.browser_listening = false).unwrap();
+        assert!(super::browser_listening_enabled(&app).is_err());
+        let url = super::recording_url(State(app.clone()), Query(RecordingRef { mount: "m".into(), id: "x".into() })).await;
+        assert!(url.is_err(), "listening is off");
+    }
+
+    #[tokio::test]
+    async fn listen_lists_synced_then_direct_sources() {
+        let app = app();
+        app.update_settings(|s| s.mount = Some("m".into())).unwrap();
+        let Json(v) = super::listen(State(app.clone()), Query(MountQuery { mount: None })).await.ok().expect("listen");
+        assert_eq!(v["mount"], "m");
+        assert_eq!(v["live"], false);
+        let sources = v["sources"].as_array().expect("sources");
+        assert_eq!(sources[0]["url"], "/api/listen/live.wav");
+        assert_eq!(sources[0]["synced"], true);
+        assert!(sources.iter().any(|s| s["type"] == "audio/mpeg"));
+        assert!(sources.iter().any(|s| s["type"] == "audio/ogg"));
+        app.set_phase(crate::state::Phase::Playing);
+        let Json(v) = super::listen(State(app.clone()), Query(MountQuery { mount: Some("m".into()) })).await.ok().expect("listen");
+        assert_eq!(v["live"], true, "a playing phase counts as live");
+    }
+
+    // ------------------------------------------------------------- cached third-party data
+    // Everything below is served from pre-filled caches: nothing reaches the internet.
+
+    use crate::integrations::masjidboard::Lookup;
+    use crate::integrations::recordings::{Recording, RecordingList};
+    use std::time::Duration;
+
+    const HOUR: Duration = Duration::from_secs(3600);
+
+    fn cache_recordings(app: &App, mount: &str) {
+        let rec = Recording {
+            id: "r1".into(),
+            title: "Esha".into(),
+            url: "https://cdn.livemasjid.com/m/esha.mp3".into(),
+            published: None,
+            size_bytes: None,
+            duration_s: Some(600),
+        };
+        let list = RecordingList { status: "ok".into(), mount: mount.into(), items: vec![rec], ..Default::default() };
+        app.integrations.recordings.put(mount, list, HOUR);
+    }
+
+    /// masjidscreen "not listed" for `mount`, and no automatic board.
+    fn cache_masjidscreen(app: &App, mount: &str) {
+        let t = salah::SalahTimes { status: "not_listed".into(), provider: "masjidscreen".into(), ..Default::default() };
+        app.integrations.salah.put(mount, t, HOUR);
+        app.integrations.boards.put(mount, Lookup::NotFound, HOUR);
+    }
+
+    fn board(id: &str) -> Lookup {
+        let b = salah::Board { id: id.into(), name: "Board".into(), city: None, url: String::new(), stream: None };
+        let t = salah::SalahTimes {
+            status: "ok".into(),
+            provider: "masjidboardlive".into(),
+            date: Some(salah::today()),
+            board: Some(b),
+            ..Default::default()
+        };
+        Lookup::Found(Box::new(t))
+    }
+
+    #[tokio::test]
+    async fn salah_times_for_the_selected_masjid() {
+        let app = app();
+        assert!(super::salah_times(State(app.clone()), Query(MountQuery { mount: None })).await.is_err(), "none selected");
+        app.update_settings(|s| s.mount = Some("m".into())).unwrap();
+        cache_masjidscreen(&app, "m");
+        let Json(t) = super::salah_times(State(app.clone()), Query(MountQuery { mount: None })).await.ok().expect("times");
+        assert_eq!(t.status, "not_listed");
+        assert!(!t.manual);
+    }
+
+    #[tokio::test]
+    async fn salah_board_choices() {
+        let app = app();
+        cache_masjidscreen(&app, "m");
+        let it = &app.integrations;
+        it.boards.put("alias", board("canonical"), HOUR);
+        it.boards.put("canonical", board("canonical"), HOUR);
+        it.boards.put("gone", Lookup::NotFound, HOUR);
+        it.boards.put("down", Lookup::Failed, HOUR);
+        it.boards.put("refused", Lookup::Blocked, HOUR);
+        let choose = |mount: &str, board: &str| {
+            super::salah_board(State(app.clone()), Json(BoardChoice { mount: mount.into(), board: board.into() }))
+        };
+
+        assert!(choose("a/b", "auto").await.is_err(), "invalid masjid");
+        assert!(choose("m", "not a link!").await.is_err());
+        for missing in ["gone", "down", "refused"] {
+            assert!(choose("m", missing).await.is_err(), "{missing}");
+        }
+        assert!(app.settings().salah_boards.is_empty(), "nothing saved after a failure");
+
+        // A link to an alias saves the board's canonical id.
+        let Json(t) = choose("M.mp3", "https://masjidboardlive.com/boards/?id=alias").await.ok().expect("board");
+        assert_eq!(app.settings().salah_boards.get("m").map(String::as_str), Some("canonical"));
+        assert_eq!(t.provider, "masjidboardlive");
+        assert!(t.manual);
+
+        let Json(t) = choose("m", "none").await.ok().expect("masjidscreen only");
+        assert_eq!(app.settings().salah_boards.get("m").map(String::as_str), Some("none"));
+        assert_eq!(t.provider, "masjidscreen");
+        assert!(t.manual);
+
+        let Json(t) = choose("m", " auto ").await.ok().expect("automatic");
+        assert!(app.settings().salah_boards.is_empty());
+        assert!(!t.manual);
+    }
+
+    #[tokio::test]
+    async fn recordings_play_only_listed_items() {
+        let app = app();
+        cache_recordings(&app, "m");
+        let Json(list) = super::recording_list(State(app.clone()), Query(MountQuery { mount: Some("m".into()) })).await.ok().expect("list");
+        assert_eq!(list.items.len(), 1);
+
+        let play = |mount: &str, id: &str| super::play(State(app.clone()), Json(PlayReq { mount: mount.into(), id: id.into() }));
+        assert!(play("a/b", "r1").await.is_err());
+        assert!(play("m", "unknown").await.is_err(), "only listed recordings");
+        assert!(play("m", "r1").await.is_ok());
+
+        let url = |mount: &str, id: &str| super::recording_url(State(app.clone()), Query(RecordingRef { mount: mount.into(), id: id.into() }));
+        assert!(url("a/b", "r1").await.is_err());
+        assert!(url("m", "unknown").await.is_err());
+        let Json(v) = url("m", "r1").await.ok().expect("url");
+        assert_eq!(v["url"], "https://cdn.livemasjid.com/m/esha.mp3");
+        assert_eq!(v["title"], "Esha");
+    }
+
+    #[tokio::test]
+    async fn play_sends_the_recording_to_the_player() {
+        let dir = std::env::temp_dir().join(format!("livemasjid-extras-api-{}", crate::config::random_hex(6)));
+        let mut app = test_app(&dir);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        std::sync::Arc::get_mut(&mut app).expect("sole owner").player_tx = tx;
+        cache_recordings(&app, "m");
+        assert!(super::play(State(app.clone()), Json(PlayReq { mount: "m".into(), id: "r1".into() })).await.is_ok());
+        match rx.try_recv() {
+            Ok(PlayerCmd::PlayRecording { mount, title, url, duration_s }) => {
+                assert_eq!((mount.as_str(), title.as_str(), duration_s), ("m", "Esha", Some(600)));
+                assert!(url.ends_with("esha.mp3"));
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn live_wav_streams_the_mirror() {
+        use futures_util::StreamExt;
+        let app = app();
+        let resp = super::listen_live(State(app.clone())).await.ok().expect("stream");
+        assert_eq!(resp.headers()[axum::http::header::CONTENT_TYPE], "audio/wav");
+        assert_eq!(resp.headers()[axum::http::header::CACHE_CONTROL], "no-store");
+        let mut body = resp.into_body().into_data_stream();
+        let header = body.next().await.expect("header").expect("bytes");
+        assert_eq!(&header[..4], b"RIFF");
+
+        let _ = app.sink.mirror.send(std::sync::Arc::from(vec![1u8, 2, 3, 4]));
+        let chunk = body.next().await.expect("chunk").expect("bytes");
+        assert_eq!(&chunk[..], &[1, 2, 3, 4]);
+
+        // A listener that falls behind skips ahead to what is current.
+        for i in 0..100u8 {
+            let _ = app.sink.mirror.send(std::sync::Arc::from(vec![i]));
+        }
+        let chunk = body.next().await.expect("chunk").expect("bytes");
+        assert!(chunk[0] >= 36, "skipped ahead to the newest chunks, got {}", chunk[0]);
+    }
+
+    #[tokio::test]
+    async fn live_wav_has_a_listener_limit_and_a_switch() {
+        let app = app();
+        let held: Vec<_> = (0..MAX_MIRROR_LISTENERS).map(|_| app.sink.mirror.subscribe()).collect();
+        let Err(e) = super::listen_live(State(app.clone())).await else { panic!("over the limit") };
+        assert!(e.1.contains("Too many"));
+        drop(held);
+        app.update_settings(|s| s.browser_listening = false).unwrap();
+        assert!(super::listen_live(State(app.clone())).await.is_err(), "listening is off");
     }
 }

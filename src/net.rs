@@ -19,15 +19,10 @@ pub fn www_bases() -> &'static [&'static str] {
     }
 }
 
-/// Icecast status JSON sources, tried in order.
+/// Icecast status JSON sources, tried in order (each only when the previous one fails).
+/// Only the Icecast servers: the website (`www`) is never polled for status.
 pub fn status_urls() -> Vec<String> {
-    let mut v = vec![
-        "http://livemasjid.com:8000/status-json.xsl".to_string(),
-        "http://relay2.livemasjid.com:8000/status-json.xsl".to_string(),
-    ];
-    // (Each source is only used when the previous one fails.)
-    v.extend(www_bases().iter().map(|b| format!("{b}/api/status-json.xsl")));
-    v
+    STREAM_HOSTS.iter().map(|(host, port)| format!("http://{host}:{port}/status-json.xsl")).collect()
 }
 
 pub const USER_AGENT: &str = concat!("livemasjid-pi/", env!("CARGO_PKG_VERSION"));
@@ -155,5 +150,104 @@ mod tests {
         );
         assert_eq!(super::parse_http_url("http://a.b"), Some(("a.b".into(), 80, "/".into())));
         assert_eq!(super::parse_http_url("https://a.b/"), None);
+    }
+
+    #[test]
+    fn parses_more_urls() {
+        assert_eq!(super::parse_http_url("http://a.b:80"), Some(("a.b".into(), 80, "/".into())));
+        assert_eq!(super::parse_http_url("http://a.b/x/y?z=1"), Some(("a.b".into(), 80, "/x/y?z=1".into())));
+        assert_eq!(super::parse_http_url("http://[::1]:8000/x"), Some(("[::1]".into(), 8000, "/x".into())));
+        assert_eq!(super::parse_http_url("http://a.b:notaport/x"), None);
+        assert_eq!(super::parse_http_url("a.b/x"), None);
+    }
+
+    #[test]
+    fn endpoint_lists() {
+        assert_eq!(
+            super::status_urls(),
+            ["http://livemasjid.com:8000/status-json.xsl", "http://relay2.livemasjid.com:8000/status-json.xsl"]
+        );
+        assert!(super::status_urls().iter().all(|u| !u.contains("www.")), "never the website");
+        assert_eq!(super::www_bases().len(), if cfg!(feature = "tls") { 2 } else { 1 });
+        assert!(super::www_bases().iter().all(|b| b.starts_with("http")));
+        assert!(super::USER_AGENT.starts_with("livemasjid-pi/"));
+        assert_eq!(super::STREAM_HOSTS.len(), 2);
+    }
+
+    #[test]
+    fn open_errors_read_well() {
+        assert_eq!(super::OpenError::NotFound.to_string(), "not live (404)");
+        assert_eq!(super::OpenError::Other("boom".into()).to_string(), "boom");
+    }
+
+    use std::io::Read;
+    use std::net::TcpListener;
+
+    /// One-shot HTTP server on localhost: answers with `response`, then closes.
+    fn serve(response: &[u8]) -> u16 {
+        let response = response.to_vec();
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        std::thread::spawn(move || {
+            let (mut sock, _) = listener.accept().unwrap();
+            let mut req = [0u8; 2048];
+            let _ = sock.read(&mut req);
+            use std::io::Write;
+            sock.write_all(&response).unwrap();
+        });
+        port
+    }
+
+    #[test]
+    fn opens_a_stream_and_reads_headers() {
+        let port = serve(b"HTTP/1.0 200 OK\r\nContent-Type: audio/OGG\r\nX-Other: 1\r\n\r\nbody");
+        let c = super::open_stream("127.0.0.1", port, "/makkah").unwrap();
+        assert_eq!(c.content_type, "audio/ogg");
+        assert_eq!(c.url, format!("http://127.0.0.1:{port}/makkah"));
+    }
+
+    #[test]
+    fn maps_status_codes_to_open_errors() {
+        let port = serve(b"HTTP/1.0 404 Not Found\r\n\r\n");
+        assert!(matches!(super::open_stream("127.0.0.1", port, "/x"), Err(super::OpenError::NotFound)));
+
+        let port = serve(b"HTTP/1.0 503 Busy\r\n\r\n");
+        let err = super::open_stream("127.0.0.1", port, "/x").err().expect("an error").to_string();
+        assert!(err.contains("HTTP 503"), "{err}");
+
+        let port = serve(b"not http at all\r\n\r\n");
+        let err = super::open_stream("127.0.0.1", port, "/x").err().expect("an error").to_string();
+        assert!(err.contains("bad response"), "{err}");
+    }
+
+    #[test]
+    fn follows_a_redirect() {
+        let target = serve(b"HTTP/1.0 200 OK\r\nContent-Type: audio/mpeg\r\n\r\n");
+        let location = format!("http://127.0.0.1:{target}/relay");
+        let first = serve(format!("HTTP/1.0 302 Found\r\nLocation: {location}\r\n\r\n").as_bytes());
+        let c = super::open_stream("127.0.0.1", first, "/start").unwrap();
+        assert_eq!(c.content_type, "audio/mpeg");
+        assert_eq!(c.url, location);
+    }
+
+    #[test]
+    fn rejects_a_redirect_without_a_usable_location() {
+        let port = serve(b"HTTP/1.0 301 Moved\r\n\r\n");
+        let err = super::open_stream("127.0.0.1", port, "/x").err().expect("an error").to_string();
+        assert!(err.contains("redirect without location"), "{err}");
+
+        let port = serve(b"HTTP/1.0 302 Found\r\nLocation: https://elsewhere/x\r\n\r\n");
+        let err = super::open_stream("127.0.0.1", port, "/x").err().expect("an error").to_string();
+        assert!(err.contains("unsupported redirect"), "{err}");
+    }
+
+    #[test]
+    fn a_refused_connection_is_reported() {
+        let port = {
+            let l = TcpListener::bind("127.0.0.1:0").unwrap();
+            l.local_addr().unwrap().port()
+        };
+        let err = super::open_stream("127.0.0.1", port, "/x").err().expect("an error").to_string();
+        assert!(err.contains("connect"), "{err}");
     }
 }

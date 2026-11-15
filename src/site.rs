@@ -41,11 +41,6 @@ impl SiteGuard {
         }
     }
 
-    /// May we send a request to the website right now?
-    pub fn allowed(&self) -> bool {
-        now_ms() >= self.state.lock().unwrap().blocked_until_ms
-    }
-
     pub fn blocked_until(&self) -> Option<u64> {
         let t = self.state.lock().unwrap().blocked_until_ms;
         (t > now_ms()).then_some(t)
@@ -83,10 +78,6 @@ pub fn is_refusal(e: &anyhow::Error) -> bool {
         .is_some_and(|s| matches!(s.as_u16(), 403 | 429))
 }
 
-pub fn is_website(url: &str) -> bool {
-    url.contains("://www.livemasjid.com")
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -94,16 +85,14 @@ mod tests {
     #[test]
     fn escalates_and_resets() {
         let g = SiteGuard::default();
-        assert!(g.allowed());
+        assert!(g.blocked_until().is_none());
         let first = g.refused();
-        assert!(!g.allowed());
+        assert!(!g.blocked_until().is_none());
         assert!(first >= now_ms() + 5 * HOUR_MS);
         let second = g.refused();
         assert!(second > first);
         g.ok();
-        assert!(g.allowed());
-        assert!(is_website("https://www.livemasjid.com/stateQuery.php"));
-        assert!(!is_website("http://relay2.livemasjid.com:8000/x"));
+        assert!(g.blocked_until().is_none());
     }
 
     #[test]
@@ -112,6 +101,51 @@ mod tests {
         let until = SiteGuard::load(path.clone()).refused();
         let reloaded = SiteGuard::load(path.clone());
         assert_eq!(reloaded.blocked_until(), Some(until));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn backoff_caps_at_a_day() {
+        let g = SiteGuard::default();
+        let now = now_ms();
+        let first = g.refused();
+        let second = g.refused();
+        let third = g.refused();
+        let fourth = g.refused();
+        assert!((5 * HOUR_MS..=6 * HOUR_MS + 60_000).contains(&(first - now)));
+        assert!((11 * HOUR_MS..=12 * HOUR_MS + 60_000).contains(&(second - now)));
+        assert!((23 * HOUR_MS..=24 * HOUR_MS + 60_000).contains(&(third - now)));
+        assert!((23 * HOUR_MS..=24 * HOUR_MS + 60_000).contains(&(fourth - now)), "stays at 24 h");
+    }
+
+    #[test]
+    fn success_resets_strikes() {
+        let g = SiteGuard::default();
+        g.refused();
+        g.refused();
+        g.ok();
+        assert!(g.blocked_until().is_none());
+        let again = g.refused();
+        assert!(again <= now_ms() + 6 * HOUR_MS + 60_000, "a new refusal starts the 6 h back-off again");
+    }
+
+    #[test]
+    fn corrupt_state_file_starts_allowed() {
+        let path = std::env::temp_dir().join(format!("lm-site-corrupt-{}.json", crate::config::random_hex(8)));
+        std::fs::write(&path, b"not json").unwrap();
+        let g = SiteGuard::load(path.clone());
+        assert!(g.blocked_until().is_none());
+        assert_eq!(g.blocked_until(), None);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn expired_backoff_is_allowed() {
+        let path = std::env::temp_dir().join(format!("lm-site-expired-{}.json", crate::config::random_hex(8)));
+        std::fs::write(&path, format!("{{\"blocked_until_ms\":{},\"strikes\":2}}", now_ms().saturating_sub(1))).unwrap();
+        let g = SiteGuard::load(path.clone());
+        assert!(g.blocked_until().is_none());
+        assert_eq!(g.blocked_until(), None);
         let _ = std::fs::remove_file(path);
     }
 }

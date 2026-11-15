@@ -159,6 +159,11 @@ pub(super) fn neighbour(
     has: impl Fn(u16) -> bool,
     by: i32,
 ) -> Option<(u16, Option<PlaylistCtx>)> {
+    neighbour_dyn(surah, playlist, &has, by)
+}
+
+// One copy of the rules for every `has` closure (generic copies would each need their own tests).
+fn neighbour_dyn(surah: u16, playlist: Option<&PlaylistCtx>, has: &dyn Fn(u16) -> bool, by: i32) -> Option<(u16, Option<PlaylistCtx>)> {
     match playlist {
         Some(p) => {
             let mut q = p.step(by)?;
@@ -189,7 +194,11 @@ pub(super) fn neighbour(
 }
 
 /// The playlist entry to start from: the first one (from `ctx`) the reciter has.
-pub(super) fn first_available(mut ctx: PlaylistCtx, has: impl Fn(u16) -> bool) -> Option<PlaylistCtx> {
+pub(super) fn first_available(ctx: PlaylistCtx, has: impl Fn(u16) -> bool) -> Option<PlaylistCtx> {
+    first_available_dyn(ctx, &has)
+}
+
+fn first_available_dyn(mut ctx: PlaylistCtx, has: &dyn Fn(u16) -> bool) -> Option<PlaylistCtx> {
     for _ in 0..ctx.surahs.len() {
         if has(ctx.surah()) {
             return Some(ctx);
@@ -249,5 +258,21 @@ mod tests {
         assert_eq!(first_available(p.clone(), |_| true).map(|c| c.index), Some(0));
         assert_eq!(first_available(p.clone(), |n| n == 18).map(|c| c.index), Some(2));
         assert!(first_available(p, |_| false).is_none());
+        let looped = PlaylistCtx::new(&playlist(&[36, 67], true), 0);
+        assert!(first_available(looped, |_| false).is_none(), "repeat: one lap, then give up");
+    }
+
+    #[test]
+    fn playlist_edges_end_the_search() {
+        // One surah on repeat that the reciter lacks: stepping comes back to itself.
+        let single = PlaylistCtx::new(&playlist(&[36], true), 0);
+        assert_eq!(neighbour(36, Some(&single), |_| false, 1), None);
+        // Backwards past a missing surah, and off the start without repeat.
+        let p = PlaylistCtx::new(&playlist(&[36, 67, 18], false), 2);
+        assert_eq!(neighbour(18, Some(&p), |n| n != 67, -1).map(|x| x.0), Some(36));
+        assert_eq!(neighbour(18, Some(&p), |_| false, -1), None);
+        let first = PlaylistCtx::new(&playlist(&[36, 67], false), 0);
+        assert_eq!(neighbour(36, Some(&first), |_| true, -1).map(|x| x.0), Some(36), "previous on the first restarts it");
+        assert_eq!(neighbour(36, Some(&first), |n| n == 36, 1), None, "nothing after it without repeat");
     }
 }

@@ -78,13 +78,12 @@ The app has four tabs: Now, Masjids, Quran and More. To keep it on your home scr
 
 ## How it decides to play
 
-Three independent layers mean a missed or wrong signal never ends in silence:
+Two independent layers mean a missed or wrong signal never ends in silence:
 
 | Layer | Source | When it is used |
 |---|---|---|
-| **1. Live push** | `stateQuery.php?mount=…` server-sent events, the same signal the website's autoplay uses | Held open only while waiting for a broadcast, like the site's own player |
-| **2. Status check** | Icecast `status-json.xsl`, polled every 20 s by default with random jitter | Catches missed or incorrect pushes. It also drives the live badges in the directory |
-| **3. The stream itself** | A direct connection to the mount | Audio actually arriving has the final say. The app keeps playing until the mount really disappears and rides through drop-outs of up to 25 s. If layers 1 and 2 have both been down for 2 minutes, it probes the stream directly |
+| **1. Status check** | Icecast `status-json.xsl` on the stream servers, polled every 20 s by default with random jitter | Notices a broadcast within about 20 s. It also drives the live badges in the directory |
+| **2. The stream itself** | A direct connection to the mount | Audio actually arriving has the final say. The app keeps playing until the mount really disappears and rides through drop-outs of up to 25 s. If the status check has been down for 2 minutes, it probes the stream directly |
 
 What starts playback quickly:
 
@@ -93,12 +92,12 @@ What starts playback quickly:
 - **The speaker stays warm.** "Keep speaker awake" feeds silence while waiting, so the ALSA device and the Bluetooth link never have to wake up.
 
 The app is deliberately gentle on the livemasjid servers. It sends at most one status request every 20 s, and backs off for up to
-10 minutes when the server refuses requests (403, 429 or a refused connection).
+10 minutes when the server refuses requests (403, 429 or a refused connection). It never polls the livemasjid.com website itself: the
+website is only asked for the masjid list (monthly) and a masjid's recordings (when you open them, at most every 6 hours, saved on the Pi).
 
 ```mermaid
 flowchart LR
-    A[Live push<br/>SSE] --> D{Player}
-    B[Status poll<br/>Icecast] --> D
+    B[Status poll<br/>Icecast] --> D{Player}
     C[Direct probe<br/>after 2 min silent] --> D
     D --> E[Stream pump<br/>reconnect and live edge]
     E --> F[Jitter buffer]

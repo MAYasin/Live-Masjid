@@ -38,27 +38,51 @@ async fn spawn() -> anyhow::Result<Child> {
 
     tokio::spawn(async move {
         let mut lines = BufReader::new(stdout).lines();
-        let mut buf = String::new();
         while let Ok(Some(line)) = lines.next_line().await {
             let line = super::ctl::strip_ansi(&line);
-            buf.push_str(&line);
-            if line.contains("Agent registered") {
+            match command_for(&line) {
                 // Only valid once registration has completed.
-                let _ = send(&mut stdin, "default-agent").await;
-                tracing::info!("Bluetooth agent registered");
-            }
-            if line.contains("(yes/no)") {
+                Some("default-agent") => {
+                    let _ = send(&mut stdin, "default-agent").await;
+                    tracing::info!("Bluetooth agent registered");
+                }
                 // Authorize service / confirm just-works pairing for (already paired) speakers.
-                tracing::info!("Bluetooth agent approved: {}", line.trim());
-                let _ = send(&mut stdin, "yes").await;
+                Some(cmd) => {
+                    tracing::info!("Bluetooth agent approved: {}", line.trim());
+                    let _ = send(&mut stdin, cmd).await;
+                }
+                None => {}
             }
-            buf.clear();
         }
     });
     Ok(child)
 }
 
+/// The command to answer a `bluetoothctl` line with, if any.
+fn command_for(line: &str) -> Option<&'static str> {
+    if line.contains("Agent registered") {
+        Some("default-agent")
+    } else if line.contains("(yes/no)") {
+        Some("yes")
+    } else {
+        None
+    }
+}
+
 async fn send(stdin: &mut ChildStdin, cmd: &str) -> std::io::Result<()> {
     stdin.write_all(format!("{cmd}\n").as_bytes()).await?;
     stdin.flush().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn answers_registration_and_prompts() {
+        assert_eq!(command_for("[bluetooth]# Agent registered"), Some("default-agent"));
+        assert_eq!(command_for("Authorize service? (yes/no):"), Some("yes"));
+        assert_eq!(command_for("[CHG] Device AA:BB connected: yes"), None);
+        assert_eq!(command_for(""), None);
+    }
 }

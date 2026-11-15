@@ -97,8 +97,12 @@ pub fn candidates(mount: &str, codec: &str) -> Vec<(&'static str, u16, String)> 
 }
 
 fn codec_of(c: &StreamConn) -> Codec {
-    let ct = &c.content_type;
-    if ct.contains("mpeg") || ct.contains("mp3") || (ct.is_empty() && c.url.ends_with(".mp3")) {
+    codec_for(&c.content_type, &c.url)
+}
+
+/// Which decoder to use for a response: its content type, or the path when it is missing.
+fn codec_for(content_type: &str, url: &str) -> Codec {
+    if content_type.contains("mpeg") || content_type.contains("mp3") || (content_type.is_empty() && url.ends_with(".mp3")) {
         Codec::Mp3
     } else {
         Codec::Opus
@@ -111,7 +115,12 @@ fn path_codec(path: &str) -> Codec {
 
 fn run_session(p: SessionParams) {
     let cands = candidates(&p.mount, &p.codec);
-    let mut conn = match connect(&p, &cands, p.start_grace, None) {
+    run_session_on(p, &cands, DROP_GRACE);
+}
+
+/// A session over the given candidate servers (tests point these at a local fake Icecast).
+fn run_session_on(p: SessionParams, cands: &[(&'static str, u16, String)], drop_grace: Duration) {
+    let mut conn = match connect(&p, cands, p.start_grace, None) {
         Ok(c) => c,
         Err(reason) => return end(&p, reason),
     };
@@ -134,7 +143,7 @@ fn run_session(p: SessionParams) {
             Pumped::Dropped(why) => {
                 let buffered = p.buffer_ms.load(Ordering::Relaxed) / 1000;
                 let _ = p.events.send(StreamEvent::Reconnecting(format!("{why}; {buffered} s buffered")));
-                match connect(&p, &cands, DROP_GRACE, Some(pipe.codec)) {
+                match connect(&p, cands, drop_grace, Some(pipe.codec)) {
                     Ok(c) if codec_of(&c) == pipe.codec => {
                         pipe.filter.reconnected();
                         // Ogg pages resume exactly where we stopped; MP3 can't, so jump to live.
@@ -340,17 +349,31 @@ fn catch_up(pipe: &mut Pipeline, p: &SessionParams) {
     }
     let ms = p.buffer_ms.load(Ordering::Relaxed);
     let target = live_delay_ms();
-    if ms <= target + (target / 2).max(3_000) {
-        return;
-    }
     // Only the compressed part can be trimmed; the decoded part is already queued for the sink.
     let decoded = p.sink.queued_ms().min(ms);
-    let keep = (pipe.queue.buffered() as u64 * target.saturating_sub(decoded) / (ms - decoded).max(1)) as usize;
+    let Some(keep) = catch_up_keep(pipe.queue.buffered(), ms, decoded, target) else { return };
     tracing::info!("catch-up: buffer {ms} ms (decoded {decoded} ms, {} bytes queued), keeping {keep} bytes", pipe.queue.buffered());
     if pipe.queue.trim_front(keep) > 0 {
         pipe.started = Instant::now();
         p.buffer_ms.store(target, Ordering::Relaxed);
         let _ = p.events.send(StreamEvent::CaughtUp((ms - target) / 1000));
+    }
+}
+
+/// How many compressed bytes to keep when the buffer is past target + slack (None: it isn't).
+fn catch_up_keep(buffered: usize, buffer_ms: u64, decoded_ms: u64, target_ms: u64) -> Option<usize> {
+    if buffer_ms <= target_ms + (target_ms / 2).max(3_000) {
+        return None;
+    }
+    Some((buffered as u64 * target_ms.saturating_sub(decoded_ms) / (buffer_ms - decoded_ms).max(1)) as usize)
+}
+
+/// Delay before the next connect round: quick first retries, then ease off.
+fn retry_wait_ms(attempt: u32) -> u64 {
+    match attempt {
+        0..=2 => 1000,
+        3..=5 => 2000,
+        _ => 4000,
     }
 }
 
@@ -403,12 +426,7 @@ fn connect(
         attempt += 1;
         // Quick first retries (a fresh mount appears within seconds), then ease off:
         // each round can be up to four requests.
-        let wait = match attempt {
-            0..=2 => 1000,
-            3..=5 => 2000,
-            _ => 4000,
-        };
-        let until = Instant::now() + Duration::from_millis(wait);
+        let until = Instant::now() + Duration::from_millis(retry_wait_ms(attempt));
         while Instant::now() < until {
             if p.stop.load(Ordering::Relaxed) {
                 return Err(EndReason::Stopped);
@@ -428,5 +446,350 @@ mod tests {
         assert_eq!(c[2].0, "relay2.livemasjid.com");
         assert_eq!(super::candidates("lakewood", "mp3")[0].2, "/lakewood.mp3");
         assert_eq!(super::candidates("annoor.mp3", "auto")[0].2, "/annoor");
+    }
+
+    #[test]
+    fn codecs_come_from_the_content_type_or_the_path() {
+        assert_eq!(super::codec_for("audio/mpeg", "x"), super::Codec::Mp3);
+        assert_eq!(super::codec_for("audio/mp3", ""), super::Codec::Mp3);
+        assert_eq!(super::codec_for("", "/m.mp3"), super::Codec::Mp3, "no content type: use the path");
+        assert_eq!(super::codec_for("", "/m"), super::Codec::Opus);
+        assert_eq!(super::codec_for("application/ogg", "/m"), super::Codec::Opus);
+        assert_eq!(super::path_codec("/m.mp3"), super::Codec::Mp3);
+        assert_eq!(super::path_codec("/m"), super::Codec::Opus);
+    }
+
+    #[test]
+    fn catch_up_waits_for_slack_then_keeps_the_target() {
+        // 20 s target: nothing to do up to 30 s (target + max(10 s, 3 s)).
+        assert_eq!(super::catch_up_keep(100_000, 20_000, 0, 20_000), None);
+        assert_eq!(super::catch_up_keep(100_000, 30_000, 0, 20_000), None);
+        // 40 s buffered, nothing decoded: keep half the bytes to land on 20 s.
+        assert_eq!(super::catch_up_keep(100_000, 40_000, 0, 20_000), Some(50_000));
+        // Decoded audio is already queued: only the compressed part can be trimmed.
+        assert_eq!(super::catch_up_keep(100_000, 40_000, 10_000, 20_000), Some(33_333));
+        // More decoded than the target leaves nothing to keep.
+        assert_eq!(super::catch_up_keep(100_000, 40_000, 25_000, 20_000), Some(0));
+    }
+
+    #[test]
+    fn retries_start_quick_then_ease_off() {
+        assert_eq!([1, 2, 3, 4, 5, 6, 9].map(super::retry_wait_ms), [1000, 1000, 2000, 2000, 2000, 4000, 4000]);
+    }
+
+    use super::decode::tests::{mp3_frames, opus_packet, opus_stream};
+    use super::*;
+    use std::io::Write as _;
+    use std::net::TcpListener;
+    use tokio::sync::mpsc::UnboundedReceiver;
+
+    /// What the fake Icecast does on one connection.
+    enum Step {
+        Send(Vec<u8>),
+        Wait(u64),
+        /// Close with the request unread: the kernel answers with a reset.
+        Reset,
+    }
+
+    fn ok(ctype: &str) -> Step {
+        Step::Send(format!("HTTP/1.0 200 OK\r\nContent-Type: {ctype}\r\n\r\n").into_bytes())
+    }
+
+    /// A fake Icecast on 127.0.0.1: one script per connection, then 404 for any later one.
+    /// Reports each accepted connection on the returned channel.
+    fn icecast(replies: Vec<Vec<Step>>) -> (u16, std::sync::mpsc::Receiver<usize>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut replies = replies.into_iter();
+            for (i, sock) in listener.incoming().enumerate() {
+                let Ok(mut sock) = sock else { continue };
+                let steps = replies.next().unwrap_or_else(|| vec![Step::Send(b"HTTP/1.0 404 Not Found\r\n\r\n".to_vec())]);
+                let reset = steps.iter().any(|s| matches!(s, Step::Reset));
+                let mut req = Vec::new();
+                let mut b = [0u8; 256];
+                while let Ok(n) = sock.read(if reset { &mut b[..4] } else { &mut b }) {
+                    req.extend_from_slice(&b[..n]);
+                    if n == 0 || reset || req.windows(4).any(|w| w == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                let _ = tx.send(i);
+                for s in steps {
+                    match s {
+                        Step::Send(bytes) => {
+                            let _ = sock.write_all(&bytes);
+                        }
+                        Step::Wait(ms) => std::thread::sleep(Duration::from_millis(ms)),
+                        Step::Reset => break,
+                    }
+                }
+            }
+        });
+        (port, rx)
+    }
+
+    fn local(port: u16, path: &str) -> Vec<(&'static str, u16, String)> {
+        vec![("127.0.0.1", port, path.to_string())]
+    }
+
+    fn temp_app() -> (std::path::PathBuf, crate::state::App) {
+        let dir = std::env::temp_dir().join(format!("lm-stream-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let app = crate::state::test_app(&dir);
+        (dir, app)
+    }
+
+    fn params(app: &crate::state::App) -> (SessionParams, UnboundedReceiver<(u64, StreamEvent)>) {
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let p = SessionParams {
+            mount: "m".into(),
+            codec: "auto".into(),
+            sink: app.sink.clone(),
+            epoch: 0,
+            stop: Arc::default(),
+            events: Events::new(1, &tx),
+            start_grace: Duration::ZERO,
+            buffer_ms: Arc::default(),
+        };
+        (p, rx)
+    }
+
+    fn drain(rx: &mut UnboundedReceiver<(u64, StreamEvent)>) -> Vec<StreamEvent> {
+        std::iter::from_fn(|| rx.try_recv().ok().map(|(_, e)| e)).collect()
+    }
+
+    /// Wait (up to 5 s) for an event matching `want`.
+    fn wait_for(rx: &mut UnboundedReceiver<(u64, StreamEvent)>, want: impl Fn(&StreamEvent) -> bool) {
+        let until = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < until {
+            match rx.try_recv() {
+                Ok((_, e)) if want(&e) => return,
+                Ok(_) => {}
+                Err(_) => std::thread::sleep(Duration::from_millis(10)),
+            }
+        }
+        panic!("event never arrived");
+    }
+
+    fn started(events: &[StreamEvent], codec: &str) -> usize {
+        events.iter().filter(|e| matches!(e, StreamEvent::Started { codec: c, .. } if *c == codec)).count()
+    }
+
+    #[test]
+    fn rides_reconnects_and_a_codec_change_until_the_mount_is_gone() {
+        let (dir, app) = temp_app();
+        let opus = opus_stream(1, &opus_packet(), 40, 2);
+        let (head, tail) = opus.split_at(opus.len() * 2 / 3);
+        let (port, _accepted) = icecast(vec![
+            // Burst, a pause (the live edge), then real-time audio, then the server closes.
+            vec![ok("audio/mpeg"), Step::Send(mp3_frames(40)), Step::Wait(600), Step::Send(mp3_frames(10)), Step::Wait(100), Step::Send(mp3_frames(10))],
+            // Same codec again: a reconnect.
+            vec![ok("audio/mpeg"), Step::Send(mp3_frames(20))],
+            // Now only Opus answers: a new pipeline.
+            vec![ok("application/ogg"), Step::Send(head.to_vec()), Step::Wait(600), Step::Send(tail.to_vec())],
+        ]);
+        let (p, mut rx) = params(&app);
+        run_session_on(p, &local(port, "/m.mp3"), Duration::ZERO);
+
+        let events = drain(&mut rx);
+        assert!(started(&events, "mp3") >= 2, "{events:?}");
+        assert!(started(&events, "opus") >= 1, "{events:?}");
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::Reconnecting(why) if why.contains("closed"))), "{events:?}");
+        assert!(matches!(events.last(), Some(StreamEvent::Ended(EndReason::Finished))), "{events:?}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn an_upstream_encoder_restart_gets_a_fresh_decoder() {
+        let (dir, app) = temp_app();
+        let pkt = opus_packet();
+        let a = opus_stream(1, &pkt, 20, 2);
+        let b = opus_stream(2, &pkt, 20, 2);
+        let c = opus_stream(3, &pkt, 20, 2);
+        let (a1, a2) = a.split_at(a.len() / 2);
+        let (port, _accepted) = icecast(vec![
+            // A new serial arrives after the burst.
+            vec![ok("application/ogg"), Step::Send(a1.to_vec()), Step::Wait(600), Step::Send(a2.to_vec()), Step::Wait(100), Step::Send(b.clone())],
+            // Reconnect: the same stream is replayed, then a restart inside the burst... of the next session.
+            vec![ok("application/ogg"), Step::Send(b.clone())],
+        ]);
+        let (p, mut rx) = params(&app);
+        run_session_on(p, &local(port, "/m"), Duration::ZERO);
+        let events = drain(&mut rx);
+        assert!(started(&events, "opus") >= 2, "{events:?}");
+        assert!(matches!(events.last(), Some(StreamEvent::Ended(EndReason::Finished))), "{events:?}");
+
+        // A restart inside the connect burst itself.
+        let mut both = b.clone();
+        both.extend_from_slice(&c);
+        let (port, _accepted) = icecast(vec![vec![ok("application/ogg"), Step::Send(both)]]);
+        let (p, mut rx) = params(&app);
+        run_session_on(p, &local(port, "/m"), Duration::ZERO);
+        let events = drain(&mut rx);
+        assert!(started(&events, "opus") >= 1, "{events:?}");
+        assert!(matches!(events.last(), Some(StreamEvent::Ended(EndReason::Finished))), "{events:?}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn connection_resets_are_drop_outs() {
+        let (dir, app) = temp_app();
+        let (port, _accepted) = icecast(vec![
+            // Reset before any audio.
+            vec![ok("audio/mpeg"), Step::Wait(200), Step::Reset],
+            // Reset in the middle of the burst.
+            vec![ok("audio/mpeg"), Step::Send(mp3_frames(10)), Step::Wait(200), Step::Reset],
+            // Reset after the burst, while streaming.
+            vec![ok("audio/mpeg"), Step::Send(mp3_frames(10)), Step::Wait(600), Step::Send(mp3_frames(2)), Step::Wait(200), Step::Reset],
+        ]);
+        let (p, mut rx) = params(&app);
+        run_session_on(p, &local(port, "/m.mp3"), Duration::ZERO);
+        let events = drain(&mut rx);
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::Reconnecting(why) if why.contains("no data"))), "{events:?}");
+        assert!(matches!(events.last(), Some(StreamEvent::Ended(EndReason::Finished))), "{events:?}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn trickle(n: usize) -> Vec<Step> {
+        let mut steps = vec![ok("audio/mpeg")];
+        for _ in 0..n {
+            steps.push(Step::Send(mp3_frames(1)));
+            steps.push(Step::Wait(100));
+        }
+        steps
+    }
+
+    #[test]
+    fn stops_while_playing() {
+        let (dir, app) = temp_app();
+        let mut steps = vec![ok("audio/mpeg"), Step::Send(mp3_frames(20)), Step::Wait(600)];
+        steps.extend(trickle(40).into_iter().skip(1));
+        let (port, _accepted) = icecast(vec![steps]);
+        let (p, mut rx) = params(&app);
+        let stop = p.stop.clone();
+        let session = std::thread::spawn(move || run_session_on(p, &local(port, "/m.mp3"), Duration::ZERO));
+        wait_for(&mut rx, |e| matches!(e, StreamEvent::Started { .. }));
+        stop.store(true, Ordering::Relaxed);
+        session.join().unwrap();
+        assert!(matches!(drain(&mut rx).last(), Some(StreamEvent::Ended(EndReason::Stopped))));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn stops_while_reading_the_burst() {
+        let (dir, app) = temp_app();
+        let (port, accepted) = icecast(vec![trickle(40)]);
+        let (p, mut rx) = params(&app);
+        let stop = p.stop.clone();
+        let session = std::thread::spawn(move || run_session_on(p, &local(port, "/m.mp3"), Duration::ZERO));
+        accepted.recv_timeout(Duration::from_secs(5)).unwrap();
+        std::thread::sleep(Duration::from_millis(300));
+        stop.store(true, Ordering::Relaxed);
+        session.join().unwrap();
+        assert!(matches!(drain(&mut rx).last(), Some(StreamEvent::Ended(EndReason::Stopped))));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn stops_while_reconnecting() {
+        let (dir, app) = temp_app();
+        let (port, _accepted) = icecast(vec![vec![ok("audio/mpeg"), Step::Send(mp3_frames(10))]]);
+        let (p, mut rx) = params(&app);
+        let stop = p.stop.clone();
+        // A long drop grace: the 404s keep it retrying until stopped.
+        let session = std::thread::spawn(move || run_session_on(p, &local(port, "/m.mp3"), Duration::from_secs(30)));
+        wait_for(&mut rx, |e| matches!(e, StreamEvent::Reconnecting(_)));
+        stop.store(true, Ordering::Relaxed);
+        session.join().unwrap();
+        assert!(matches!(drain(&mut rx).last(), Some(StreamEvent::Ended(EndReason::Stopped))));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_mount_that_is_not_live_ends_at_once() {
+        let (dir, app) = temp_app();
+        let (port, _accepted) = icecast(Vec::new());
+        let (p, mut rx) = params(&app);
+        let buffer = p.buffer_ms.clone();
+        buffer.store(5, Ordering::Relaxed);
+        run_session_on(p, &local(port, "/m"), Duration::ZERO);
+        assert!(matches!(drain(&mut rx).as_slice(), [StreamEvent::Ended(EndReason::NotLive)]));
+        assert_eq!(buffer.load(Ordering::Relaxed), 0);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_stopped_session_never_touches_the_network() {
+        let (dir, app) = temp_app();
+        let (p, mut rx) = params(&app);
+        p.stop.store(true, Ordering::Relaxed);
+        super::source::spawn(p);
+        wait_for(&mut rx, |e| matches!(e, StreamEvent::Ended(EndReason::Stopped)));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn refused_port() -> u16 {
+        let l = TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    }
+
+    #[test]
+    fn connect_keeps_retrying_while_the_network_is_down() {
+        let (dir, app) = temp_app();
+        let (p, _rx) = params(&app);
+        let port = refused_port();
+        let cands = vec![("127.0.0.1", port, "/m".to_string()), ("127.0.0.1", port, "/m.mp3".to_string())];
+
+        // Before audio: nothing reachable means not live.
+        assert!(matches!(connect(&p, &cands, Duration::ZERO, None), Err(EndReason::NotLive)));
+
+        // Mid-broadcast: no answer at all is our network, so keep trying until stopped.
+        let stop = p.stop.clone();
+        let t = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(300));
+            stop.store(true, Ordering::Relaxed);
+        });
+        assert!(matches!(connect(&p, &cands, Duration::ZERO, Some(Codec::Mp3)), Err(EndReason::Stopped)));
+        t.join().unwrap();
+
+        // Already stopped: no attempt at all.
+        assert!(matches!(connect(&p, &cands, Duration::ZERO, None), Err(EndReason::Stopped)));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn catch_up_trims_a_buffer_that_fell_far_behind() {
+        let (dir, app) = temp_app();
+        let (p, mut rx) = params(&app);
+        let decoder_stop = Arc::new(AtomicBool::new(true));
+        let p = SessionParams { stop: decoder_stop, ..p };
+        let mut pipe = Pipeline::start(Codec::Mp3, &p, "http://x/m.mp3".into());
+        let never = AtomicBool::new(false);
+        for _ in 0..10 {
+            pipe.queue.push(vec![0u8; 1000], &never);
+        }
+        let target = live_delay_ms();
+        p.buffer_ms.store(target * 10 + 10_000, Ordering::Relaxed);
+
+        // Just joined: the estimate hasn't settled, so nothing happens.
+        catch_up(&mut pipe, &p);
+        assert_eq!(pipe.queue.buffered(), 10_000);
+
+        // Settled and far behind: skip ahead to the target.
+        pipe.started = Instant::now().checked_sub(Duration::from_secs(9)).unwrap();
+        catch_up(&mut pipe, &p);
+        assert!(pipe.queue.buffered() < 10_000);
+        assert_eq!(p.buffer_ms.load(Ordering::Relaxed), target);
+        assert!(drain(&mut rx).iter().any(|e| matches!(e, StreamEvent::CaughtUp(_))));
+
+        // Near the target: nothing to trim.
+        pipe.started = Instant::now().checked_sub(Duration::from_secs(9)).unwrap();
+        let before = pipe.queue.buffered();
+        catch_up(&mut pipe, &p);
+        assert_eq!(pipe.queue.buffered(), before);
+        pipe.finish();
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

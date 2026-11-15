@@ -16,7 +16,7 @@ use crate::state::App;
 use serde_json::Value;
 use std::time::Duration;
 
-const API: &str = "https://masjidboardlive.com/boards/api/board.php?id=";
+pub(super) const API: &str ="https://masjidboardlive.com/boards/api/board.php?id=";
 pub const SITE: &str = "https://masjidboardlive.com/boards/?id=";
 
 /// Result of looking a board id up (cached per id).
@@ -50,6 +50,11 @@ pub fn parse_board_ref(input: &str) -> Option<String> {
 
 /// Fetch (cached) and parse a board.
 pub async fn lookup(app: &App, id: &str) -> Lookup {
+    lookup_at(app, id, API).await
+}
+
+/// [`lookup`] against the API at `api` (the real one, or a local server in tests).
+pub(super) async fn lookup_at(app: &App, id: &str, api: &str) -> Lookup {
     let it = &app.integrations;
     let fresh = |l: &Lookup| match l {
         Lookup::Found(t) => t.date.as_deref() == Some(&super::salah::today()),
@@ -62,7 +67,7 @@ pub async fn lookup(app: &App, id: &str) -> Lookup {
     if let Some(hit) = it.boards.get(id).filter(fresh) {
         return hit; // fetched by a concurrent request while we waited
     }
-    let (result, ttl) = match fetch(&format!("{API}{id}"), Duration::from_secs(10), &it.masjidboard).await {
+    let (result, ttl) = match fetch(&format!("{api}{id}"), Duration::from_secs(10), &it.masjidboard).await {
         Fetched::Ok(body) => match parse(&body) {
             Some(mut t) => {
                 t.date = Some(super::salah::today());
@@ -226,6 +231,55 @@ mod tests {
     }
 
     #[test]
+    fn a_board_without_salah_times_is_not_used() {
+        assert!(parse(r#"{"ok":true,"data":{"fajrAthan":"~~~~"}}"#).is_none());
+        assert!(parse(r#"{"ok":true}"#).is_none(), "no data");
+        assert!(parse(r#"{"data":{}}"#).is_none(), "no ok flag");
+        assert!(parse("not json").is_none());
+        // Minimal board: defaults for every optional part.
+        let t = parse(r#"{"ok":true,"data":{"fajrAthan":"04:30","jumuahHeadings":"99","jumuahTime1":"12:30","jumuah_khateeb":"-"}}"#).unwrap();
+        assert_eq!(t.jumuah_times[0].label, "Jumu'ah", "unknown heading code");
+        assert!(t.khateeb.is_none(), "'-' means no khateeb");
+        let b = t.board.unwrap();
+        assert_eq!((b.id.as_str(), b.name.as_str()), ("", "Masjid"));
+    }
+
+    #[tokio::test]
+    async fn lookup_caches_and_classifies() {
+        use std::sync::atomic::Ordering;
+        let dir = std::env::temp_dir().join(format!("lm-board-{}", crate::config::random_hex(6)));
+        let app = crate::state::test_app(&dir);
+        let (base, hits) = crate::integrations::test_http::serve(|path| match path.rsplit('=').next().unwrap_or("") {
+            "good" => (200, SAMPLE.to_string()),
+            "unknown" => (200, r#"{"ok":false,"error":"not_found"}"#.to_string()),
+            "junk" => (200, "<html>".to_string()),
+            "gone" => (404, String::new()),
+            "broken" => (500, String::new()),
+            _ => (403, String::new()),
+        })
+        .await;
+        let api = format!("{base}/boards/api/board.php?id=");
+
+        let Lookup::Found(t) = lookup_at(&app, "good", &api).await else { panic!("found") };
+        assert_eq!(t.date, Some(crate::integrations::salah::today()), "stamped with today's date");
+        let n = hits.load(Ordering::SeqCst);
+        assert!(matches!(lookup_at(&app, "good", &api).await, Lookup::Found(_)));
+        assert_eq!(hits.load(Ordering::SeqCst), n, "served from the cache");
+
+        assert!(matches!(lookup_at(&app, "unknown", &api).await, Lookup::NotFound));
+        assert!(matches!(lookup_at(&app, "junk", &api).await, Lookup::Failed));
+        assert!(matches!(lookup_at(&app, "gone", &api).await, Lookup::NotFound));
+        assert!(matches!(lookup_at(&app, "broken", &api).await, Lookup::Failed));
+        assert!(matches!(lookup_at(&app, "refused", &api).await, Lookup::Blocked));
+        assert!(app.integrations.masjidboard.blocked_until().is_some(), "a 403 pauses the site");
+        // Failures are cached too: no new requests.
+        let n = hits.load(Ordering::SeqCst);
+        assert!(matches!(lookup_at(&app, "broken", &api).await, Lookup::Failed));
+        assert_eq!(hits.load(Ordering::SeqCst), n);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
     fn board_refs() {
         assert_eq!(parse_board_ref("https://masjidboardlive.com/boards/?id=lakewood-kauthar").as_deref(), Some("lakewood-kauthar"));
         assert_eq!(parse_board_ref("https://masjidboardlive.com/boards/?lakewood-kauthar").as_deref(), Some("lakewood-kauthar"));
@@ -233,5 +287,44 @@ mod tests {
         assert_eq!(parse_board_ref(" lakewood-kauthar ").as_deref(), Some("lakewood-kauthar"));
         assert_eq!(parse_board_ref("https://evil.example/x?id=../../etc"), None);
         assert_eq!(parse_board_ref(""), None);
+    }
+
+    #[test]
+    fn board_refs_with_fragments_and_trailing_slashes() {
+        assert_eq!(parse_board_ref("https://masjidboardlive.com/boards/?id=abc#section").as_deref(), Some("abc"));
+        assert_eq!(parse_board_ref("https://masjidboardlive.com/boards/?x&id=bar").as_deref(), Some("bar"));
+        assert_eq!(parse_board_ref("lakewood/").as_deref(), Some("lakewood"));
+    }
+
+    #[test]
+    fn ids_are_url_safe() {
+        assert!(valid_id("lakewood-kauthar"));
+        assert!(valid_id("a_b9"));
+        assert!(!valid_id(""));
+        assert!(!valid_id("a/b"));
+        assert!(!valid_id("a b"));
+        assert!(!valid_id(&"a".repeat(81)));
+    }
+
+    #[test]
+    fn times_ignore_placeholders() {
+        let d = serde_json::json!({"a":"04:30","b":"~~~~","c":"#N/A","d":"00:00","e":"&nbsp;","f":"4:50","g":"12:45:00","h":12});
+        assert_eq!(time(&d, "a").as_deref(), Some("04:30"));
+        assert_eq!(time(&d, "b"), None);
+        assert_eq!(time(&d, "c"), None);
+        assert_eq!(time(&d, "d"), None, "midnight is a placeholder");
+        assert_eq!(time(&d, "e"), None);
+        assert_eq!(time(&d, "f").as_deref(), Some("04:50"), "hour is padded");
+        assert_eq!(time(&d, "g").as_deref(), Some("12:45"), "seconds are dropped");
+        assert_eq!(time(&d, "h"), None, "not a string");
+        assert_eq!(time(&d, "missing"), None);
+    }
+
+    #[test]
+    fn text_cleans_html() {
+        let d = serde_json::json!({"a":"Masjid<br>Al&nbsp;Noor","b":"   ","c":5});
+        assert_eq!(text(&d, "a").as_deref(), Some("Masjid Al Noor"));
+        assert_eq!(text(&d, "b"), None);
+        assert_eq!(text(&d, "c"), None);
     }
 }

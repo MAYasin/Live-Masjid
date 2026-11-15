@@ -157,31 +157,38 @@ impl Catalog {
     /// Fetch the catalogue when missing or too old. Runs for the life of the app.
     pub async fn keep_fresh(&self) {
         loop {
-            let age = std::fs::metadata(&self.path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok());
-            let due = self.list.lock().unwrap().is_empty() || age.is_none_or(|a| a > MAX_AGE);
-            let mut wait = Duration::from_secs(86400);
-            if due {
-                let out = Command::new("curl")
-                    .args(["-sS", "-L", "--fail", "--max-redirs", "3", "--proto", "=https", "--max-time", "40"])
-                    .args(["-A", crate::integrations::USER_AGENT, CATALOG_URL])
-                    .kill_on_drop(true)
-                    .output()
-                    .await;
-                match out.ok().filter(|o| o.status.success()).and_then(|o| parse_catalog(&String::from_utf8_lossy(&o.stdout))) {
-                    Some(list) => {
-                        tracing::info!("Quran: {} recitations available", list.len());
-                        if let Ok(body) = serde_json::to_vec(&list) {
-                            let _ = crate::config::write_atomic(&self.path, &body);
-                        }
-                        *self.list.lock().unwrap() = list;
-                    }
-                    None => {
-                        tracing::warn!("Quran: couldn't fetch the reciter list; retrying in an hour");
-                        wait = Duration::from_secs(3600);
-                    }
-                }
-            }
+            let wait = self.refresh_if_due(CATALOG_URL, "=https").await;
             tokio::time::sleep(wait).await;
+        }
+    }
+
+    /// One check of [`Self::keep_fresh`] against `url` (only over the protocols in `proto`).
+    /// Returns how long to wait before the next.
+    async fn refresh_if_due(&self, url: &str, proto: &str) -> Duration {
+        let age = std::fs::metadata(&self.path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok());
+        let due = self.list.lock().unwrap().is_empty() || age.is_none_or(|a| a > MAX_AGE);
+        if !due {
+            return Duration::from_secs(86400);
+        }
+        let out = Command::new("curl")
+            .args(["-sS", "-L", "--fail", "--max-redirs", "3", "--proto", proto, "--max-time", "40"])
+            .args(["-A", crate::integrations::USER_AGENT, url])
+            .kill_on_drop(true)
+            .output()
+            .await;
+        match out.ok().filter(|o| o.status.success()).and_then(|o| parse_catalog(&String::from_utf8_lossy(&o.stdout))) {
+            Some(list) => {
+                tracing::info!("Quran: {} recitations available", list.len());
+                if let Ok(body) = serde_json::to_vec(&list) {
+                    let _ = crate::config::write_atomic(&self.path, &body);
+                }
+                *self.list.lock().unwrap() = list;
+                Duration::from_secs(86400)
+            }
+            None => {
+                tracing::warn!("Quran: couldn't fetch the reciter list; retrying in an hour");
+                Duration::from_secs(3600)
+            }
         }
     }
 }
@@ -219,5 +226,53 @@ mod tests {
         assert_eq!(c.resolve(Some("unknown")).key, DEFAULT_RECITER);
         assert_eq!(c.resolve(None).key, DEFAULT_RECITER);
         assert!(c.get("unknown").is_none());
+    }
+
+    #[test]
+    fn unusable_entries_are_skipped() {
+        let body = r#"{"reciters":[
+          {"name":"","moshaf":[{"server":"https://cdn.mp3quran.net/a/","surah_list":"1"}]},
+          {"name":"No surahs","moshaf":[{"server":"https://cdn.mp3quran.net/b/","surah_list":"0,999"}]},
+          {"name":"No server","moshaf":[{"surah_list":"1"}]},
+          {"name":"No moshaf"}]}"#;
+        assert!(parse_catalog(body).is_none(), "nothing usable");
+        assert!(parse_catalog(r#"{"other":1}"#).is_none());
+        assert!(parse_catalog("not json").is_none());
+        assert_eq!(key_of("http://cdn.mp3quran.net/a/"), None, "https only");
+        assert_eq!(key_of("https://cdn.mp3quran.net"), None, "no path");
+        assert_eq!(style_of("Murattal"), "Murattal");
+        assert_eq!(style_of("Rewayat Hafs A'n Assem - Almusshaf Al Mo'lim"), "Teaching");
+        let r = builtin_sudais();
+        assert_eq!(r.label(), "Abdulrahman Alsudaes");
+        assert_eq!(Reciter { style: "Mujawwad".into(), ..r }.label(), "Abdulrahman Alsudaes (Mujawwad)");
+    }
+
+    const BODY: &str = r#"{"reciters":[{"name":"Maher","moshaf":[{"name":"x","server":"https://cdn.mp3quran.net/audio/maher-muaiqly/r1/","surah_list":"1,2"}]}]}"#;
+
+    #[tokio::test]
+    async fn refreshes_when_missing_and_waits_when_fresh_or_failing() {
+        let dir = std::env::temp_dir().join(format!("lm-reciters-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let (base, hits) = crate::integrations::test_http::serve(|path| match path {
+            "/reciters" => (200, BODY.to_string()),
+            _ => (500, String::new()),
+        })
+        .await;
+        let c = Catalog::load(dir.join("reciters.json"));
+
+        // Failure: retry in an hour, still the built-in default.
+        assert_eq!(c.refresh_if_due(&format!("{base}/broken"), "=http").await, Duration::from_secs(3600));
+        assert_eq!(c.all().len(), 1);
+
+        assert_eq!(c.refresh_if_due(&format!("{base}/reciters"), "=http").await, Duration::from_secs(86400));
+        assert_eq!(c.get("maher-muaiqly-r1").unwrap().name, "Maher");
+        assert!(c.get(DEFAULT_RECITER).is_some(), "the default stays available");
+        // Saved: a restart reads it back without asking.
+        let again = Catalog::load(dir.join("reciters.json"));
+        assert_eq!(again.all().len(), 1);
+        let n = hits.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(again.refresh_if_due(&format!("{base}/reciters"), "=http").await, Duration::from_secs(86400));
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), n, "fresh: no request");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

@@ -68,6 +68,57 @@ pub async fn select(State(app): State<App>, Json(req): Json<Select>) -> ApiResul
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn app() -> (App, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("lm-stations-api-{}", crate::config::random_hex(6)));
+        (crate::state::test_app(&dir), dir)
+    }
+
+    fn live_info() -> crate::state::LiveInfo {
+        crate::state::LiveInfo { server_type: "audio/ogg".into(), stream_start: Some("now".into()), listeners: None, title: None }
+    }
+
+    #[tokio::test]
+    async fn lists_the_directory_with_live_and_selected_flags() {
+        let (app, dir) = app();
+        *app.catalog.write().unwrap() = vec![
+            crate::catalog::Station { mount: "a".into(), name: "Masjid A".into(), location: "Town".into(), genre: "Masjid".into() },
+            crate::catalog::Station { mount: "b".into(), name: "Masjid B".into(), location: String::new(), genre: "Aalim".into() },
+        ];
+        {
+            let mut live = app.live.write().unwrap();
+            live.insert("a".into(), vec![("relay".into(), live_info())]);
+            live.insert("newcomer".into(), vec![("relay".into(), live_info())]);
+        }
+        app.history.lock().unwrap().begin("b", "Masjid B", "opus", "poll");
+        assert!(select(State(app.clone()), Json(Select { mount: Some("/b ".into()) })).await.is_ok());
+        assert_eq!(app.settings().station_name.as_deref(), Some("Masjid B"), "named from the directory");
+
+        let Json(v) = list(State(app.clone())).await;
+        let stations = v["stations"].as_array().unwrap();
+        assert_eq!(stations.len(), 3);
+        assert_eq!(stations[0]["live"], true);
+        assert_eq!(stations[0]["selected"], false);
+        assert_eq!(stations[1]["selected"], true);
+        assert!(stations[1]["last_heard_ms"].as_u64().is_some());
+        assert_eq!(stations[2]["mount"], "newcomer", "live mounts missing from the directory are listed too");
+        assert_eq!(stations[2]["genre"], "Other");
+
+        assert!(select(State(app.clone()), Json(Select { mount: None })).await.is_ok());
+        assert_eq!(app.settings().mount, None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn refresh_respects_the_site_back_off() {
+        let (app, dir) = app();
+        app.site.refused(); // nothing may contact livemasjid.com now
+        let Err(e) = refresh(State(app.clone())).await else { panic!("refreshed while refused") };
+        assert!(e.1.contains("refusing"), "{}", e.1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     #[test]
     fn mount_validation() {
         assert!(super::valid_mount("lakewood"));

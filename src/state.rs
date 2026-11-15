@@ -10,17 +10,6 @@ use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use tokio::sync::{mpsc, watch};
 
-/// "HH:MM" in the device's local time for a unix-ms timestamp (falls back to "later").
-pub fn fmt_local_time(ms: u64) -> String {
-    std::process::Command::new("date")
-        .args(["-d", &format!("@{}", ms / 1000), "+%H:%M"])
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| "later".into())
-}
-
 pub fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -86,8 +75,6 @@ pub struct QuranResume {
 
 #[derive(Clone, Debug, Serialize, Default)]
 pub struct Signals {
-    pub sse_connected: bool,
-    pub sse_last_event_ms: u64,
     pub poll_ok: bool,
     pub poll_last_ms: u64,
     /// Selected mount is listed as live by the Icecast status poll.
@@ -146,8 +133,6 @@ pub struct Status {
     pub live_count: usize,
     /// Audio waiting in the jitter buffer while playing (ms).
     pub buffer_ms: u64,
-    /// Set while livemasjid.com is refusing us and we are staying away.
-    pub site_blocked_until_ms: Option<u64>,
     /// Set while a past recording is playing.
     pub recording: Option<RecordingStatus>,
     /// Set while the Quran waits for a live broadcast to end.
@@ -202,7 +187,6 @@ pub enum PlayerCmd {
 /// Live/offline evidence for the selected mount.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Signal {
-    SseOnline,
     PollOnline,
     PollOffline,
 }
@@ -309,5 +293,91 @@ impl AppState {
                 false
             }
         });
+    }
+}
+
+/// A throwaway app rooted in `dir`, for tests: real channels, caches and sink, no audio device.
+#[cfg(test)]
+pub fn test_app(dir: &std::path::Path) -> App {
+    use std::sync::atomic::AtomicU8;
+    let _ = std::fs::create_dir_all(dir);
+    let paths = Paths {
+        settings: dir.join("settings.json"),
+        catalog: dir.join("catalog.json"),
+        history: dir.join("history.jsonl"),
+        site: dir.join("site.json"),
+    };
+    let settings = Settings::default();
+    let _ = settings.save(&paths.settings);
+    let volume = Arc::new(AtomicU8::new(settings.volume));
+    let (player_tx, _) = mpsc::unbounded_channel();
+    let (signal_tx, _) = mpsc::unbounded_channel();
+    let status = Status {
+        version: "test",
+        platform: "native",
+        phase: Phase::Idle,
+        mount: None,
+        station_name: None,
+        station_location: None,
+        phase_since_ms: now_ms(),
+        codec: None,
+        stream_url: None,
+        trigger: None,
+        last_heard_ms: None,
+        autoplay: settings.autoplay,
+        volume: settings.volume,
+        keep_awake: settings.keep_awake,
+        signals: Signals::default(),
+        output: OutputStatus::default(),
+        bt: BtStatus::default(),
+        password_set: false,
+        started_ms: now_ms(),
+        live_count: 0,
+        buffer_ms: 0,
+        recording: None,
+        quran_resume: None,
+        quran_pending: None,
+        quran_volume: settings.quran_volume,
+        browser_listening: settings.browser_listening,
+    };
+    Arc::new(AppState {
+        settings: RwLock::new(settings.clone()),
+        status: watch::Sender::new(status),
+        catalog: RwLock::new(Vec::new()),
+        catalog_fetched_ms: AtomicU64::new(0),
+        live: RwLock::new(Default::default()),
+        history: Mutex::new(History::load(paths.history.clone())),
+        logs: Mutex::new(Default::default()),
+        player_tx,
+        signal_tx,
+        mount_gen: watch::Sender::new(0),
+        volume: volume.clone(),
+        http: crate::net::build_client(),
+        sink: crate::sink::SinkHandle::spawn(volume, false),
+        hb_player: AtomicU64::new(now_ms()),
+        site: crate::site::SiteGuard::load(paths.site.clone()),
+        integrations: crate::integrations::Integrations::new(dir),
+        quran: crate::quran::Library::new(dir),
+        paths,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn now_is_a_recent_unix_timestamp() {
+        let sys = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64;
+        let t = now_ms();
+        assert!(t > 1_600_000_000_000, "after 2020");
+        assert!(t <= sys && sys - t < 5_000);
+    }
+
+    #[test]
+    fn phases_serialize_in_snake_case() {
+        assert_eq!(serde_json::to_string(&Phase::Idle).unwrap(), "\"idle\"");
+        assert_eq!(serde_json::to_string(&Phase::Waiting).unwrap(), "\"waiting\"");
+        assert_eq!(serde_json::to_string(&Phase::Reconnecting).unwrap(), "\"reconnecting\"");
     }
 }

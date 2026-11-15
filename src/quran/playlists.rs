@@ -218,4 +218,30 @@ mod tests {
         // Days without a time are dropped rather than refused.
         assert!(validate(Playlist { days: vec![1], ..morning() }, known).unwrap().days.is_empty());
     }
+
+    #[test]
+    fn the_store_adds_replaces_deletes_and_caps() {
+        let dir = std::env::temp_dir().join(format!("lm-pl-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("quran-playlists.json");
+        let store = PlaylistStore::load(path.clone());
+        let saved = store.save(morning()).unwrap();
+        assert_ne!(saved.id, "a", "a new playlist gets a fresh id");
+        let renamed = store.save(Playlist { name: "Evening".into(), ..saved.clone() }).unwrap();
+        assert_eq!(renamed.id, saved.id);
+        assert_eq!(store.all().len(), 1, "replaced, not added");
+        assert_eq!(PlaylistStore::load(path.clone()).get(&saved.id).unwrap().name, "Evening", "saved to disk");
+
+        for _ in 1..MAX_PLAYLISTS {
+            store.save(morning()).unwrap();
+        }
+        assert!(store.save(morning()).unwrap_err().contains("maximum"));
+        assert!(store.delete(&saved.id).unwrap());
+        assert!(!store.delete(&saved.id).unwrap());
+        assert!(store.get(&saved.id).is_none());
+
+        let broken = PlaylistStore { path: dir.join("missing").join("p.json"), list: Mutex::new(Vec::new()) };
+        assert!(broken.save(morning()).unwrap_err().contains("couldn't save"));
+        let _ = std::fs::remove_dir_all(dir);
+    }
 }

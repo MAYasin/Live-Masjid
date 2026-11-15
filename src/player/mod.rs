@@ -73,6 +73,8 @@ struct Player {
     suppressed_at: Option<Instant>,
     retry_after: Instant,
     last_probe: Instant,
+    /// Starts a live session's thread (tests replace it, so they never reach the network).
+    spawn_live: fn(SessionParams),
 }
 
 pub async fn run(app: App, mut cmd_rx: UnboundedReceiver<PlayerCmd>, mut sig_rx: UnboundedReceiver<Signal>) {
@@ -119,6 +121,7 @@ impl Player {
             suppressed_at: None,
             retry_after: Instant::now(),
             last_probe: Instant::now(),
+            spawn_live: crate::stream::source::spawn::<SessionParams>,
             app,
         }
     }
@@ -418,7 +421,7 @@ impl Player {
     fn on_signal(&mut self, sig: Signal) -> Option<Trigger> {
         let s = self.app.settings();
         match sig {
-            Signal::SseOnline | Signal::PollOnline => {
+            Signal::PollOnline => {
                 // A broadcast that starts while a recording plays takes priority.
                 if self.media.as_ref().is_some_and(|m| !m.live_at_start) && s.autoplay && self.suppressed_at.is_none() {
                     if let Some(res) = self.keep_resume_point() {
@@ -439,7 +442,7 @@ impl Player {
                     && self.media.is_none()
                     && Instant::now() >= self.retry_after;
                 if ok {
-                    return Some(if sig == Signal::SseOnline { Trigger::Sse } else { Trigger::Poll });
+                    return Some(Trigger::Poll);
                 }
             }
             Signal::PollOffline => {
@@ -462,7 +465,7 @@ impl Player {
         let token = self.token();
         let stop = Arc::new(AtomicBool::new(false));
         let buffer_ms = Arc::new(AtomicU64::new(0));
-        crate::stream::source::spawn(SessionParams {
+        (self.spawn_live)(SessionParams {
             mount: mount.clone(),
             codec: s.codec.clone(),
             sink: self.app.sink.clone(),
@@ -685,4 +688,749 @@ fn label_salah(app: App, mount: String, id: u64) {
             app.history.lock().unwrap().set_salah(id, label);
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::live::{LiveSession, StopReason};
+    use super::*;
+    use crate::state::{LiveInfo, test_app};
+
+    /// A temp data folder, removed when the test ends.
+    struct Dir(std::path::PathBuf);
+
+    impl Drop for Dir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn fx() -> (App, Dir) {
+        let dir = std::env::temp_dir().join(format!("livemasjid-player-{}", crate::config::random_hex(6)));
+        (test_app(&dir), Dir(dir))
+    }
+
+    /// A player whose live sessions never start a thread (no network in tests).
+    fn player(app: &App) -> Player {
+        let (ltx, _lr) = unbounded_channel();
+        let (mtx, _mr) = unbounded_channel();
+        let mut p = Player::new(app.clone(), ltx, mtx);
+        p.spawn_live = |_| {};
+        p
+    }
+
+    fn logged(app: &App, needle: &str) -> bool {
+        app.logs.lock().unwrap().iter().any(|l| l.msg.contains(needle))
+    }
+
+    fn phase(app: &App) -> Phase {
+        app.status.borrow().phase
+    }
+
+    fn not_live(app: &App) {
+        app.live.write().unwrap().clear();
+    }
+
+    fn play_surah(p: &mut Player, surah: u16) {
+        p.on_command(PlayerCmd::PlayQuran { surah, position_ms: 0, playlist: None, reciter: String::new(), speed: 1.0 });
+    }
+
+    /// A recording from a local port nothing listens on (fails at once, never leaves the host).
+    fn play_recording(p: &mut Player) {
+        p.on_command(PlayerCmd::PlayRecording {
+            mount: "m".into(),
+            title: "Talk".into(),
+            url: "http://127.0.0.1:9/talk.mp3".into(),
+            duration_s: Some(60),
+        });
+    }
+
+    fn surah_of(p: &Player) -> Option<u16> {
+        p.media.as_ref().and_then(|m| m.surah.as_ref()).map(|s| s.number)
+    }
+
+    fn resume(app: &App, surah: u16, auto: bool) -> QuranResume {
+        QuranResume {
+            surah,
+            title: "t".into(),
+            position_s: 30,
+            auto,
+            playlist: None,
+            reciter: app.quran.resolve(None).key,
+            speed: 1.5,
+        }
+    }
+
+    fn save_playlist(app: &App, surahs: &[u16]) -> String {
+        let p = crate::quran::Playlist {
+            id: "morning".into(),
+            name: "Morning".into(),
+            surahs: surahs.to_vec(),
+            speed: Some(1.25),
+            ..crate::quran::Playlist::default()
+        };
+        app.quran.save_playlist(p).expect("valid playlist").id
+    }
+
+    fn session(token: u64, stop_reason: Option<StopReason>) -> LiveSession {
+        LiveSession {
+            token,
+            stop: Arc::new(AtomicBool::new(false)),
+            mount: "m".into(),
+            trigger: Trigger::Poll,
+            hist_id: None,
+            reconnects: 0,
+            stop_reason,
+            buffer_ms: Arc::new(AtomicU64::new(0)),
+        }
+    }
+
+    fn select(app: &App, autoplay: bool) {
+        app.update_settings(|s| {
+            s.mount = Some("m".into());
+            s.autoplay = autoplay;
+        })
+        .unwrap();
+        let info = LiveInfo { server_type: "audio/ogg".into(), stream_start: Some("x".into()), listeners: None, title: None };
+        app.live.write().unwrap().insert("m".into(), vec![("m".into(), info)]);
+    }
+
+    #[test]
+    fn idle_phase_depends_on_a_selected_masjid() {
+        assert_eq!(idle_phase(&Settings::default()), Phase::Idle);
+        let s = Settings { mount: Some("lakewood".into()), ..Settings::default() };
+        assert_eq!(idle_phase(&s), Phase::Waiting);
+    }
+
+    #[test]
+    fn tokens_increase_and_quran_speed_is_clamped() {
+        let (app, _dir) = fx();
+        let mut p = player(&app);
+        assert_eq!((p.token(), p.token()), (1, 2));
+        p.on_command(PlayerCmd::QuranSpeed(9.0));
+        assert_eq!(f32::from_bits(p.qspeed.load(Ordering::Relaxed)), 2.0);
+        p.on_command(PlayerCmd::QuranSpeed(0.1));
+        assert_eq!(f32::from_bits(p.qspeed.load(Ordering::Relaxed)), 0.5);
+    }
+
+    #[test]
+    fn stop_without_a_session_is_harmless() {
+        let (app, _dir) = fx();
+        let mut p = player(&app);
+        assert!(p.on_command(PlayerCmd::Stop).is_none());
+        assert!(p.live.is_none() && p.suppressed_at.is_none());
+        assert!(p.live_ended(&EndReason::Finished).is_none(), "nothing to end");
+        p.start_live(Trigger::Manual);
+        assert!(p.live.is_none(), "no masjid selected");
+    }
+
+    #[test]
+    fn offline_signal_re_arms_after_stop() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.suppressed_at = Some(Instant::now());
+        app.set_phase(Phase::Stopped);
+        assert!(p.on_signal(Signal::PollOffline).is_none());
+        assert!(p.suppressed_at.is_none());
+        assert_eq!(app.status.borrow().phase, Phase::Waiting);
+    }
+
+    #[test]
+    fn online_signals_trigger_when_armed() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        assert_eq!(p.on_signal(Signal::PollOnline), Some(Trigger::Poll));
+        p.suppressed_at = Some(Instant::now());
+        assert!(p.on_signal(Signal::PollOnline).is_none(), "stopped by the user");
+    }
+
+    #[test]
+    fn online_signal_needs_autoplay() {
+        let (app, _dir) = fx();
+        select(&app, false);
+        let mut p = player(&app);
+        assert!(p.on_signal(Signal::PollOnline).is_none());
+    }
+
+    #[test]
+    fn live_state_comes_from_the_poll_map() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let p = player(&app);
+        let s = app.settings();
+        assert!(p.live_now());
+        assert!(p.live_has_priority(&s));
+        assert!(p.should_resume_live(&s));
+        app.live.write().unwrap().clear();
+        assert!(!p.live_now());
+        assert!(!p.live_has_priority(&s));
+        assert!(!p.should_resume_live(&s));
+    }
+
+    #[test]
+    fn suppression_blocks_priority_and_resume() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.suppressed_at = Some(Instant::now());
+        let s = app.settings();
+        assert!(!p.live_has_priority(&s));
+        assert!(!p.should_resume_live(&s));
+    }
+
+    #[test]
+    fn probe_runs_only_while_blind_and_due() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        app.status.send_modify(|s| {
+            s.signals.poll_ok = false;
+            s.signals.poll_last_ms = 0;
+            s.started_ms = 0;
+        });
+        p.last_probe = Instant::now() - PROBE_EVERY - Duration::from_secs(1);
+        assert_eq!(p.on_tick(), Some(Trigger::Probe));
+        assert!(p.on_tick().is_none(), "not due again at once");
+        app.status.send_modify(|s| s.signals.poll_ok = true);
+        p.last_probe = Instant::now() - PROBE_EVERY - Duration::from_secs(1);
+        assert!(p.on_tick().is_none(), "signals are fine");
+    }
+
+    #[test]
+    fn suppression_expires_on_the_tick() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.suppressed_at = Some(Instant::now() - SUPPRESS_MAX - Duration::from_secs(1));
+        app.set_phase(Phase::Stopped);
+        p.on_tick();
+        assert!(p.suppressed_at.is_none());
+        assert_eq!(app.status.borrow().phase, Phase::Waiting);
+    }
+
+    #[test]
+    fn recording_commands_are_noops_without_media() {
+        let (app, _dir) = fx();
+        let mut p = player(&app);
+        assert!(p.on_command(PlayerCmd::StopRecording).is_none());
+        assert!(p.on_command(PlayerCmd::QuranStep(1)).is_none());
+        p.pause_media(true);
+        assert!(p.keep_resume_point().is_none());
+        assert!(p.restart_point().is_none());
+        assert!(p.on_media_event(5, RecordingEvent::Started).is_none());
+        p.scheduled_playlist("missing");
+        assert!(p.pending.is_none());
+    }
+
+    #[test]
+    fn reconfigure_without_a_session_returns_to_waiting() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        app.set_phase(Phase::Playing);
+        p.on_command(PlayerCmd::Reconfigure);
+        assert!(p.live.is_none());
+        assert_eq!(app.status.borrow().phase, Phase::Waiting);
+    }
+
+    #[test]
+    fn play_now_without_live_asks_for_a_manual_start() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        assert_eq!(p.on_command(PlayerCmd::PlayNow), Some(Trigger::Manual));
+    }
+
+    #[test]
+    fn stale_live_events_are_ignored() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.live = Some(session(1, None));
+        assert!(p.on_live_event(2, StreamEvent::Reconnecting("x".into())).is_none());
+        assert_eq!(app.status.borrow().phase, Phase::Waiting, "the stale event changed nothing");
+    }
+
+    #[test]
+    fn a_stopped_session_ignores_a_late_start() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.live = Some(session(1, Some(StopReason::Stopped)));
+        assert!(p.on_live_event(1, StreamEvent::Started { url: "u".into(), codec: "opus" }).is_none());
+        assert!(p.live.is_some(), "still the same session");
+        assert!(app.history.lock().unwrap().last_heard("m").is_none(), "no history entry");
+    }
+
+    #[test]
+    fn reconnect_and_end_update_the_player() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.live = Some(session(1, None));
+        p.on_live_event(1, StreamEvent::CaughtUp(4));
+        p.on_live_event(1, StreamEvent::Reconnecting("drop".into()));
+        assert_eq!(app.status.borrow().phase, Phase::Reconnecting);
+        assert!(p.on_live_event(1, StreamEvent::Ended(EndReason::Finished)).is_none());
+        assert!(p.live.is_none());
+        assert_eq!(app.status.borrow().phase, Phase::Waiting);
+        assert!(app.status.borrow().codec.is_none());
+    }
+
+    #[test]
+    fn switching_mount_resumes_when_the_new_one_is_live() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.live = Some(session(1, Some(StopReason::Switched)));
+        assert_eq!(p.live_ended(&EndReason::Stopped), Some(Trigger::Poll));
+    }
+
+    #[test]
+    fn a_recording_reports_its_status_and_stops() {
+        let (app, _dir) = fx();
+        let controls = Controls::new(5_000, false);
+        let m = Media {
+            token: 1,
+            controls: controls.clone(),
+            mount: "m".into(),
+            title: "R".into(),
+            duration_s: Some(120),
+            live_at_start: false,
+            surah: None,
+            speed: Arc::new(AtomicU32::new(1f32.to_bits())),
+            sink: app.sink.clone(),
+        };
+        assert!(!m.is_quran());
+        assert_eq!(m.neighbour(1), None);
+        assert!(m.resume_point().is_none());
+        let st = m.status();
+        assert_eq!((st.kind, st.duration_s, st.position_s), ("recording", Some(120), 4));
+        m.stop();
+        assert!(m.controls.stop.load(Ordering::Relaxed));
+    }
+
+    #[test]
+    fn a_surah_reports_its_status_and_freezes_at_the_heard_position() {
+        let (app, _dir) = fx();
+        let controls = Controls::new(10_000, false);
+        let reciter = app.quran.resolve(None);
+        let surah = Surah { number: 36, playlist: None, reciter: reciter.clone(), lib: app.quran.clone() };
+        let m = Media {
+            token: 1,
+            controls: controls.clone(),
+            mount: String::new(),
+            title: "36. Ya-Sin".into(),
+            duration_s: None,
+            live_at_start: false,
+            surah: Some(surah),
+            speed: Arc::new(AtomicU32::new(1f32.to_bits())),
+            sink: app.sink.clone(),
+        };
+        assert!(m.is_quran());
+        assert!(m.neighbour(1).is_some());
+        let st = m.status();
+        assert_eq!((st.kind, st.surah, st.position_s), ("quran", Some(36), 9));
+        assert!(st.reciter.is_some() && st.reciter_key.as_deref() == Some(&reciter.key));
+        let r = m.resume_point().expect("quran resumes");
+        assert!(r.auto);
+        assert_eq!(r.surah, 36);
+        m.freeze();
+        assert!(m.controls.is_paused());
+        assert_eq!(m.controls.position_ms.load(Ordering::Relaxed), 9_300);
+    }
+
+    #[test]
+    fn play_quran_takes_the_speaker_from_live() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.live = Some(session(1, None));
+        play_surah(&mut p, 36);
+        let a = p.live.as_ref().unwrap();
+        assert_eq!(a.stop_reason, Some(StopReason::Recording));
+        assert!(a.stop.load(Ordering::Relaxed));
+        assert_eq!(surah_of(&p), Some(36));
+        assert!(p.media.as_ref().unwrap().live_at_start);
+        {
+            let st = app.status.borrow();
+            let r = st.recording.as_ref().unwrap();
+            assert_eq!((r.kind, r.surah), ("quran", Some(36)));
+        }
+        assert_eq!(phase(&app), Phase::Recording);
+        assert!(logged(&app, "▶ Quran: 36."));
+        p.stop_media();
+        assert!(app.status.borrow().recording.is_none());
+    }
+
+    #[test]
+    fn play_now_keeps_the_quran_for_after_the_broadcast() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        play_surah(&mut p, 2);
+        assert_eq!(p.on_command(PlayerCmd::PlayNow), Some(Trigger::Manual));
+        assert!(p.media.is_none());
+        let r = p.quran_resume.clone().unwrap();
+        assert_eq!(r.surah, 2);
+        assert!(r.auto);
+        assert!(app.status.borrow().quran_resume.is_some());
+        assert!(app.status.borrow().recording.is_none());
+        p.live = Some(session(9, None));
+        assert!(p.on_command(PlayerCmd::PlayNow).is_none(), "already playing live");
+    }
+
+    #[test]
+    fn seek_pause_resume_and_step_restart_the_surah() {
+        let (app, _dir) = fx();
+        let mut p = player(&app);
+        p.on_command(PlayerCmd::QuranSeek(5_000));
+        assert!(p.media.is_none(), "nothing to seek");
+        play_surah(&mut p, 2);
+        let first = p.media.as_ref().unwrap().token;
+
+        p.on_command(PlayerCmd::PauseRecording(true));
+        assert!(p.media.as_ref().unwrap().controls.is_paused());
+        assert!(app.status.borrow().recording.as_ref().unwrap().paused);
+
+        p.on_command(PlayerCmd::QuranSeek(60_000));
+        let m = p.media.as_ref().unwrap();
+        assert!(m.token > first);
+        assert!(m.controls.is_paused(), "a paused surah stays paused after a seek");
+        assert_eq!(m.controls.position_ms.load(Ordering::Relaxed), 60_000);
+
+        let paused_token = m.token;
+        p.on_command(PlayerCmd::PauseRecording(false));
+        let m = p.media.as_ref().unwrap();
+        assert!(m.token > paused_token, "resume restarts from the file");
+        assert!(!m.controls.is_paused());
+        assert_eq!(m.controls.position_ms.load(Ordering::Relaxed), 60_000);
+
+        p.on_command(PlayerCmd::QuranStep(1));
+        assert_eq!(surah_of(&p), Some(3));
+        assert_eq!(p.media.as_ref().unwrap().controls.position_ms.load(Ordering::Relaxed), 0);
+        assert!(logged(&app, "▶ Quran: 3."));
+        p.on_command(PlayerCmd::QuranStep(-1));
+        assert_eq!(surah_of(&p), Some(2));
+        p.on_command(PlayerCmd::QuranSpeed(1.5));
+        assert!((app.status.borrow().recording.as_ref().unwrap().speed - 1.5).abs() < f32::EPSILON);
+        p.stop_media();
+    }
+
+    #[test]
+    fn a_recording_pauses_and_stops_back_to_live() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.live = Some(session(1, None));
+        p.quran_resume = Some(resume(&app, 36, true));
+        play_recording(&mut p);
+        assert_eq!(p.live.as_ref().unwrap().stop_reason, Some(StopReason::Recording));
+        assert!(p.quran_resume.is_none(), "a recording replaces the Quran's resume point");
+        assert_eq!(phase(&app), Phase::Recording);
+        assert!(logged(&app, "▶ Playing recording: Talk"));
+        {
+            let st = app.status.borrow();
+            let r = st.recording.as_ref().unwrap();
+            assert_eq!((r.kind, r.duration_s, r.title.as_str()), ("recording", Some(60), "Talk"));
+        }
+        p.on_command(PlayerCmd::PauseRecording(true));
+        assert!(p.media.as_ref().unwrap().controls.is_paused());
+        p.on_command(PlayerCmd::PauseRecording(false));
+        assert!(!p.media.as_ref().unwrap().controls.is_paused());
+
+        p.live = None;
+        p.quran_resume = Some(resume(&app, 36, true));
+        assert_eq!(p.on_command(PlayerCmd::StopRecording), Some(Trigger::Poll), "the masjid is on air");
+        assert!(p.media.is_none() && p.quran_resume.is_none());
+        assert_eq!(phase(&app), Phase::Waiting);
+        assert!(logged(&app, "Recording stopped"));
+
+        not_live(&app);
+        play_recording(&mut p);
+        assert!(p.on_command(PlayerCmd::StopRecording).is_none(), "off air: nothing to resume");
+    }
+
+    #[test]
+    fn stop_suppresses_live_until_it_ends() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.live = Some(session(1, None));
+        assert!(p.on_command(PlayerCmd::Stop).is_none());
+        let a = p.live.as_ref().unwrap();
+        assert_eq!(a.stop_reason, Some(StopReason::Stopped));
+        assert!(a.stop.load(Ordering::Relaxed));
+        assert!(p.suppressed_at.is_some());
+        assert_eq!(phase(&app), Phase::Stopped);
+        assert!(p.live_ended(&EndReason::Stopped).is_none());
+        assert_eq!(phase(&app), Phase::Stopped, "stays stopped until the masjid goes offline");
+    }
+
+    #[test]
+    fn reconfigure_switches_only_for_another_mount() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.live = Some(session(1, None));
+        app.set_phase(Phase::Playing);
+        p.on_command(PlayerCmd::Reconfigure);
+        assert!(p.live.as_ref().unwrap().stop_reason.is_none(), "same masjid");
+        assert_eq!(phase(&app), Phase::Playing);
+        app.update_settings(|s| s.mount = Some("other".into())).unwrap();
+        p.on_command(PlayerCmd::Reconfigure);
+        assert_eq!(p.live.as_ref().unwrap().stop_reason, Some(StopReason::Switched));
+    }
+
+    #[tokio::test]
+    async fn test_tone_goes_to_the_sink() {
+        let (app, _dir) = fx();
+        let mut p = player(&app);
+        assert!(p.on_command(PlayerCmd::TestTone).is_none());
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    #[test]
+    fn a_scheduled_playlist_starts_at_once_when_off_air() {
+        let (app, _dir) = fx();
+        select(&app, false);
+        let mut p = player(&app);
+        let id = save_playlist(&app, &[36, 67]);
+        p.on_command(PlayerCmd::ScheduledPlaylist(id));
+        assert_eq!(surah_of(&p), Some(36));
+        let m = p.media.as_ref().unwrap();
+        assert_eq!(m.surah.as_ref().unwrap().playlist.as_ref().map(|c| c.name.as_str()), Some("Morning"));
+        assert!((f32::from_bits(p.qspeed.load(Ordering::Relaxed)) - 1.25).abs() < f32::EPSILON);
+        assert!(logged(&app, "▶ Scheduled: 36."));
+        p.stop_media();
+    }
+
+    #[test]
+    fn a_scheduled_playlist_waits_for_the_broadcast() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        let id = save_playlist(&app, &[67]);
+        p.on_command(PlayerCmd::ScheduledPlaylist(id.clone()));
+        assert!(p.media.is_none());
+        assert!(p.pending.is_some());
+        assert_eq!(app.status.borrow().quran_pending.as_deref(), Some("Morning"));
+        assert!(logged(&app, "will play when the live broadcast ends"));
+
+        p.on_tick();
+        assert!(p.pending.is_some(), "still live");
+
+        not_live(&app);
+        p.quran_resume = Some(resume(&app, 2, false));
+        p.on_tick();
+        assert!(p.pending.is_none() && p.quran_resume.is_none());
+        assert_eq!(surah_of(&p), Some(67));
+        assert!(app.status.borrow().quran_pending.is_none());
+        assert!(logged(&app, "▶ Scheduled (after the broadcast): 67."));
+        p.stop_media();
+
+        // A broadcast that lasts too long: the playlist is skipped.
+        select(&app, true);
+        p.on_command(PlayerCmd::ScheduledPlaylist(id));
+        p.pending.as_mut().unwrap().until = Instant::now() - Duration::from_secs(1);
+        p.on_tick();
+        assert!(p.pending.is_none() && p.media.is_none());
+        assert!(app.status.borrow().quran_pending.is_none());
+        assert!(logged(&app, "Skipped \"Morning\""));
+    }
+
+    #[test]
+    fn a_broadcast_interrupts_the_quran_and_recordings() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        not_live(&app);
+        let mut p = player(&app);
+        play_surah(&mut p, 36);
+        select(&app, true);
+        assert_eq!(p.on_signal(Signal::PollOnline), Some(Trigger::Poll));
+        assert!(p.media.is_none());
+        assert_eq!(p.quran_resume.as_ref().map(|r| r.surah), Some(36));
+        assert!(logged(&app, "Quran paused at"));
+
+        not_live(&app);
+        play_recording(&mut p);
+        select(&app, true);
+        assert_eq!(p.on_signal(Signal::PollOnline), Some(Trigger::Poll));
+        assert!(p.media.is_none());
+        assert!(logged(&app, "stopping the recording"));
+
+        // Already live when it started: the recording keeps playing until offline is seen.
+        play_recording(&mut p);
+        assert!(p.on_signal(Signal::PollOnline).is_none());
+        assert!(p.media.is_some());
+        p.on_signal(Signal::PollOffline);
+        assert!(!p.media.as_ref().unwrap().live_at_start);
+        p.stop_media();
+    }
+
+    #[test]
+    fn start_live_spawns_a_session() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.start_live(Trigger::Probe);
+        assert_eq!(p.live.as_ref().map(|a| a.trigger), Some(Trigger::Probe));
+        assert_eq!(phase(&app), Phase::Waiting, "a probe is silent until it plays");
+        p.live = None;
+        p.start_live(Trigger::Poll);
+        assert_eq!(p.live.as_ref().map(|a| (a.token, a.mount.as_str())), Some((2, "m")));
+        assert_eq!(phase(&app), Phase::Connecting);
+        assert!(p.on_tick().is_none(), "no audio yet: nothing to record");
+        assert!(app.status.borrow().last_heard_ms.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_broadcast_is_recorded_in_history() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        // An invalid mount name keeps the salah lookup off the network.
+        p.live = Some(LiveSession { mount: "bad mount".into(), ..session(1, None) });
+        p.on_live_event(1, StreamEvent::Started { url: "u".into(), codec: "opus" });
+        assert!(p.live.as_ref().unwrap().hist_id.is_some());
+        assert_eq!(phase(&app), Phase::Playing);
+        {
+            let st = app.status.borrow();
+            assert_eq!((st.codec.as_deref(), st.stream_url.as_deref(), st.trigger.as_deref()), (Some("opus"), Some("u"), Some("poll")));
+        }
+        assert!(logged(&app, "▶ Playing bad mount (opus, via poll)"));
+        p.on_live_event(1, StreamEvent::Started { url: "u".into(), codec: "opus" });
+        assert_eq!(p.live.as_ref().unwrap().reconnects, 1);
+        assert!(logged(&app, "Stream recovered"));
+
+        p.live.as_ref().unwrap().buffer_ms.store(2_500, Ordering::Relaxed);
+        app.status.send_modify(|s| s.mount = Some("bad mount".into()));
+        p.on_tick();
+        assert_eq!(app.status.borrow().buffer_ms, 2_500);
+        assert!(app.status.borrow().last_heard_ms.is_some());
+
+        assert!(p.on_live_event(1, StreamEvent::Ended(EndReason::Finished)).is_none());
+        let s = app.history.lock().unwrap().recent(1, None);
+        assert_eq!((s[0].reason.as_str(), s[0].reconnects, s[0].mount.as_str()), ("ended", 1, "bad mount"));
+        assert!(logged(&app, "■ Broadcast ended"));
+        assert_eq!(app.status.borrow().buffer_ms, 0);
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    #[tokio::test]
+    async fn a_start_during_on_demand_playback_keeps_its_phase() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        app.update_settings(|s| s.station_name = Some("Masjid".into())).unwrap();
+        app.status.send_modify(|s| s.mount = Some("m".into()));
+        let mut p = player(&app);
+        play_recording(&mut p);
+        p.live = Some(LiveSession { mount: "bad mount".into(), ..session(1, None) });
+        p.on_live_event(1, StreamEvent::Started { url: "u".into(), codec: "mp3" });
+        assert_eq!(phase(&app), Phase::Recording);
+        assert!(logged(&app, "▶ Playing Masjid"));
+        p.live_ended(&EndReason::Finished);
+        assert_eq!(phase(&app), Phase::Recording, "the recording still plays");
+        p.stop_media();
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+
+    #[test]
+    fn no_stream_yet_waits_before_retrying() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        p.live = Some(session(1, None));
+        assert!(p.live_ended(&EndReason::NotLive).is_none());
+        assert!(p.retry_after > Instant::now());
+        assert!(p.on_signal(Signal::PollOnline).is_none(), "too soon to retry");
+    }
+
+    #[test]
+    fn a_finished_surah_moves_to_the_next() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        let mut p = player(&app);
+        play_surah(&mut p, 113);
+        let t = p.media.as_ref().unwrap().token;
+        assert!(p.on_media_event(t, RecordingEvent::Started).is_none());
+        assert!(p.on_media_event(t, RecordingEvent::Ended(None)).is_none());
+        assert_eq!(surah_of(&p), Some(114));
+        assert!(logged(&app, "▶ Quran: 114."));
+        let t = p.media.as_ref().unwrap().token;
+        assert!(p.on_media_event(t + 100, RecordingEvent::Ended(None)).is_none(), "stale event");
+        assert_eq!(surah_of(&p), Some(114));
+        assert_eq!(p.on_media_event(t, RecordingEvent::Ended(None)), Some(Trigger::Poll), "the end: back to live");
+        assert!(p.media.is_none());
+        assert!(app.status.borrow().recording.is_none());
+        assert_eq!(phase(&app), Phase::Waiting);
+        assert!(logged(&app, "Recording finished"));
+    }
+
+    #[test]
+    fn a_failed_recording_is_reported() {
+        let (app, _dir) = fx();
+        let mut p = player(&app);
+        play_recording(&mut p);
+        let t = p.media.as_ref().unwrap().token;
+        assert!(p.on_media_event(t, RecordingEvent::Ended(Some("boom".into()))).is_none());
+        assert!(logged(&app, "Recording could not be played: boom"));
+        assert_eq!(phase(&app), Phase::Idle);
+    }
+
+    #[test]
+    fn the_quran_continues_once_the_broadcast_has_closed() {
+        let (app, _dir) = fx();
+        select(&app, true);
+        not_live(&app);
+        let mut p = player(&app);
+        p.quran_resume = Some(resume(&app, 36, false));
+        p.on_tick();
+        assert!(p.closed_since.is_none(), "paused by the user: no automatic resume");
+
+        p.quran_resume = Some(resume(&app, 36, true));
+        p.on_tick();
+        assert!(p.closed_since.is_some() && p.media.is_none(), "waits a little first");
+        p.closed_since = Some(Instant::now() - RESUME_AFTER_CLOSED - Duration::from_secs(1));
+        p.on_tick();
+        assert_eq!(surah_of(&p), Some(36));
+        assert_eq!(p.media.as_ref().unwrap().controls.position_ms.load(Ordering::Relaxed), 30_000);
+        assert!((f32::from_bits(p.qspeed.load(Ordering::Relaxed)) - 1.5).abs() < f32::EPSILON);
+        assert!(p.quran_resume.is_none() && p.closed_since.is_none());
+        assert!(logged(&app, "Broadcast over; continuing the Quran"));
+        p.on_tick();
+        assert!(app.status.borrow().recording.is_some());
+        p.stop_media();
+    }
+
+    #[tokio::test]
+    async fn the_loop_feeds_every_input_to_the_player() {
+        let (app, _dir) = fx();
+        let (ctx, crx) = unbounded_channel();
+        let (stx, srx) = unbounded_channel();
+        let task = tokio::spawn(run(app.clone(), crx, srx));
+        stx.send(Signal::PollOffline).unwrap();
+        // No masjid selected: the manual start finds nothing to play.
+        ctx.send(PlayerCmd::PlayNow).unwrap();
+        ctx.send(PlayerCmd::PlayRecording {
+            mount: "m".into(),
+            title: "Talk".into(),
+            url: "http://127.0.0.1:9/talk.mp3".into(),
+            duration_s: None,
+        })
+        .unwrap();
+        let mut ended = false;
+        for _ in 0..100 {
+            tokio::time::sleep(Duration::from_millis(50)).await;
+            if logged(&app, "Recording could not be played") || logged(&app, "Recording finished") {
+                ended = true;
+                break;
+            }
+        }
+        task.abort();
+        assert!(ended, "the recording's end came back through the loop");
+        assert!(app.status.borrow().recording.is_none());
+    }
 }

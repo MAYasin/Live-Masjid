@@ -79,11 +79,16 @@ pub struct NewPassword {
     new_password: String,
 }
 
+/// A too-short password, unless it's empty (which removes the password).
+fn password_problem(pw: &str) -> Option<&'static str> {
+    (!pw.is_empty() && pw.len() < 4).then_some("Password must be at least 4 characters")
+}
+
 /// Set, change or (with an empty string) remove the password. Caller is authenticated.
 pub async fn set_password(State(app): State<App>, Json(r): Json<NewPassword>) -> Result<Response, ApiError> {
     let pw = r.new_password;
-    if !pw.is_empty() && pw.len() < 4 {
-        return Err(ApiError::bad("Password must be at least 4 characters"));
+    if let Some(msg) = password_problem(&pw) {
+        return Err(ApiError::bad(msg));
     }
     let hash = if pw.is_empty() {
         None
@@ -101,4 +106,79 @@ pub async fn set_password(State(app): State<App>, Json(r): Json<NewPassword>) ->
         set_cookie(&mut resp, &token, COOKIE_MAX_AGE);
     }
     Ok(resp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::body::Body;
+
+    fn headers(values: &[&str]) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        for v in values {
+            h.append(header::COOKIE, HeaderValue::from_str(v).unwrap());
+        }
+        h
+    }
+
+    #[test]
+    fn finds_the_session_cookie() {
+        assert_eq!(cookie(&headers(&["a=1; lm_session=abc; b=2"]), COOKIE), Some("abc"));
+        assert_eq!(cookie(&headers(&["x=1", "lm_session=def"]), COOKIE), Some("def"));
+        assert_eq!(cookie(&headers(&[" lm_session = spaced "]), COOKIE), None);
+        assert_eq!(cookie(&headers(&["lm_session="]), COOKIE), Some(""));
+        assert_eq!(cookie(&HeaderMap::new(), COOKIE), None);
+    }
+
+    #[test]
+    fn cookie_name_must_match_exactly() {
+        assert_eq!(cookie(&headers(&["lm_session_extra=no"]), COOKIE), None);
+        assert_eq!(cookie(&headers(&["xlm_session=no"]), COOKIE), None);
+    }
+
+    #[test]
+    fn sets_a_strict_httponly_cookie() {
+        let mut resp = Response::new(Body::empty());
+        set_cookie(&mut resp, "token123", 400);
+        let v = resp.headers().get(header::SET_COOKIE).unwrap().to_str().unwrap();
+        assert_eq!(v, "lm_session=token123; Path=/; HttpOnly; SameSite=Strict; Max-Age=400");
+    }
+
+    #[test]
+    fn logout_expires_the_cookie() {
+        let mut resp = Response::new(Body::empty());
+        set_cookie(&mut resp, "", 0);
+        let v = resp.headers().get(header::SET_COOKIE).unwrap().to_str().unwrap();
+        assert!(v.starts_with("lm_session=; "));
+        assert!(v.ends_with("Max-Age=0"));
+    }
+
+    #[test]
+    fn an_unsendable_token_sets_no_cookie() {
+        let mut resp = Response::new(Body::empty());
+        set_cookie(&mut resp, "bad
+token", 10);
+        assert!(resp.headers().get(header::SET_COOKIE).is_none());
+    }
+
+    #[tokio::test]
+    async fn login_without_a_password_and_too_short_passwords() {
+        let dir = std::env::temp_dir().join(format!("lm-auth-{}", crate::config::random_hex(6)));
+        let app = crate::state::test_app(&dir);
+        let resp = login(State(app.clone()), Json(Login { password: "anything".into() })).await.ok().expect("open");
+        assert_eq!(resp.status(), axum::http::StatusCode::OK);
+        assert!(resp.headers().get(header::SET_COOKIE).is_none(), "no session without a password");
+        let Err(e) = set_password(State(app.clone()), Json(NewPassword { new_password: "abc".into() })).await else { panic!("short password") };
+        assert_eq!(e.0, axum::http::StatusCode::BAD_REQUEST);
+        assert!(app.settings().password_hash.is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn password_length_rule() {
+        assert_eq!(password_problem(""), None, "empty removes the password");
+        assert!(password_problem("a").is_some());
+        assert!(password_problem("abc").is_some());
+        assert_eq!(password_problem("abcd"), None);
+    }
 }

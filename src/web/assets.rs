@@ -96,31 +96,42 @@ const RELOAD_SCRIPT: &str = r#"<script>(() => { let last = null;
 
 pub async fn index(headers: HeaderMap) -> Response {
     match from_disk("index.html") {
-        Some(html) => serve(&headers, "text/html; charset=utf-8", &html.replace("</body>", &format!("{RELOAD_SCRIPT}</body>"))),
+        Some(html) => serve(&headers, "text/html; charset=utf-8", &with_reload(&html)),
         None => serve(&headers, "text/html; charset=utf-8", INDEX),
     }
 }
 
+/// Development: the page with the reload script added.
+fn with_reload(html: &str) -> String {
+    html.replace("</body>", &format!("{RELOAD_SCRIPT}</body>"))
+}
+
 /// Development: the newest modification time under the UI folder (the page reloads when it changes).
 pub async fn dev_stamp() -> Response {
-    fn newest(dir: &std::path::Path) -> u128 {
-        let entries = std::fs::read_dir(dir).into_iter().flatten().flatten();
-        entries
-            .map(|e| {
-                let p = e.path();
-                if p.is_dir() {
-                    return newest(&p);
-                }
-                let modified = e.metadata().and_then(|m| m.modified()).ok();
-                modified.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis())
-            })
-            .max()
-            .unwrap_or(0)
-    }
-    match crate::platform::ui_dir() {
+    stamp(crate::platform::ui_dir())
+}
+
+fn stamp(dir: Option<&std::path::Path>) -> Response {
+    match dir {
         Some(dir) => ([(header::CACHE_CONTROL, "no-store")], newest(dir).to_string()).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+/// Newest modification time (ms) of any file under `dir`, 0 when there is none.
+fn newest(dir: &std::path::Path) -> u128 {
+    let entries = std::fs::read_dir(dir).into_iter().flatten().flatten();
+    entries
+        .map(|e| {
+            let p = e.path();
+            if p.is_dir() {
+                return newest(&p);
+            }
+            let modified = e.metadata().and_then(|m| m.modified()).ok();
+            modified.and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis())
+        })
+        .max()
+        .unwrap_or(0)
 }
 
 /// App icons (PNG) for phones: iOS home screen, Android/Chrome install.
@@ -171,6 +182,8 @@ pub async fn manifest() -> Response {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
     fn content_types() {
         assert!(super::content_type("a/b.css").starts_with("text/css"));
@@ -178,5 +191,72 @@ mod tests {
         assert!(super::FILES.iter().all(|(p, _, body)| !body.is_empty() && !p.starts_with('/')));
         assert_ne!(super::etag("a"), super::etag("b"), "content changes must change the ETag");
         assert_eq!(super::etag("same"), super::etag("same"));
+    }
+
+    #[tokio::test]
+    async fn serves_files_and_revalidates_with_the_etag() {
+        let r = super::file(HeaderMap::new(), axum::extract::Path("css/base.css".to_string())).await;
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(r.headers()[header::CONTENT_TYPE], "text/css; charset=utf-8");
+        assert_eq!(r.headers()[header::CACHE_CONTROL], "no-cache");
+        let tag = r.headers()[header::ETAG].to_str().unwrap().to_string();
+        let mut h = HeaderMap::new();
+        h.insert(header::IF_NONE_MATCH, tag.parse().unwrap());
+        let r2 = super::file(h, axum::extract::Path("css/base.css".to_string())).await;
+        assert_eq!(r2.status(), StatusCode::NOT_MODIFIED);
+    }
+
+    #[tokio::test]
+    async fn unknown_files_are_404() {
+        let r = super::file(HeaderMap::new(), axum::extract::Path("../settings.json".to_string())).await;
+        assert_eq!(r.status(), StatusCode::NOT_FOUND);
+        assert_eq!(super::png(axum::extract::Path("nope.png".to_string())).await.status(), StatusCode::NOT_FOUND);
+        assert_eq!(super::png(axum::extract::Path("icon-192.png".to_string())).await.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn index_icon_and_manifest_are_served() {
+        let idx = super::index(HeaderMap::new()).await;
+        assert_eq!(idx.status(), StatusCode::OK);
+        assert_eq!(idx.headers()[header::CONTENT_TYPE], "text/html; charset=utf-8");
+        let body = axum::body::to_bytes(idx.into_body(), 4 * 1024 * 1024).await.unwrap();
+        assert!(std::str::from_utf8(&body).unwrap().contains("<html"));
+        assert_eq!(super::icon(HeaderMap::new()).await.headers()[header::CONTENT_TYPE], "image/svg+xml");
+        let m = super::manifest().await;
+        assert_eq!(m.headers()[header::CONTENT_TYPE], "application/manifest+json");
+    }
+
+    #[test]
+    fn other_files_are_plain_text() {
+        assert_eq!(super::content_type("notes.txt"), "text/plain; charset=utf-8");
+        assert_eq!(super::content_type(".js"), "text/plain; charset=utf-8", "an extension alone is no file");
+    }
+
+    #[test]
+    fn development_reload() {
+        let page = super::with_reload("<html><body>x</body></html>");
+        assert!(page.contains("/__dev/stamp"));
+        assert!(page.ends_with("</script></body></html>"));
+    }
+
+    #[tokio::test]
+    async fn dev_stamp_tracks_the_newest_file() {
+        assert_eq!(super::dev_stamp().await.status(), if crate::platform::ui_dir().is_some() { StatusCode::OK } else { StatusCode::NOT_FOUND });
+        assert_eq!(super::stamp(None).status(), StatusCode::NOT_FOUND);
+
+        let dir = std::env::temp_dir().join(format!("lm-ui-{}", crate::config::random_hex(6)));
+        assert_eq!(super::newest(&dir), 0, "a missing folder");
+        std::fs::create_dir_all(dir.join("js/views")).unwrap();
+        assert_eq!(super::newest(&dir), 0, "no files");
+        std::fs::write(dir.join("index.html"), "x").unwrap();
+        std::fs::write(dir.join("js/views/now.js"), "y").unwrap();
+        let t = super::newest(&dir);
+        assert!(t > 0);
+        let r = super::stamp(Some(&dir));
+        assert_eq!(r.status(), StatusCode::OK);
+        assert_eq!(r.headers()[header::CACHE_CONTROL], "no-store");
+        let body = axum::body::to_bytes(r.into_body(), 1024).await.unwrap();
+        assert_eq!(std::str::from_utf8(&body).unwrap(), t.to_string());
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

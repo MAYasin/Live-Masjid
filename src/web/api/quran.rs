@@ -192,10 +192,15 @@ pub struct SpeedReq {
     speed: f32,
 }
 
+/// Finite and inside the range the player supports.
+fn valid_speed(speed: f32) -> bool {
+    speed.is_finite() && (0.5..=2.0).contains(&speed)
+}
+
 /// Change the playing Quran's speed. It also becomes the default speed, unless the playing
 /// playlist has its own.
 pub async fn speed(State(app): State<App>, Json(r): Json<SpeedReq>) -> ApiResult {
-    if !r.speed.is_finite() || !(0.5..=2.0).contains(&r.speed) {
+    if !valid_speed(r.speed) {
         return Err(ApiError::bad("Speed must be between 0.5× and 2×"));
     }
     let playlist = app.status.borrow().recording.as_ref().and_then(|x| x.playlist.as_ref().map(|p| p.id.clone()));
@@ -205,4 +210,195 @@ pub async fn speed(State(app): State<App>, Json(r): Json<SpeedReq>) -> ApiResult
     }
     let _ = app.player_tx.send(PlayerCmd::QuranSpeed(r.speed));
     ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::state::test_app;
+
+    fn app() -> App {
+        let dir = std::env::temp_dir().join(format!("livemasjid-quran-api-{}", crate::config::random_hex(6)));
+        test_app(&dir)
+    }
+
+    /// An app whose reciter catalogue has one partial recitation (`partial-r1`: Al-Fātiḥah only),
+    /// and whose player commands can be read back.
+    fn app_with_catalogue() -> (App, std::path::PathBuf, tokio::sync::mpsc::UnboundedReceiver<PlayerCmd>) {
+        let dir = std::env::temp_dir().join(format!("livemasjid-quran-api-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(dir.join("quran")).unwrap();
+        let catalogue = json!([{ "key": "partial-r1", "name": "Partial", "style": "", "server": "https://server.mp3quran.net/partial/", "surahs": [1] }]);
+        std::fs::write(dir.join("quran/reciters.json"), catalogue.to_string()).unwrap();
+        let mut app = test_app(&dir);
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        std::sync::Arc::get_mut(&mut app).expect("sole owner").player_tx = tx;
+        (app, dir, rx)
+    }
+
+    fn playlist(name: &str, surahs: Vec<u16>, reciter: Option<&str>, speed: Option<f32>) -> SavePlaylist {
+        SavePlaylist { id: None, name: name.into(), surahs, repeat: true, reciter: reciter.map(str::to_string), days: vec![], time: None, speed }
+    }
+
+    #[tokio::test]
+    async fn the_default_reciter_can_be_changed() {
+        let (app, dir, _) = app_with_catalogue();
+        assert!(super::set_reciter(State(app.clone()), Json(SetReciter { reciter: "nobody-r9".into() })).await.is_err());
+        assert!(super::set_reciter(State(app.clone()), Json(SetReciter { reciter: "partial-r1".into() })).await.is_ok());
+        assert_eq!(app.settings().quran_reciter, "partial-r1");
+        let Json(v) = super::reciters(State(app.clone())).await;
+        assert_eq!(v["default"], "partial-r1");
+        assert_eq!(v["reciters"][0]["key"], "partial-r1");
+        let Json(info) = super::library(State(app.clone()), Query(ReciterQuery { reciter: None })).await.ok().expect("library");
+        assert!(serde_json::to_value(info).is_ok());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn playlists_play_with_their_own_reciter_and_speed() {
+        let (app, dir, mut rx) = app_with_catalogue();
+        let p = super::save_playlist(State(app.clone()), Json(playlist("Night", vec![1], Some("partial-r1"), Some(1.5)))).await.ok().expect("saved").0;
+        let req = PlayReq { surah: None, playlist: Some(p.id.clone()), index: 0, position_s: 3, reciter: None, speed: None };
+        assert!(super::play(State(app.clone()), Json(req)).await.is_ok());
+        match rx.try_recv() {
+            Ok(PlayerCmd::PlayQuran { surah, position_ms, playlist, reciter, speed }) => {
+                assert_eq!((surah, position_ms, reciter.as_str()), (1, 3000, "partial-r1"));
+                assert!((speed - 1.5).abs() < f32::EPSILON);
+                assert_eq!(playlist.expect("playlist").id, p.id);
+            }
+            other => panic!("unexpected {other:?}"),
+        }
+        // The pinned recitation lacks Yā-Sīn.
+        let p = super::save_playlist(State(app.clone()), Json(playlist("Yasin", vec![36], Some("partial-r1"), None))).await.ok().expect("saved").0;
+        let req = PlayReq { surah: None, playlist: Some(p.id), index: 0, position_s: 0, reciter: None, speed: None };
+        let Err(e) = super::play(State(app.clone()), Json(req)).await else { panic!("missing surah played") };
+        assert!(e.1.contains("doesn't have"), "{}", e.1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn speed_of_a_playlist_with_its_own_speed_is_not_the_default() {
+        let (app, dir, _) = app_with_catalogue();
+        let p = super::save_playlist(State(app.clone()), Json(playlist("Fast", vec![1], None, Some(1.5)))).await.ok().expect("saved").0;
+        let ctx = quran::PlaylistCtx::new(&p, 0);
+        app.status.send_modify(|s| {
+            s.recording = Some(crate::state::RecordingStatus {
+                mount: String::new(),
+                title: "Al-Fatihah".into(),
+                position_s: 0,
+                duration_s: None,
+                paused: false,
+                kind: "quran",
+                surah: Some(1),
+                playlist: Some(ctx),
+                loaded_pct: None,
+                reciter: None,
+                reciter_key: Some("partial-r1".into()),
+                speed: 1.5,
+            });
+        });
+        let before = app.settings().quran_speed;
+        assert!(super::speed(State(app.clone()), Json(SpeedReq { speed: 0.75 })).await.is_ok());
+        assert!((app.settings().quran_speed - before).abs() < f32::EPSILON, "the playlist keeps its own speed");
+
+        // Deleting everything keeps the surah that is playing.
+        let removed = super::delete(State(app.clone()), Json(DeleteReq { surah: Some(1), reciter: Some("partial-r1".into()) })).await.ok().expect("deleted");
+        assert_eq!(removed.0["removed"], 0);
+        assert!(super::delete(State(app.clone()), Json(DeleteReq { surah: Some(200), reciter: None })).await.is_err());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn downloads_can_be_requested_and_stopped() {
+        let (app, dir, _) = app_with_catalogue();
+        let req = |surah, all| DownloadReq { surah, all, reciter: Some("partial-r1".into()) };
+        assert!(super::download(State(app.clone()), Json(req(Some(1), None))).await.is_ok());
+        assert!(super::download(State(app.clone()), Json(req(None, Some(true)))).await.is_ok());
+        assert!(super::download(State(app.clone()), Json(req(None, Some(false)))).await.is_ok());
+        let logs: Vec<String> = app.logs.lock().unwrap().iter().map(|l| l.msg.clone()).collect();
+        assert!(logs.iter().any(|m| m.contains("downloading all")));
+        assert!(logs.iter().any(|m| m.contains("stopped downloading all")));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn surah_numbers_are_bounded() {
+        for n in [1, 2, 36, 114] {
+            assert!(surah(n).is_ok(), "surah {n} should be valid");
+        }
+        for n in [0, 115, 999] {
+            assert!(surah(n).is_err(), "surah {n} should be rejected");
+        }
+    }
+
+    #[test]
+    fn speeds_are_finite_and_bounded() {
+        for s in [0.5, 0.75, 1.0, 1.5, 2.0] {
+            assert!(valid_speed(s), "{s} should be valid");
+        }
+        for s in [0.0, 0.49, 2.01, 10.0, f32::NAN, f32::INFINITY, f32::NEG_INFINITY] {
+            assert!(!valid_speed(s), "{s} should be rejected");
+        }
+    }
+
+    #[test]
+    fn reciter_keys_fall_back_to_the_default() {
+        let app = app();
+        let default = app.settings().quran_reciter;
+        assert_eq!(super::reciter_key(&app, Some("not a key")), default);
+        assert_eq!(super::reciter_key(&app, None), default);
+        assert_eq!(super::reciter_key(&app, Some("abdulrahman-sudais-r1")), "abdulrahman-sudais-r1");
+    }
+
+    #[tokio::test]
+    async fn playlists_round_trip_on_disk() {
+        let app = app();
+        assert!(super::playlists(State(app.clone())).await.0.is_empty());
+        let req = SavePlaylist {
+            id: None,
+            name: "Morning".into(),
+            surahs: vec![36, 67],
+            repeat: false,
+            reciter: None,
+            days: vec![],
+            time: None,
+            speed: None,
+        };
+        let saved = super::save_playlist(State(app.clone()), Json(req)).await.ok().expect("saved").0;
+        assert_eq!(saved.name, "Morning");
+        assert_eq!(super::playlists(State(app.clone())).await.0.len(), 1);
+        let _ = super::delete_playlist(State(app.clone()), Json(PlaylistRef { id: saved.id.clone() })).await.ok().expect("deleted");
+        assert!(super::playlists(State(app.clone())).await.0.is_empty());
+    }
+
+    #[tokio::test]
+    async fn play_requires_a_valid_surah_or_playlist() {
+        let app = app();
+        let empty = PlayReq { surah: None, playlist: None, index: 0, position_s: 0, reciter: None, speed: None };
+        assert!(super::play(State(app.clone()), Json(empty)).await.is_err());
+        let bad = PlayReq { surah: Some(115), playlist: None, index: 0, position_s: 0, reciter: None, speed: None };
+        assert!(super::play(State(app.clone()), Json(bad)).await.is_err());
+        let missing = PlayReq { surah: None, playlist: Some("nope".into()), index: 0, position_s: 0, reciter: None, speed: None };
+        assert!(super::play(State(app.clone()), Json(missing)).await.is_err());
+        let good = PlayReq { surah: Some(36), playlist: None, index: 0, position_s: 5, reciter: None, speed: None };
+        assert!(super::play(State(app.clone()), Json(good)).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn speed_is_validated_and_saved() {
+        let app = app();
+        assert!(super::speed(State(app.clone()), Json(SpeedReq { speed: 3.0 })).await.is_err());
+        assert!(super::speed(State(app.clone()), Json(SpeedReq { speed: 1.25 })).await.is_ok());
+        assert!((app.settings().quran_speed - 1.25).abs() < f32::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn seek_step_and_download_accept_valid_input() {
+        let app = app();
+        assert!(super::seek(State(app.clone()), Json(SeekReq { position_s: 5 })).await.is_ok());
+        assert!(super::step(State(app.clone()), Json(StepReq { by: 9 })).await.is_ok());
+        assert!(super::download(State(app.clone()), Json(DownloadReq { surah: None, all: None, reciter: None })).await.is_ok());
+        assert!(super::download(State(app.clone()), Json(DownloadReq { surah: Some(0), all: None, reciter: None })).await.is_err());
+        let removed = super::delete(State(app.clone()), Json(DeleteReq { surah: None, reciter: None })).await.ok().expect("deleted");
+        assert_eq!(removed.0["ok"], true);
+    }
 }

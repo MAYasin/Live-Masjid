@@ -48,6 +48,35 @@ fn spawn_writer(mut stdin: ChildStdin, broken: Arc<AtomicBool>) -> SyncSender<Ve
     tx
 }
 
+/// Queue `chunk`, waiting while the queue is full; fail once `timeout` passes without progress.
+fn send_chunk(
+    tx: &SyncSender<Vec<u8>>,
+    broken: &AtomicBool,
+    heartbeat: &AtomicU64,
+    mut chunk: Vec<u8>,
+    timeout: Duration,
+) -> std::io::Result<()> {
+    let started = Instant::now();
+    loop {
+        if broken.load(Ordering::Relaxed) {
+            return Err(ErrorKind::BrokenPipe.into());
+        }
+        match tx.try_send(chunk) {
+            Ok(()) => return Ok(()),
+            Err(TrySendError::Disconnected(_)) => return Err(ErrorKind::BrokenPipe.into()),
+            Err(TrySendError::Full(c)) => {
+                if started.elapsed() > timeout {
+                    return Err(std::io::Error::new(ErrorKind::TimedOut, "output stalled"));
+                }
+                chunk = c;
+                // The device drains ~1 chunk per 20 ms. Stay alive meanwhile.
+                heartbeat.store(crate::state::now_ms(), Ordering::Relaxed);
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        }
+    }
+}
+
 impl Aplay {
     /// Start aplay on ALSA `device` for interleaved stereo s16 at `rate`.
     pub fn spawn(device: &str, rate: u32, idx: usize) -> std::io::Result<Self> {
@@ -89,26 +118,8 @@ impl Aplay {
     /// # Errors
     /// `TimedOut` when the device accepted nothing for [`STALL_TIMEOUT`]; `BrokenPipe` when aplay
     /// has gone.
-    pub fn write(&mut self, mut chunk: Vec<u8>, heartbeat: &AtomicU64) -> std::io::Result<()> {
-        let started = Instant::now();
-        loop {
-            if self.broken.load(Ordering::Relaxed) {
-                return Err(ErrorKind::BrokenPipe.into());
-            }
-            match self.tx.try_send(chunk) {
-                Ok(()) => return Ok(()),
-                Err(TrySendError::Disconnected(_)) => return Err(ErrorKind::BrokenPipe.into()),
-                Err(TrySendError::Full(c)) => {
-                    if started.elapsed() > STALL_TIMEOUT {
-                        return Err(std::io::Error::new(ErrorKind::TimedOut, "output stalled"));
-                    }
-                    chunk = c;
-                    // The device drains ~1 chunk per 20 ms. Stay alive meanwhile.
-                    heartbeat.store(crate::state::now_ms(), Ordering::Relaxed);
-                    std::thread::sleep(Duration::from_millis(5));
-                }
-            }
-        }
+    pub fn write(&mut self, chunk: Vec<u8>, heartbeat: &AtomicU64) -> std::io::Result<()> {
+        send_chunk(&self.tx, &self.broken, heartbeat, chunk, STALL_TIMEOUT)
     }
 
     /// What went wrong after a failed write: aplay's own message if it has one.
@@ -139,5 +150,48 @@ impl Aplay {
         // Killing aplay also unblocks a writer thread stuck in write().
         let _ = child.kill();
         let _ = child.wait();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn queueing_a_chunk_succeeds() {
+        let (tx, _rx) = sync_channel::<Vec<u8>>(1);
+        let broken = AtomicBool::new(false);
+        let hb = AtomicU64::new(0);
+        assert!(send_chunk(&tx, &broken, &hb, vec![1], Duration::from_millis(50)).is_ok());
+    }
+
+    #[test]
+    fn a_broken_pipe_is_reported() {
+        let (tx, rx) = sync_channel::<Vec<u8>>(1);
+        drop(rx);
+        let broken = AtomicBool::new(false);
+        let hb = AtomicU64::new(0);
+        let err = send_chunk(&tx, &broken, &hb, vec![1], Duration::from_millis(50)).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::BrokenPipe);
+    }
+
+    #[test]
+    fn the_writers_broken_flag_is_honoured() {
+        let (tx, _rx) = sync_channel::<Vec<u8>>(1);
+        let broken = AtomicBool::new(true);
+        let hb = AtomicU64::new(0);
+        let err = send_chunk(&tx, &broken, &hb, vec![1], Duration::from_millis(50)).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::BrokenPipe);
+    }
+
+    #[test]
+    fn a_full_queue_times_out_and_refreshes_the_heartbeat() {
+        let (tx, _rx) = sync_channel::<Vec<u8>>(1);
+        tx.try_send(vec![0]).unwrap();
+        let broken = AtomicBool::new(false);
+        let hb = AtomicU64::new(0);
+        let err = send_chunk(&tx, &broken, &hb, vec![1], Duration::from_millis(10)).unwrap_err();
+        assert_eq!(err.kind(), ErrorKind::TimedOut);
+        assert!(hb.load(Ordering::Relaxed) > 1_600_000_000_000, "heartbeat was refreshed");
     }
 }

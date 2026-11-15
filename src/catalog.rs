@@ -47,12 +47,17 @@ const RETRY_MAX_S: u64 = 7 * 24 * 3600;
 
 /// Refresh now. Returns number of stations.
 pub async fn refresh(app: &App) -> anyhow::Result<usize> {
+    refresh_from(app, crate::net::www_bases()).await
+}
+
+/// [`refresh`] from the first of `bases` that answers (the website, or a local server in tests).
+async fn refresh_from(app: &App, bases: &[&str]) -> anyhow::Result<usize> {
     if let Some(until) = app.site.blocked_until() {
         let hours = until.saturating_sub(now_ms()).div_ceil(3_600_000);
         anyhow::bail!("livemasjid.com is refusing this network; not contacting it for another {hours} h");
     }
     let mut last_err = None;
-    for base in crate::net::www_bases() {
+    for base in bases {
         let url = format!("{base}/index.php");
         match fetch_text(app, &url).await {
             Err(e) if crate::site::is_refusal(&e) => {
@@ -96,27 +101,31 @@ pub async fn run(app: App) {
     let mut fail_delay = RETRY_FIRST_S;
     loop {
         tokio::time::sleep(std::time::Duration::from_secs(delay)).await;
-        let age = now_ms().saturating_sub(app.catalog_fetched_ms.load(Ordering::Relaxed));
-        if age < MAX_AGE_MS {
-            delay = ((MAX_AGE_MS - age) / 1000).max(60);
-            continue;
+        delay = round(&app, crate::net::www_bases(), &mut fail_delay).await;
+    }
+}
+
+/// One wake-up of [`run`]: refresh if due and allowed. Returns the seconds until the next.
+async fn round(app: &App, bases: &[&str], fail_delay: &mut u64) -> u64 {
+    let age = now_ms().saturating_sub(app.catalog_fetched_ms.load(Ordering::Relaxed));
+    if age < MAX_AGE_MS {
+        return ((MAX_AGE_MS - age) / 1000).max(60);
+    }
+    if let Some(until) = app.site.blocked_until() {
+        return until.saturating_sub(now_ms()) / 1000 + 60;
+    }
+    match refresh_from(app, bases).await {
+        Ok(n) => {
+            app.log("info", format!("Masjid directory updated ({n} streams)"));
+            let _ = app.update_settings(|_| {}); // station location may now be known
+            *fail_delay = RETRY_FIRST_S;
+            MAX_AGE_MS / 1000
         }
-        if let Some(until) = app.site.blocked_until() {
-            delay = until.saturating_sub(now_ms()) / 1000 + 60;
-            continue;
-        }
-        match refresh(&app).await {
-            Ok(n) => {
-                app.log("info", format!("Masjid directory updated ({n} streams)"));
-                let _ = app.update_settings(|_| {}); // station location may now be known
-                fail_delay = RETRY_FIRST_S;
-                delay = MAX_AGE_MS / 1000;
-            }
-            Err(e) => {
-                app.log("warn", format!("Masjid directory refresh failed: {e}"));
-                delay = fail_delay;
-                fail_delay = (fail_delay * 2).min(RETRY_MAX_S);
-            }
+        Err(e) => {
+            app.log("warn", format!("Masjid directory refresh failed: {e}"));
+            let delay = *fail_delay;
+            *fail_delay = (*fail_delay * 2).min(RETRY_MAX_S);
+            delay
         }
     }
 }
@@ -260,5 +269,165 @@ mod tests {
     #[test]
     fn unescapes() {
         assert_eq!(unescape("a &#039;b&#x27; &amp; &bogus c"), "a 'b' & &bogus c");
+    }
+
+    #[test]
+    fn skips_bad_and_duplicate_mounts() {
+        let html = r#"
+  <div class="bs-component"><p hidden class="location d-none">X</p>
+    <a class="text-muted masjidname" href="/same">Same</a></div>
+  <div class="bs-component"><a class="text-muted masjidname" href="/same">Same again</a></div>
+  <div class="bs-component"><a class="text-muted masjidname" href="/bad/mount">Slash</a></div>
+  <div class="bs-component"><a class="text-muted masjidname" href="/bad mount">Space</a></div>
+  <div class="bs-component"><a class="text-muted masjidname" href="/bad?x=1">Query</a></div>
+  <div class="bs-component"><a class="text-muted masjidname" href="/">Empty</a></div>"#;
+        let s = parse(html);
+        assert_eq!(s.len(), 1);
+        assert_eq!(s[0].mount, "same");
+    }
+
+    #[test]
+    fn genre_and_name_fallbacks() {
+        let html = r#"
+  <div class="bs-component"><img class="genre" alt="Institutions">
+    <a class="masjidname" href="/inst">An Institution</a></div>
+  <div class="bs-component"><img class="genre" alt="Aalims">
+    <a class="masjidname" href="/aalim">A Scholar</a></div>
+  <div class="bs-component"><img class="genre" alt="Something else">
+    <a class="masjidname" href="/unknown">Unknown genre</a></div>
+  <div class="bs-component"><a class="masjidname" href="/bare"></a></div>"#;
+        let s = parse(html);
+        assert_eq!(s[0].genre, "Institution");
+        assert_eq!(s[1].genre, "Aalim");
+        assert_eq!(s[2].genre, "Masjid");
+        assert_eq!(s[3].name, "", "an empty link text stays empty");
+    }
+
+    #[test]
+    fn cleans_markup_and_entities() {
+        assert_eq!(clean("  <b>Al&nbsp;Noor</b>\n  Masjid  "), "Al Noor Masjid");
+        assert_eq!(clean("&#x41;&#66;"), "AB");
+        assert_eq!(strip_tags("<p>a</p>b"), "ab");
+        assert_eq!(between("x[abc]y", "[", "]"), Some("abc"));
+        assert_eq!(between("xabc", "[", "]"), None);
+    }
+
+    #[test]
+    fn loads_a_saved_cache_and_falls_back_to_the_seed() {
+        let dir = std::env::temp_dir().join(format!("lm-catalog-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let app = crate::state::test_app(&dir);
+
+        let file = serde_json::json!({
+            "fetched_ms": 1234,
+            "stations": [{ "mount": "saved", "name": "Saved Masjid", "location": "Here", "genre": "Masjid" }]
+        });
+        std::fs::write(&app.paths.catalog, serde_json::to_vec(&file).unwrap()).unwrap();
+        load_cache(&app);
+        assert_eq!(app.catalog.read().unwrap().len(), 1);
+        assert_eq!(app.catalog.read().unwrap()[0].mount, "saved");
+        assert_eq!(app.catalog_fetched_ms.load(Ordering::Relaxed), 1234);
+
+        // A broken cache file must not leave the app without a directory.
+        std::fs::write(&app.paths.catalog, b"not json").unwrap();
+        app.catalog.write().unwrap().clear();
+        app.catalog_fetched_ms.store(0, Ordering::Relaxed);
+        load_cache(&app);
+        assert!(app.catalog.read().unwrap().len() > 400, "the embedded seed is used");
+        assert_eq!(app.catalog_fetched_ms.load(Ordering::Relaxed), 0);
+
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn refresh_refuses_while_the_website_is_blocked() {
+        let dir = std::env::temp_dir().join(format!("lm-catalog-{}", crate::config::random_hex(6)));
+        std::fs::create_dir_all(&dir).unwrap();
+        let app = crate::state::test_app(&dir);
+        app.site.refused();
+        let err = refresh(&app).await.unwrap_err().to_string();
+        assert!(err.contains("refusing"), "{err}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn unescapes_named_entities_and_stray_ampersands() {
+        assert_eq!(unescape("&lt;b&gt; &quot;x&quot; &apos;y&apos;"), "<b> \"x\" 'y'");
+        assert_eq!(unescape("a &unknown; b"), "a &unknown; b");
+        assert_eq!(unescape("fish & chips & more text here"), "fish & chips & more text here");
+        assert_eq!(unescape("&#xZZ;"), "&#xZZ;");
+    }
+
+    /// A directory page with `n` cards.
+    fn page(n: usize) -> String {
+        (0..n)
+            .map(|i| format!(r#"<div class="bs-component"><p hidden class="location d-none">Town {i}</p><a class="text-muted masjidname" href="/m{i}">Masjid {i}</a></div>"#))
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn refresh_saves_a_good_page_and_rejects_a_bad_one() {
+        let dir = std::env::temp_dir().join(format!("lm-catalog-{}", crate::config::random_hex(6)));
+        let app = crate::state::test_app(&dir);
+        let (good, _) = crate::integrations::test_http::serve(|_| (200, page(12))).await;
+        let (short, _) = crate::integrations::test_http::serve(|_| (200, page(3))).await;
+        let (broken, _) = crate::integrations::test_http::serve(|_| (500, String::new())).await;
+
+        // The first base fails; the next one answers.
+        assert_eq!(refresh_from(&app, &[broken.as_str(), good.as_str()]).await.unwrap(), 12);
+        assert_eq!(app.catalog.read().unwrap().len(), 12);
+        assert!(app.catalog_fetched_ms.load(Ordering::Relaxed) > 0);
+        app.catalog.write().unwrap().clear();
+        load_cache(&app);
+        assert_eq!(app.catalog.read().unwrap()[0].location, "Town 0", "saved to disk");
+
+        let err = refresh_from(&app, &[short.as_str()]).await.unwrap_err().to_string();
+        assert!(err.contains("only 3 stations"), "{err}");
+        assert!(refresh_from(&app, &[broken.as_str()]).await.is_err());
+        let err = refresh_from(&app, &[]).await.unwrap_err().to_string();
+        assert!(err.contains("no base url"), "{err}");
+        assert!(app.site.blocked_until().is_none());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn a_refusal_stops_at_once_and_pauses_the_site() {
+        let dir = std::env::temp_dir().join(format!("lm-catalog-{}", crate::config::random_hex(6)));
+        let app = crate::state::test_app(&dir);
+        let (refusing, _) = crate::integrations::test_http::serve(|_| (403, String::new())).await;
+        let (good, hits) = crate::integrations::test_http::serve(|_| (200, page(12))).await;
+        assert!(refresh_from(&app, &[refusing.as_str(), good.as_str()]).await.is_err());
+        assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0, "no other base is tried");
+        assert!(app.site.blocked_until().is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn the_background_round_waits_refreshes_and_backs_off() {
+        let dir = std::env::temp_dir().join(format!("lm-catalog-{}", crate::config::random_hex(6)));
+        let app = crate::state::test_app(&dir);
+        let (good, _) = crate::integrations::test_http::serve(|_| (200, page(12))).await;
+        let (broken, _) = crate::integrations::test_http::serve(|_| (500, String::new())).await;
+        let mut fail = RETRY_FIRST_S;
+
+        // Never fetched: due now. A failure waits 6 h, then 12 h, … capped at a week.
+        assert_eq!(round(&app, &[broken.as_str()], &mut fail).await, RETRY_FIRST_S);
+        assert_eq!(round(&app, &[broken.as_str()], &mut fail).await, 2 * RETRY_FIRST_S);
+        for _ in 0..10 {
+            round(&app, &[broken.as_str()], &mut fail).await;
+        }
+        assert_eq!(fail, RETRY_MAX_S);
+        // Success: next month, and the back-off resets.
+        assert_eq!(round(&app, &[good.as_str()], &mut fail).await, MAX_AGE_MS / 1000);
+        assert_eq!(fail, RETRY_FIRST_S);
+        // Fresh: sleep until it's a month old.
+        let wait = round(&app, &[good.as_str()], &mut fail).await;
+        assert!(wait > MAX_AGE_MS / 1000 - 60 && wait <= MAX_AGE_MS / 1000, "{wait}");
+        // Due but the site is refusing us: wait out the back-off.
+        app.catalog_fetched_ms.store(0, Ordering::Relaxed);
+        app.site.refused();
+        let wait = round(&app, &[good.as_str()], &mut fail).await;
+        assert!(wait > 5 * 3600 && wait <= 6 * 3600 + 60, "{wait}");
+        let _ = std::fs::remove_dir_all(dir);
     }
 }

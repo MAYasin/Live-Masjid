@@ -97,27 +97,37 @@ pub trait Sources: Sync {
     fn masjidscreen(&self, mount: &str) -> impl Future<Output = SalahTimes> + Send;
 }
 
-/// The real sources.
-struct Live<'a>(&'a App);
+const MASJIDSCREEN: &str = "https://masjidscreen.co.za";
+
+/// The real sources (`board_api` and `screen` are the sites' base URLs; tests use a local server).
+struct Live<'a> {
+    app: &'a App,
+    board_api: &'a str,
+    screen: &'a str,
+}
 
 impl Sources for Live<'_> {
     async fn board(&self, id: &str) -> Lookup {
-        masjidboard::lookup(self.0, id).await
+        masjidboard::lookup_at(self.app, id, self.board_api).await
     }
 
     async fn masjidscreen(&self, mount: &str) -> SalahTimes {
-        masjidscreen(self.0, mount).await
+        masjidscreen(self.app, mount, self.screen).await
     }
 }
 
 /// Times for `mount`, from the source chosen for it (see the module docs).
 pub async fn get(app: &App, mount: &str) -> SalahTimes {
+    get_from(&Live { app, board_api: masjidboard::API, screen: MASJIDSCREEN }, mount).await
+}
+
+async fn get_from(live: &Live<'_>, mount: &str) -> SalahTimes {
     if !valid_mount(mount) {
         return failure("error", "invalid masjid", "");
     }
     let base = mount.strip_suffix(".mp3").unwrap_or(mount).to_ascii_lowercase();
-    let choice = app.settings().salah_boards.get(&base).cloned();
-    choose(&Live(app), mount, &base, choice.as_deref()).await
+    let choice = live.app.settings().salah_boards.get(&base).cloned();
+    choose(live, mount, &base, choice.as_deref()).await
 }
 
 /// The source rules. `choice` is the user's pick for this masjid: a board id, or "none" for
@@ -169,8 +179,8 @@ async fn choose(src: &impl Sources, mount: &str, base: &str, choice: Option<&str
 }
 
 /// Times from masjidscreen.co.za (cached).
-async fn masjidscreen(app: &App, mount: &str) -> SalahTimes {
-    let source = format!("https://masjidscreen.co.za/{mount}/");
+async fn masjidscreen(app: &App, mount: &str, site: &str) -> SalahTimes {
+    let source = format!("{site}/{mount}/");
     let it = &app.integrations;
     if let Some(hit) = it.salah.get(mount)
         && (hit.status != "ok" || hit.date.as_deref() == Some(&today())) {
@@ -181,7 +191,7 @@ async fn masjidscreen(app: &App, mount: &str) -> SalahTimes {
         && (hit.status != "ok" || hit.date.as_deref() == Some(&today())) {
             return hit; // fetched by a concurrent request while we waited
         }
-    let url = format!("https://masjidscreen.co.za/{mount}/api/prayertimes.php");
+    let url = format!("{site}/{mount}/api/prayertimes.php");
     let (result, ttl) = match fetch(&url, Duration::from_secs(10), &it.masjidscreen).await {
         Fetched::Ok(body) => match parse(&body) {
             Some(mut t) => {
@@ -269,6 +279,31 @@ mod tests {
         assert_eq!(super::parse(short).unwrap().times.len(), 1);
         assert!(super::parse(r#"{"error":"Masjid not found"}"#).is_none());
     }
+
+    #[test]
+    fn parse_edges() {
+        let short = r#"{"fajr":{"athaan":" 04:45:00 "},"esha":{"jamaat":"20:25"},"zuhr":{"athaan":""},"asr":{}}"#;
+        let t = super::parse(short).unwrap();
+        assert_eq!(t.times.len(), 2, "empty entries are skipped");
+        assert_eq!(t.times[0].key, "fajr");
+        assert_eq!(t.times[1].key, "esha");
+        assert_eq!(t.times[0].athaan.as_deref(), Some("04:45"), "seconds are dropped");
+        assert_eq!(t.times[1].jamaat.as_deref(), Some("20:25"));
+        assert!(t.jummah.is_none());
+        assert!(t.date.is_none() && t.masjid.is_none());
+        assert!(super::parse("not json").is_none());
+        assert!(super::parse(r#"{"salaah_times":{"fajr":{}}}"#).is_none(), "no usable times");
+    }
+
+    #[test]
+    fn hhmm_needs_a_full_time() {
+        assert_eq!(super::hhmm(Some(&serde_json::json!("04:45"))), Some("04:45".into()));
+        assert_eq!(super::hhmm(Some(&serde_json::json!("04:45:00"))), Some("04:45".into()));
+        assert_eq!(super::hhmm(Some(&serde_json::json!("4:45"))), None);
+        assert_eq!(super::hhmm(Some(&serde_json::json!(""))), None);
+        assert_eq!(super::hhmm(Some(&serde_json::json!(4))), None);
+        assert_eq!(super::hhmm(None), None);
+    }
 }
 
 #[cfg(test)]
@@ -342,5 +377,80 @@ mod source_rules {
         assert!(t.message.unwrap().contains("no longer exists"));
         let t = run(&neither, Some("blocked"));
         assert!(t.message.unwrap().contains("not answering"));
+    }
+}
+
+#[cfg(test)]
+mod live_sources {
+    use super::*;
+    use std::sync::atomic::Ordering;
+
+    const BOARD: &str = r#"{"ok":true,"data":{"fajrAthan":"04:30","dhuhrJamaah":"12:45","liveStreamURL":"lakewood","meta":{"web_url":"lakewood"}}}"#;
+
+    #[tokio::test]
+    async fn fetches_and_caches_each_source() {
+        let dir = std::env::temp_dir().join(format!("lm-salah-{}", crate::config::random_hex(6)));
+        let app = crate::state::test_app(&dir);
+        let today = today();
+        let (base, hits) = crate::integrations::test_http::serve(move |path| {
+            let screen = |date: &str| {
+                format!(r#"{{"masjid":{{"name":"M"}},"date":"{date}","salaah_times":{{"fajr":{{"athaan":"04:45:00","jamaat":"05:00:00"}}}}}}"#)
+            };
+            match path {
+                "/board?id=lakewood" => (200, BOARD.to_string()),
+                p if p.starts_with("/board?id=") => (200, r#"{"ok":false,"error":"not_found"}"#.to_string()),
+                "/today/api/prayertimes.php" | "/chosen/api/prayertimes.php" => (200, screen(&today)),
+                "/stale/api/prayertimes.php" => (200, screen("2000-01-01")),
+                "/unlisted/api/prayertimes.php" => (404, String::new()),
+                "/junk/api/prayertimes.php" => (200, "<html>".into()),
+                "/refused/api/prayertimes.php" => (429, String::new()),
+                _ => (500, String::new()),
+            }
+        })
+        .await;
+        let board_api = format!("{base}/board?id=");
+        let live = Live { app: &app, board_api: &board_api, screen: &base };
+
+        assert_eq!(get_from(&live, "a/b").await.status, "error", "invalid mount");
+
+        let t = get_from(&live, "lakewood.mp3").await;
+        assert_eq!((t.status.as_str(), t.provider.as_str()), ("ok", "masjidboardlive"));
+
+        let t = get_from(&live, "today").await;
+        assert_eq!((t.status.as_str(), t.provider.as_str()), ("ok", "masjidscreen"));
+        assert_eq!(t.source, format!("{base}/today/"));
+        let n = hits.load(Ordering::SeqCst);
+        assert_eq!(live.masjidscreen("today").await.status, "ok");
+        assert_eq!(hits.load(Ordering::SeqCst), n, "today's times come from the cache");
+
+        assert_eq!(live.masjidscreen("stale").await.status, "ok");
+        let n = hits.load(Ordering::SeqCst);
+        assert_eq!(live.masjidscreen("stale").await.status, "ok");
+        assert_eq!(hits.load(Ordering::SeqCst), n + 1, "yesterday's times are fetched again");
+
+        assert_eq!(get_from(&live, "unlisted").await.status, "not_listed");
+        let n = hits.load(Ordering::SeqCst);
+        assert_eq!(live.masjidscreen("unlisted").await.status, "not_listed");
+        assert_eq!(hits.load(Ordering::SeqCst), n, "failures are cached too");
+        assert_eq!(live.masjidscreen("junk").await.message.as_deref(), Some("Unexpected answer from masjidscreen.co.za"));
+        assert_eq!(live.masjidscreen("broken").await.message.as_deref(), Some("Couldn't reach masjidscreen.co.za"));
+
+        app.update_settings(|s| {
+            s.salah_boards.insert("chosen".into(), "none".into());
+        })
+        .unwrap();
+        let t = get_from(&live, "chosen").await;
+        assert!(t.manual && t.status == "ok");
+
+        assert_eq!(live.masjidscreen("refused").await.status, "blocked");
+        assert!(app.integrations.masjidscreen.blocked_until().is_some());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn date_helpers_use_the_device_clock() {
+        let d = today();
+        assert_eq!(d.len(), 10, "{d}");
+        assert!(weekday() <= 6);
     }
 }

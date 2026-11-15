@@ -29,17 +29,38 @@ pub const VERSION: &str = match option_env!("LIVEMASJID_BUILD") {
     None => env!("CARGO_PKG_VERSION"),
 };
 
-fn main() -> anyhow::Result<()> {
-    if std::env::args().any(|a| a == "--version" || a == "-V") {
-        println!("livemasjid {VERSION}");
-        return Ok(());
+/// What the command line asks for. `--version` wins over everything else.
+enum Cli {
+    Version,
+    /// `--parse-catalog <file>` (the file argument may be missing).
+    ParseCatalog(Option<String>),
+    Run,
+}
+
+fn cli(args: &[String]) -> Cli {
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        return Cli::Version;
     }
-    // Dev helper: `livemasjid --parse-catalog index.html` prints the parsed directory as JSON.
-    if let Some(i) = std::env::args().position(|a| a == "--parse-catalog") {
-        let path = std::env::args().nth(i + 1).ok_or_else(|| anyhow::anyhow!("missing file"))?;
-        let html = std::fs::read_to_string(path)?;
-        println!("{}", serde_json::to_string(&catalog::parse(&html))?);
-        return Ok(());
+    if let Some(i) = args.iter().position(|a| a == "--parse-catalog") {
+        return Cli::ParseCatalog(args.get(i + 1).cloned());
+    }
+    Cli::Run
+}
+
+fn main() -> anyhow::Result<()> {
+    match cli(&std::env::args().collect::<Vec<_>>()) {
+        Cli::Version => {
+            println!("livemasjid {VERSION}");
+            return Ok(());
+        }
+        // Dev helper: `livemasjid --parse-catalog index.html` prints the parsed directory as JSON.
+        Cli::ParseCatalog(path) => {
+            let path = path.ok_or_else(|| anyhow::anyhow!("missing file"))?;
+            let html = std::fs::read_to_string(path)?;
+            println!("{}", serde_json::to_string(&catalog::parse(&html))?);
+            return Ok(());
+        }
+        Cli::Run => {}
     }
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -99,7 +120,6 @@ async fn run() -> anyhow::Result<()> {
         password_set: settings.password_hash.is_some(),
         started_ms: now_ms(),
         live_count: 0,
-        site_blocked_until_ms: None,
         recording: None,
         quran_resume: None,
         quran_pending: None,
@@ -156,7 +176,6 @@ async fn run() -> anyhow::Result<()> {
     app.log("info", format!("Live Masjid {VERSION} started"));
 
     tokio::spawn(player::run(app.clone(), player_rx, signal_rx));
-    tokio::spawn(monitor::sse::run(app.clone()));
     tokio::spawn(monitor::poll::run(app.clone()));
     tokio::spawn(catalog::run(app.clone()));
     if platform::bluetooth_enabled() {
@@ -208,8 +227,6 @@ async fn watchdog(app: state::App) {
         let now = now_ms();
         let p = now.saturating_sub(app.hb_player.load(Ordering::Relaxed));
         let s = now.saturating_sub(app.sink.heartbeat.load(Ordering::Relaxed));
-        let blocked = app.site.blocked_until();
-        app.status.send_if_modified(|st| std::mem::replace(&mut st.site_blocked_until_ms, blocked) != blocked);
         if p < 30_000 && s < 30_000 {
             sd_notify("WATCHDOG=1");
         } else {
@@ -236,3 +253,30 @@ fn sd_notify(msg: &str) {
 
 #[cfg(not(target_os = "linux"))]
 fn sd_notify(_msg: &str) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn args(s: &[&str]) -> Vec<String> {
+        s.iter().map(|a| (*a).to_string()).collect()
+    }
+
+    #[test]
+    fn cli_modes() {
+        assert!(matches!(cli(&args(&["livemasjid"])), Cli::Run));
+        assert!(matches!(cli(&args(&["livemasjid", "--version"])), Cli::Version));
+        assert!(matches!(cli(&args(&["livemasjid", "-V"])), Cli::Version));
+        assert!(matches!(cli(&args(&["livemasjid", "--version", "--parse-catalog", "x"])), Cli::Version));
+    }
+
+    #[test]
+    fn cli_parse_catalog_takes_the_next_argument() {
+        match cli(&args(&["livemasjid", "--parse-catalog", "index.html"])) {
+            Cli::ParseCatalog(Some(p)) => assert_eq!(p, "index.html"),
+            _ => panic!("expected ParseCatalog"),
+        }
+        assert!(matches!(cli(&args(&["livemasjid", "--parse-catalog"])), Cli::ParseCatalog(None)));
+        assert!(matches!(cli(&args(&["--parse-catalog", "--version"])), Cli::Version), "version wins");
+    }
+}

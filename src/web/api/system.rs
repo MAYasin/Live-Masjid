@@ -18,11 +18,14 @@ fn data_file(app: &App, name: &str) -> std::path::PathBuf {
 }
 
 async fn start_update_service() -> Result<(), ApiError> {
-    let out = tokio::process::Command::new("sudo")
-        .args(["-n", "/usr/bin/systemctl", "start", "--no-block", "livemasjid-update.service"])
-        .output()
-        .await
-        .map_err(ApiError::bad)?;
+    let mut cmd = tokio::process::Command::new("sudo");
+    cmd.args(["-n", "/usr/bin/systemctl", "start", "--no-block", "livemasjid-update.service"]);
+    run_checked(cmd).await
+}
+
+/// Run `cmd`; when it fails, its stderr is the error.
+async fn run_checked(mut cmd: tokio::process::Command) -> Result<(), ApiError> {
+    let out = cmd.output().await.map_err(ApiError::bad)?;
     if !out.status.success() {
         return Err(ApiError::bad(String::from_utf8_lossy(&out.stderr).trim()));
     }
@@ -88,20 +91,9 @@ pub async fn updates(State(app): State<App>, Query(q): Query<UpdatesQuery>) -> A
         let tag = latest_release().await?;
         latest = json!({ "tag": tag, "available": true });
     } else if q.check {
-        let out = tokio::time::timeout(
-            Duration::from_secs(45),
-            tokio::process::Command::new("/opt/livemasjid/update.sh").arg("--check").kill_on_drop(true).output(),
-        )
-        .await;
-        let text = match out {
-            Ok(Ok(o)) => String::from_utf8_lossy(&o.stdout).to_string(),
-            _ => return Err(ApiError::bad("Couldn't reach GitHub to check for updates")),
-        };
-        let field = |k: &str| text.lines().find_map(|l| l.strip_prefix(&format!("{k}="))).map(str::to_string);
-        match field("latest") {
-            Some(tag) => latest = json!({ "tag": tag, "available": field("asset_available").as_deref() == Some("yes") }),
-            None => return Err(ApiError::bad(text.lines().last().unwrap_or("Couldn't check for updates").to_string())),
-        }
+        let mut cmd = tokio::process::Command::new("/opt/livemasjid/update.sh");
+        cmd.arg("--check");
+        latest = check_with(cmd).await?;
     }
     Ok(Json(json!({
         "installed": crate::VERSION,
@@ -111,6 +103,24 @@ pub async fn updates(State(app): State<App>, Query(q): Query<UpdatesQuery>) -> A
         "platform": crate::platform::get().as_str(),
         "docker_update": DOCKER_UPDATE,
     })))
+}
+
+/// Run `update.sh --check` (given as `cmd`) and read its answer.
+async fn check_with(mut cmd: tokio::process::Command) -> Result<Value, ApiError> {
+    let out = tokio::time::timeout(Duration::from_secs(45), cmd.kill_on_drop(true).output()).await;
+    match out {
+        Ok(Ok(o)) => parse_check(&String::from_utf8_lossy(&o.stdout)),
+        _ => Err(ApiError::bad("Couldn't reach GitHub to check for updates")),
+    }
+}
+
+/// `update.sh --check` prints `latest=<tag>` and `asset_available=yes|no`, or an explanation.
+fn parse_check(text: &str) -> Result<Value, ApiError> {
+    let field = |k: &str| text.lines().find_map(|l| l.strip_prefix(&format!("{k}="))).map(str::to_string);
+    match field("latest") {
+        Some(tag) => Ok(json!({ "tag": tag, "available": field("asset_available").as_deref() == Some("yes") })),
+        None => Err(ApiError::bad(text.lines().last().unwrap_or("Couldn't check for updates").to_string())),
+    }
 }
 
 /// Remove everything in the data folder except the Quran recitations (`quran/`). Returns how
@@ -138,21 +148,136 @@ const DOCKER_UPDATE: &str = "docker compose pull && docker compose up -d";
 async fn latest_release() -> Result<String, ApiError> {
     let repo = std::env::var("LIVEMASJID_REPO").unwrap_or_else(|_| "MAYasin/Live-Masjid".into());
     let url = format!("https://api.github.com/repos/{repo}/releases/latest");
-    let out = tokio::process::Command::new("curl")
-        .args(["-sSL", "--fail", "--max-time", "20", "-H", "Accept: application/vnd.github+json"])
-        .args(["-A", crate::integrations::USER_AGENT, &url])
-        .kill_on_drop(true)
-        .output()
-        .await
-        .map_err(|_| ApiError::bad("Couldn't reach GitHub to check for updates"))?;
+    let mut cmd = tokio::process::Command::new("curl");
+    cmd.args(["-sSL", "--fail", "--max-time", "20", "-H", "Accept: application/vnd.github+json"])
+        .args(["-A", crate::integrations::USER_AGENT, &url]);
+    release_tag(cmd).await
+}
+
+/// Run the request `cmd` and read `tag_name` from the GitHub release JSON it prints.
+async fn release_tag(mut cmd: tokio::process::Command) -> Result<String, ApiError> {
+    let unreachable = || ApiError::bad("Couldn't reach GitHub to check for updates");
+    let out = cmd.kill_on_drop(true).output().await.map_err(|_| unreachable())?;
     serde_json::from_slice::<Value>(&out.stdout)
         .ok()
         .and_then(|v| v.get("tag_name")?.as_str().map(str::to_string))
-        .ok_or_else(|| ApiError::bad("Couldn't reach GitHub to check for updates"))
+        .ok_or_else(unreachable)
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use tokio::process::Command;
+
+    fn app() -> (App, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(format!("lm-system-api-{}", crate::config::random_hex(6)));
+        (crate::state::test_app(&dir), dir)
+    }
+
+    fn sh(script: &str) -> Command {
+        let mut c = Command::new("sh");
+        c.args(["-c", script]);
+        c
+    }
+
+    #[tokio::test]
+    async fn clear_history_and_unknown_actions() {
+        let (app, dir) = app();
+        app.history.lock().unwrap().begin("m", "M", "opus", "manual");
+        app.status.send_modify(|s| s.last_heard_ms = Some(5));
+        assert!(action(State(app.clone()), Path("clear-history".into())).await.is_ok());
+        assert!(app.history.lock().unwrap().recent(10, None).is_empty());
+        assert_eq!(app.status.borrow().last_heard_ms, None);
+        let Err(e) = action(State(app.clone()), Path("format-disk".into())).await else { panic!("unknown action accepted") };
+        assert_eq!(e.0, axum::http::StatusCode::BAD_REQUEST);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    // Restart and reset exit the process 300 ms later from a spawned task. On this
+    // current-thread test runtime that task never runs: the handler doesn't yield, so the test
+    // ends (and the runtime drops the task) before it is polled.
+    #[tokio::test(flavor = "current_thread")]
+    async fn restart_is_acknowledged() {
+        let (app, dir) = app();
+        assert!(action(State(app.clone()), Path("restart".into())).await.is_ok());
+        assert!(app.logs.lock().unwrap().iter().any(|l| l.msg.contains("Restart")));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn reset_is_acknowledged() {
+        let (app, dir) = app();
+        assert!(action(State(app.clone()), Path("reset".into())).await.is_ok());
+        assert!(dir.join("settings.json").exists(), "nothing is removed before the reply");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn update_in_a_container_explains_docker() {
+        if crate::platform::is_native() {
+            return; // would start the real update service
+        }
+        let (app, dir) = app();
+        let Err(e) = action(State(app.clone()), Path("update".into())).await else { panic!("update in a container") };
+        assert!(e.1.contains(DOCKER_UPDATE));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[tokio::test]
+    async fn updates_reports_the_last_run() {
+        let (app, dir) = app();
+        let Json(v) = updates(State(app.clone()), Query(UpdatesQuery { check: false })).await.ok().expect("updates");
+        assert_eq!(v["last"], Value::Null);
+        assert_eq!(v["latest"], Value::Null);
+        assert_eq!(v["installed"], crate::VERSION);
+        assert_eq!(v["docker_update"], DOCKER_UPDATE);
+        std::fs::write(data_file(&app, "update-status.json"), br#"{"state":"up_to_date"}"#).unwrap();
+        let Json(v) = updates(State(app.clone()), Query(UpdatesQuery { check: false })).await.ok().expect("updates");
+        assert_eq!(v["last"]["state"], "up_to_date");
+        std::fs::write(data_file(&app, "update-status.json"), b"not json").unwrap();
+        let Json(v) = updates(State(app.clone()), Query(UpdatesQuery { check: false })).await.ok().expect("updates");
+        assert_eq!(v["last"], Value::Null, "a broken status file is ignored");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn check_output_is_parsed() {
+        let v = parse_check("checking\nlatest=v1.2\nasset_available=yes\n").ok().expect("parsed");
+        assert_eq!(v, json!({ "tag": "v1.2", "available": true }));
+        let v = parse_check("latest=v1.2\nasset_available=no").ok().expect("parsed");
+        assert_eq!(v["available"], false);
+        let Err(e) = parse_check("GitHub said no\nrate limited") else { panic!("no tag") };
+        assert_eq!(e.1, "rate limited");
+        let Err(e) = parse_check("") else { panic!("no tag") };
+        assert_eq!(e.1, "Couldn't check for updates");
+    }
+
+    #[tokio::test]
+    async fn check_runs_the_script() {
+        let v = check_with(sh("echo latest=v2; echo asset_available=yes")).await.ok().expect("checked");
+        assert_eq!(v["tag"], "v2");
+        let Err(e) = check_with(sh("echo offline")).await else { panic!("no tag") };
+        assert_eq!(e.1, "offline");
+        let Err(e) = check_with(Command::new("/nonexistent/update.sh")).await else { panic!("missing script") };
+        assert!(e.1.contains("Couldn't reach GitHub"));
+    }
+
+    #[tokio::test]
+    async fn commands_report_their_stderr() {
+        assert!(run_checked(sh("exit 0")).await.is_ok());
+        let Err(e) = run_checked(sh("echo ' not allowed ' >&2; exit 1")).await else { panic!("failed command") };
+        assert_eq!(e.1, "not allowed");
+        assert!(run_checked(Command::new("/nonexistent/sudo")).await.is_err());
+    }
+
+    #[tokio::test]
+    async fn release_tag_reads_the_github_json() {
+        assert_eq!(release_tag(sh(r#"echo '{"tag_name":"v3.0"}'"#)).await.ok().as_deref(), Some("v3.0"));
+        assert!(release_tag(sh(r#"echo '{"message":"Not Found"}'"#)).await.is_err());
+        assert!(release_tag(sh("echo garbage")).await.is_err());
+        assert!(release_tag(Command::new("/nonexistent/curl")).await.is_err());
+    }
+
     #[test]
     fn reset_keeps_only_the_quran() {
         let dir = std::env::temp_dir().join(format!("lm-reset-{}", crate::config::random_hex(6)));
