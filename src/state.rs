@@ -1,6 +1,7 @@
 //! Shared application state. Everything the UI shows lives in one `Status` value
 //! published through a `watch` channel, so the UI gets push updates for free.
 
+use crate::sync::{LockExt, RwLockExt};
 use crate::catalog::Station;
 use crate::config::{Paths, Settings};
 use crate::history::History;
@@ -13,8 +14,7 @@ use tokio::sync::{mpsc, watch};
 pub fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
+        .map_or(0, |d| d.as_millis() as u64)
 }
 
 #[derive(Clone, Copy, Debug, Serialize, PartialEq, Eq)]
@@ -228,7 +228,7 @@ impl AppState {
             "warn" => tracing::warn!("{msg}"),
             _ => tracing::info!("{msg}"),
         }
-        let mut l = self.logs.lock().unwrap();
+        let mut l = self.logs.locked();
         if l.len() >= 300 {
             l.pop_front();
         }
@@ -236,13 +236,13 @@ impl AppState {
     }
 
     pub fn settings(&self) -> Settings {
-        self.settings.read().unwrap().clone()
+        self.settings.read_lock().clone()
     }
 
     /// Mutate settings, persist them and refresh the derived status fields.
     pub fn update_settings(&self, f: impl FnOnce(&mut Settings)) -> anyhow::Result<Settings> {
         let snapshot = {
-            let mut s = self.settings.write().unwrap();
+            let mut s = self.settings.write_lock();
             f(&mut s);
             s.sanitize();
             s.save(&self.paths.settings)?;
@@ -259,12 +259,12 @@ impl AppState {
             st.keep_awake = snapshot.keep_awake;
             st.password_set = snapshot.password_hash.is_some();
             st.browser_listening = snapshot.browser_listening;
-            st.mount = snapshot.mount.clone();
-            st.station_name = snapshot.station_name.clone();
+            st.mount.clone_from(&snapshot.mount);
+            st.station_name.clone_from(&snapshot.station_name);
             st.station_location = loc;
             st.last_heard_ms = last;
-            st.bt.device = snapshot.bt_device.clone();
-            st.bt.name = snapshot.bt_name.clone();
+            st.bt.device.clone_from(&snapshot.bt_device);
+            st.bt.name.clone_from(&snapshot.bt_name);
         });
         Ok(snapshot)
     }
@@ -273,13 +273,12 @@ impl AppState {
         let Some(m) = mount else { return (None, None) };
         let loc = self
             .catalog
-            .read()
-            .unwrap()
+            .read_lock()
             .iter()
             .find(|s| s.mount == m)
             .map(|s| s.location.clone())
             .filter(|l| !l.is_empty());
-        let last = self.history.lock().unwrap().last_heard(m);
+        let last = self.history.locked().last_heard(m);
         (loc, last)
     }
 
@@ -341,7 +340,7 @@ pub fn test_app(dir: &std::path::Path) -> App {
         browser_listening: settings.browser_listening,
     };
     Arc::new(AppState {
-        settings: RwLock::new(settings.clone()),
+        settings: RwLock::new(settings),
         status: watch::Sender::new(status),
         catalog: RwLock::new(Vec::new()),
         catalog_fetched_ms: AtomicU64::new(0),
@@ -352,7 +351,7 @@ pub fn test_app(dir: &std::path::Path) -> App {
         signal_tx,
         mount_gen: watch::Sender::new(0),
         volume: volume.clone(),
-        http: crate::net::build_client(),
+        http: crate::net::build_client().unwrap(),
         sink: crate::sink::SinkHandle::spawn(volume, false),
         hb_player: AtomicU64::new(now_ms()),
         site: crate::site::SiteGuard::load(paths.site.clone()),

@@ -4,6 +4,7 @@
 //! ~20 s on connect, then real time). The decoder side reads at playback speed. Whatever
 //! sits in between is audio we can keep playing while the network stalls or reconnects.
 
+use crate::sync::LockExt;
 use std::collections::VecDeque;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -39,12 +40,12 @@ impl ByteQueue {
         if data.is_empty() {
             return true;
         }
-        let mut g = self.inner.lock().unwrap();
+        let mut g = self.inner.locked();
         while g.len >= CAPACITY && !g.closed {
             if stop.load(Ordering::Relaxed) {
                 return false;
             }
-            g = self.cv.wait_timeout(g, Duration::from_millis(200)).unwrap().0;
+            g = crate::sync::wait_timeout(&self.cv, g, Duration::from_millis(200)).0;
         }
         if g.closed {
             return false;
@@ -57,14 +58,14 @@ impl ByteQueue {
 
     /// No more data: the reader drains what's left, then sees EOF.
     pub fn close(&self) {
-        self.inner.lock().unwrap().closed = true;
+        self.inner.locked().closed = true;
         self.cv.notify_all();
     }
 
     /// Drop the oldest chunks until at most `keep` bytes remain. Returns bytes dropped.
     /// Chunks are whole Ogg pages for Opus, so the decoder resumes at a page boundary.
     pub fn trim_front(&self, keep: usize) -> usize {
-        let mut g = self.inner.lock().unwrap();
+        let mut g = self.inner.locked();
         let mut dropped = 0;
         while g.len > keep {
             let Some(chunk) = g.chunks.pop_front() else { break };
@@ -76,7 +77,7 @@ impl ByteQueue {
     }
 
     pub fn buffered(&self) -> usize {
-        self.inner.lock().unwrap().len
+        self.inner.locked().len
     }
 
     pub fn consumed(&self) -> u64 {
@@ -101,7 +102,7 @@ impl QueueReader {
 impl Read for QueueReader {
     fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
         if self.pos >= self.current.len() {
-            let mut g = self.queue.inner.lock().unwrap();
+            let mut g = self.queue.inner.locked();
             loop {
                 if self.stop.load(Ordering::Relaxed) {
                     return Ok(0);
@@ -116,7 +117,7 @@ impl Read for QueueReader {
                 if g.closed {
                     return Ok(0);
                 }
-                g = self.queue.cv.wait_timeout(g, Duration::from_millis(200)).unwrap().0;
+                g = crate::sync::wait_timeout(&self.queue.cv, g, Duration::from_millis(200)).0;
             }
         }
         let n = buf.len().min(self.current.len() - self.pos);

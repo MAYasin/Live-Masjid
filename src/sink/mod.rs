@@ -10,6 +10,7 @@ mod pcm;
 
 pub use pcm::{MIRROR_RATE, chime};
 
+use crate::sync::LockExt;
 use crate::state::OutputStatus;
 use device::Aplay;
 use std::sync::atomic::{AtomicBool, AtomicU8, AtomicU64, Ordering};
@@ -82,7 +83,7 @@ impl SinkHandle {
     pub fn spawn(volume: Arc<AtomicU8>, keep_awake: bool) -> Self {
         let (h, rx) = Self::with_queue(volume, keep_awake);
         let h2 = h.clone();
-        std::thread::Builder::new().name("sink".into()).spawn(move || Sink::new(h2, AplayOpener).run(&rx)).expect("spawn sink");
+        crate::sync::spawn_named("sink", move || Sink::new(h2, AplayOpener).run(&rx));
         h
     }
 
@@ -146,7 +147,7 @@ impl SinkHandle {
     }
 
     pub fn retarget(&self, targets: Vec<Target>) {
-        let mut cur = self.targets.lock().unwrap();
+        let mut cur = self.targets.locked();
         if *cur != targets {
             cur.clone_from(&targets);
             self.control(SinkMsg::Retarget(targets));
@@ -489,7 +490,7 @@ mod tests {
 
     impl Fake {
         fn with<T>(&self, f: impl FnOnce(&mut FakeState) -> T) -> T {
-            f(&mut self.0.lock().unwrap())
+            f(&mut self.0.locked())
         }
     }
 
@@ -556,7 +557,7 @@ mod tests {
         let (h, rx) = SinkHandle::with_queue(Arc::new(AtomicU8::new(100)), keep_awake);
         let seen: Seen = Arc::default();
         let s2 = seen.clone();
-        h.on_status(move |st| s2.lock().unwrap().push(st));
+        h.on_status(move |st| s2.locked().push(st));
         let fake = Fake::default();
         let sink = Sink::new(h.clone(), fake.clone());
         (h, rx, sink, fake, seen)
@@ -578,7 +579,7 @@ mod tests {
     }
 
     fn last(seen: &Seen) -> OutputStatus {
-        seen.lock().unwrap().last().cloned().expect("a status")
+        seen.locked().last().cloned().expect("a status")
     }
 
     #[test]
@@ -779,9 +780,9 @@ mod tests {
         assert!(s.open.is_none());
         let st = last(&seen);
         assert_eq!((st.kind.as_str(), st.label.as_str(), st.open), ("none", "Idle", false));
-        let n = seen.lock().unwrap().len();
+        let n = seen.locked().len();
         s.idle(RATE);
-        assert_eq!(seen.lock().unwrap().len(), n, "the same status isn't pushed twice");
+        assert_eq!(seen.locked().len(), n, "the same status isn't pushed twice");
     }
 
     #[test]

@@ -1,5 +1,6 @@
 //! Playback controls and settings.
 
+use crate::sync::RwLockExt;
 use crate::state::{App, PlayerCmd, Signal};
 use crate::web::{ApiError, ApiResult, ok};
 use axum::Json;
@@ -79,7 +80,7 @@ pub async fn settings(State(app): State<App>, Json(p): Json<SettingsPatch>) -> A
     }
     // Auto-play just switched on and the masjid is already live: start now.
     if autoplay_on {
-        let live = app.settings().mount.as_deref().is_some_and(|m| crate::monitor::is_live(&app.live.read().unwrap(), m));
+        let live = app.settings().mount.as_deref().is_some_and(|m| crate::monitor::is_live(&app.live.read_lock(), m));
         if live {
             let _ = app.signal_tx.send(Signal::PollOnline);
         }
@@ -155,7 +156,7 @@ mod tests {
         assert!(signals.try_recv().is_err(), "not live");
 
         let info = crate::state::LiveInfo { server_type: String::new(), stream_start: None, listeners: None, title: None };
-        app.live.write().unwrap().insert("m".into(), vec![("relay".into(), info)]);
+        app.live.write_lock().insert("m".into(), vec![("relay".into(), info)]);
         assert!(settings(State(app.clone()), patch(r#"{"autoplay":true}"#)).await.is_ok());
         assert!(matches!(signals.try_recv(), Ok(Signal::PollOnline)));
         let _ = std::fs::remove_dir_all(dir);

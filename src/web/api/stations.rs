@@ -1,5 +1,6 @@
 //! Masjid directory and selection.
 
+use crate::sync::{LockExt, RwLockExt};
 use crate::state::{App, PlayerCmd};
 use crate::web::{ApiError, ApiResult, ok};
 use axum::Json;
@@ -10,10 +11,10 @@ use std::sync::atomic::Ordering;
 
 pub async fn list(State(app): State<App>) -> Json<Value> {
     let selected = app.settings().mount;
-    let live = app.live.read().unwrap();
-    let history = app.history.lock().unwrap();
+    let live = app.live.read_lock();
+    let history = app.history.locked();
     let last = history.all_last_heard();
-    let catalog = app.catalog.read().unwrap();
+    let catalog = app.catalog.read_lock();
     let entry = |mount: &str, name: &str, location: &str, genre: &str| {
         json!({
             "mount": mount, "name": name, "location": location, "genre": genre,
@@ -53,12 +54,12 @@ pub async fn select(State(app): State<App>, Json(req): Json<Select>) -> ApiResul
         return Err(ApiError::bad("invalid mount"));
     }
     let name = mount.as_ref().map(|m| {
-        let catalog = app.catalog.read().unwrap();
+        let catalog = app.catalog.read_lock();
         catalog.iter().find(|s| &s.mount == m).map_or_else(|| m.clone(), |s| s.name.clone())
     });
     app.update_settings(|s| {
-        s.mount = mount.clone();
-        s.station_name = name.clone();
+        s.mount.clone_from(&mount);
+        s.station_name.clone_from(&name);
     })?;
     app.mount_gen.send_modify(|g| *g += 1);
     let _ = app.player_tx.send(PlayerCmd::Reconfigure);
@@ -82,16 +83,16 @@ mod tests {
     #[tokio::test]
     async fn lists_the_directory_with_live_and_selected_flags() {
         let (app, dir) = app();
-        *app.catalog.write().unwrap() = vec![
+        *app.catalog.write_lock() = vec![
             crate::catalog::Station { mount: "a".into(), name: "Masjid A".into(), location: "Town".into(), genre: "Masjid".into() },
             crate::catalog::Station { mount: "b".into(), name: "Masjid B".into(), location: String::new(), genre: "Aalim".into() },
         ];
         {
-            let mut live = app.live.write().unwrap();
+            let mut live = app.live.write_lock();
             live.insert("a".into(), vec![("relay".into(), live_info())]);
             live.insert("newcomer".into(), vec![("relay".into(), live_info())]);
         }
-        app.history.lock().unwrap().begin("b", "Masjid B", "opus", "poll");
+        app.history.locked().begin("b", "Masjid B", "opus", "poll");
         assert!(select(State(app.clone()), Json(Select { mount: Some("/b ".into()) })).await.is_ok());
         assert_eq!(app.settings().station_name.as_deref(), Some("Masjid B"), "named from the directory");
 

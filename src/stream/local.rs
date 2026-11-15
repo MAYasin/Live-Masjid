@@ -4,6 +4,7 @@
 //! Seeking: the surahs are constant-bitrate MP3, so a time maps to a byte offset
 //! (after the ID3 tag); playback restarts there at the next verified frame boundary.
 
+use crate::sync::LockExt;
 use super::buffer::ByteQueue;
 use super::decode::{self, Codec, DecodeCtx};
 use super::edge::mp3_frame;
@@ -50,7 +51,7 @@ struct Growing {
 
 impl Growing {
     fn len(&self) -> u64 {
-        self.file.metadata().map(|m| m.len()).unwrap_or(0)
+        self.file.metadata().map_or(0, |m| m.len())
     }
 
     /// Wait until the file holds at least `want` bytes (or is complete). False if it never will.
@@ -185,12 +186,12 @@ impl Source for LocalParams {
     const THREAD: &'static str = "quran";
 
     fn run(self) {
-        run(self);
+        run(&self);
     }
 }
 
-fn run(p: LocalParams) {
-    let (mut reader, base) = match open(&p) {
+fn run(p: &LocalParams) {
+    let (mut reader, base) = match open(p) {
         Ok(v) => v,
         Err(e) => {
             let stopped = p.stop.load(Ordering::Relaxed);
@@ -205,9 +206,7 @@ fn run(p: LocalParams) {
     // File → jitter buffer (blocks while full: paced by playback).
     let feeder = {
         let (queue, stop, failure) = (queue.clone(), p.stop.clone(), failure.clone());
-        std::thread::Builder::new()
-            .name("quran-read".into())
-            .spawn(move || {
+        crate::sync::spawn_named("quran-read", move || {
                 let mut buf = vec![0u8; 32 * 1024];
                 loop {
                     match reader.read(&mut buf) {
@@ -218,14 +217,13 @@ fn run(p: LocalParams) {
                             }
                         }
                         Err(e) => {
-                            *failure.lock().unwrap() = Some(e.to_string());
+                            *failure.locked() = Some(e.to_string());
                             break;
                         }
                     }
                 }
                 queue.close();
             })
-            .expect("spawn quran reader")
     };
 
     let events = p.events.clone();
@@ -247,7 +245,7 @@ fn run(p: LocalParams) {
     decode::run(Codec::Mp3, ctx);
     queue.close();
     let _ = feeder.join();
-    let err = failure.lock().unwrap().take().filter(|_| !p.stop.load(Ordering::Relaxed));
+    let err = failure.locked().take().filter(|_| !p.stop.load(Ordering::Relaxed));
     let _ = p.events.send(RecordingEvent::Ended(err));
 }
 
@@ -319,7 +317,7 @@ mod tests {
         let app = crate::state::test_app(&dir);
         let (p, mut rx, _duration) = params(&app, 500);
         let position = p.position_ms.clone();
-        run(p);
+        run(&p);
 
         assert!(position.load(Ordering::Relaxed) >= 400);
         assert!(matches!(rx.try_recv().unwrap().1, RecordingEvent::Started));
@@ -335,7 +333,7 @@ mod tests {
         write_surah(&dir, &[0u8; 64]);
         let app = crate::state::test_app(&dir);
         let (p, mut rx, _duration) = params(&app, 0);
-        run(p);
+        run(&p);
 
         match rx.try_recv().unwrap().1 {
             RecordingEvent::Ended(Some(e)) => assert!(e.contains("MP3")),
@@ -352,7 +350,7 @@ mod tests {
         let app = crate::state::test_app(&dir);
         let (p, mut rx, _duration) = params(&app, 0);
         p.stop.store(true, Ordering::Relaxed);
-        run(p);
+        run(&p);
 
         assert!(matches!(rx.try_recv().unwrap().1, RecordingEvent::Ended(None)));
 
@@ -399,7 +397,7 @@ mod tests {
         let app = crate::state::test_app(&dir);
         let (part, done) = (app.quran.part_path("test", 1), app.quran.final_path("test", 1));
         let (p, mut rx, _duration) = params(&app, 0);
-        let player = std::thread::spawn(move || run(p));
+        let player = std::thread::spawn(move || run(&p));
 
         // No file yet, then a few bytes, then enough for the header, then the rest.
         let audio = frames(40);
@@ -428,7 +426,7 @@ mod tests {
         append(&part, &frames(1)[..5]);
         let (p, mut rx, _duration) = params(&app, 0);
         let stop = p.stop.clone();
-        let player = std::thread::spawn(move || run(p));
+        let player = std::thread::spawn(move || run(&p));
         std::thread::sleep(Duration::from_millis(300));
         stop.store(true, Ordering::Relaxed);
         player.join().unwrap();
@@ -438,7 +436,7 @@ mod tests {
         std::fs::write(&part, frames(25)).unwrap();
         let (p, mut rx, _duration) = params(&app, 0);
         let stop = p.stop.clone();
-        let player = std::thread::spawn(move || run(p));
+        let player = std::thread::spawn(move || run(&p));
         assert!(matches!(wait_event(&mut rx), RecordingEvent::Started));
         std::thread::sleep(Duration::from_millis(300));
         stop.store(true, Ordering::Relaxed);

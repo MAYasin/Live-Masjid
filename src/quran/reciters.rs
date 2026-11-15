@@ -1,6 +1,7 @@
 //! The reciter catalogue from mp3quran.net (about 300 recitations), cached on disk and refreshed
 //! monthly. Each recitation (a reciter's "moshaf") is keyed by its server path.
 
+use crate::sync::LockExt;
 use super::{DEFAULT_RECITER, valid, valid_key};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -140,12 +141,12 @@ impl Catalog {
 
     /// All recitations (the built-in default if the catalogue hasn't been fetched yet).
     pub fn all(&self) -> Vec<Reciter> {
-        let c = self.list.lock().unwrap();
+        let c = self.list.locked();
         if c.is_empty() { vec![builtin_sudais()] } else { c.clone() }
     }
 
     pub fn get(&self, key: &str) -> Option<Reciter> {
-        let found = self.list.lock().unwrap().iter().find(|r| r.key == key).cloned();
+        let found = self.list.locked().iter().find(|r| r.key == key).cloned();
         found.or_else(|| (key == DEFAULT_RECITER).then(builtin_sudais))
     }
 
@@ -166,7 +167,7 @@ impl Catalog {
     /// Returns how long to wait before the next.
     async fn refresh_if_due(&self, url: &str, proto: &str) -> Duration {
         let age = std::fs::metadata(&self.path).and_then(|m| m.modified()).ok().and_then(|t| t.elapsed().ok());
-        let due = self.list.lock().unwrap().is_empty() || age.is_none_or(|a| a > MAX_AGE);
+        let due = self.list.locked().is_empty() || age.is_none_or(|a| a > MAX_AGE);
         if !due {
             return Duration::from_secs(86400);
         }
@@ -182,7 +183,7 @@ impl Catalog {
                 if let Ok(body) = serde_json::to_vec(&list) {
                     let _ = crate::config::write_atomic(&self.path, &body);
                 }
-                *self.list.lock().unwrap() = list;
+                *self.list.locked() = list;
                 Duration::from_secs(86400)
             }
             None => {

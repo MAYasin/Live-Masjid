@@ -88,7 +88,11 @@ pub fn random_hex(bytes: usize) -> String {
 }
 
 pub fn hex(b: &[u8]) -> String {
-    b.iter().map(|x| format!("{x:02x}")).collect()
+    use std::fmt::Write;
+    b.iter().fold(String::with_capacity(b.len() * 2), |mut s, x| {
+        let _ = write!(s, "{x:02x}"); // writing to a String can't fail
+        s
+    })
 }
 
 impl Settings {
@@ -134,7 +138,7 @@ impl Settings {
     }
 
     pub fn save(&self, path: &Path) -> std::io::Result<()> {
-        write_atomic(path, &serde_json::to_vec_pretty(self).expect("settings serialize"))
+        write_atomic(path, &serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?)
     }
 }
 
@@ -188,7 +192,7 @@ fn data_dir(data: Option<std::ffi::OsString>, state: Option<std::ffi::OsString>)
 /// Password hashing: 100k rounds of salted SHA-256 (~60 ms on a Pi Zero 2 W).
 pub fn hash_password(password: &str, salt: Option<&str>) -> String {
     use sha2::{Digest, Sha256};
-    let salt = salt.map(str::to_owned).unwrap_or_else(|| random_hex(16));
+    let salt = salt.map_or_else(|| random_hex(16), str::to_owned);
     let mut h: [u8; 32] = Sha256::digest(format!("{salt}:{password}").as_bytes()).into();
     for _ in 0..100_000 {
         h = Sha256::digest(h).into();

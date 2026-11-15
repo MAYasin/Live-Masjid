@@ -25,7 +25,6 @@ pub(super) fn encode(data: &[i16], gain: i32, out: &mut Vec<u8>) {
     } else {
         for s in data {
             // |s × gain| ≤ 32768 × 65536 fits in i32 after the shift.
-            #[allow(clippy::cast_possible_truncation)]
             let x = ((i32::from(*s) * gain) >> 16) as i16;
             out.extend_from_slice(&x.to_le_bytes());
         }
@@ -39,7 +38,7 @@ pub(super) fn chunk_us(rate: u32, stereo: &[i16]) -> u64 {
 
 /// Down-mix to mono and resample to [`MIRROR_RATE`] (nearest sample: cheap and fine for
 /// speech), as little-endian bytes.
-#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
+// Sample indexes and counts stay far below f64's exact-integer range, so the casts are exact.
 pub(super) fn mirror_mono(rate: u32, stereo: &[i16]) -> Vec<u8> {
     let frames = stereo.len() / 2;
     let step = f64::from(rate) / f64::from(MIRROR_RATE);
@@ -56,7 +55,7 @@ pub(super) fn mirror_mono(rate: u32, stereo: &[i16]) -> Vec<u8> {
 }
 
 /// A short two-tone chime used by "Test speaker".
-#[allow(clippy::cast_possible_truncation, clippy::cast_precision_loss, clippy::cast_sign_loss)]
+// Small constant sample counts and amplitudes within i16: the casts are exact.
 pub fn chime() -> Vec<i16> {
     let mut v = Vec::with_capacity(RATE as usize * 2);
     for (freq, dur) in [(660.0f32, 0.25f32), (880.0, 0.45)] {

@@ -2,6 +2,7 @@
 //! the app's own usage. Everything is read from /proc, /sys and a few cheap commands, on
 //! demand (only while someone has the page open).
 
+use crate::sync::LockExt;
 use crate::state::App;
 use serde::Serialize;
 use std::path::Path;
@@ -99,12 +100,12 @@ pub async fn collect(app: &App) -> SystemInfo {
     let volt_alarm = hwmon_file("rpi_volt", "in0_lcrit_alarm").map(|v| v == "1");
 
     let device = Device {
-        model: read_trim("/proc/device-tree/model").map(|s| s.trim_end_matches('\0').to_string()).unwrap_or_else(|| "Unknown board".into()),
+        model: read_trim("/proc/device-tree/model").map_or_else(|| "Unknown board".into(), |s| s.trim_end_matches('\0').to_string()),
         os: os_name(),
         kernel: read_trim("/proc/sys/kernel/osrelease").unwrap_or_default(),
         hostname: read_trim("/proc/sys/kernel/hostname").unwrap_or_default(),
-        uptime_s: read_trim("/proc/uptime").map(|s| parse_uptime(&s)).unwrap_or(0),
-        cpu_cores: std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1),
+        uptime_s: read_trim("/proc/uptime").map_or(0, |s| parse_uptime(&s)),
+        cpu_cores: std::thread::available_parallelism().map_or(1, std::num::NonZero::get),
         cpu_percent,
         load: loadavg(),
         temp_c: read_trim("/sys/class/thermal/thermal_zone0/temp").and_then(|s| s.parse::<f32>().ok()).map(|m| m / 1000.0),
@@ -233,7 +234,7 @@ fn parse_cpu_stat(s: &str) -> (u64, u64) {
 
 /// utime + stime from /proc/self/stat (fields 14 and 15).
 fn parse_proc_ticks(s: &str) -> u64 {
-    let after = s.rsplit_once(')').map(|(_, r)| r).unwrap_or("");
+    let after = s.rsplit_once(')').map_or("", |(_, r)| r);
     let f: Vec<u64> = after.split_whitespace().filter_map(|v| v.parse().ok()).collect();
     f.get(10).copied().unwrap_or(0) + f.get(11).copied().unwrap_or(0)
 }
@@ -243,7 +244,7 @@ fn cpu_usage() -> (Option<f32>, Option<f32>) {
     let (total, idle) = parse_cpu_stat(&std::fs::read_to_string("/proc/stat").unwrap_or_default());
     let proc_ticks = parse_proc_ticks(&std::fs::read_to_string("/proc/self/stat").unwrap_or_default());
 
-    let mut last = LAST.lock().unwrap();
+    let mut last = LAST.locked();
     let now = CpuSample { at: Instant::now(), total, idle, proc_ticks };
     let result = last.as_ref().map_or((None, None), |prev| cpu_since(prev, &now));
     *last = Some(now);
@@ -258,7 +259,7 @@ fn cpu_since(prev: &CpuSample, now: &CpuSample) -> (Option<f32>, Option<f32>) {
     let dt = (now.total - prev.total) as f32;
     let sys = 100.0 * (1.0 - (now.idle.saturating_sub(prev.idle)) as f32 / dt);
     // /proc/stat totals are summed over all cores; express the app relative to one core.
-    let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f32;
+    let cores = std::thread::available_parallelism().map_or(1, std::num::NonZero::get) as f32;
     let me = 100.0 * now.proc_ticks.saturating_sub(prev.proc_ticks) as f32 / dt * cores;
     (Some(sys.clamp(0.0, 100.0)), Some(me.max(0.0)))
 }
@@ -499,7 +500,7 @@ mod tests {
         let later = |total, idle, proc_ticks| CpuSample { at: t0 + Duration::from_secs(1), total, idle, proc_ticks };
         let (sys, me) = cpu_since(&prev, &later(1100, 850, 15));
         assert!((sys.unwrap() - 50.0).abs() < 0.01);
-        let cores = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) as f32;
+        let cores = std::thread::available_parallelism().map_or(1, std::num::NonZero::get) as f32;
         assert!((me.unwrap() - 5.0 * cores).abs() < 0.01);
         assert_eq!(cpu_since(&prev, &later(1000, 800, 10)), (None, None), "no ticks yet");
         let soon = CpuSample { at: t0 + Duration::from_millis(100), total: 2000, idle: 900, proc_ticks: 20 };

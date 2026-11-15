@@ -5,6 +5,7 @@
 //! Writes go through a small queue to a writer thread, so the sink thread never blocks on the
 //! pipe: a blocked sink thread starves the systemd watchdog and gets the whole service killed.
 
+use crate::sync::LockExt;
 use std::io::{ErrorKind, Read, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -34,17 +35,14 @@ pub(super) struct Aplay {
 fn spawn_writer(mut stdin: ChildStdin, broken: Arc<AtomicBool>) -> SyncSender<Vec<u8>> {
     // ~4 chunks (~80 ms) in flight on top of the 64 KB pipe buffer.
     let (tx, rx) = sync_channel::<Vec<u8>>(4);
-    std::thread::Builder::new()
-        .name("aplay-writer".into())
-        .spawn(move || {
+    crate::sync::spawn_named("aplay-writer", move || {
             for buf in rx {
                 if stdin.write_all(&buf).is_err() {
                     broken.store(true, Ordering::Relaxed);
                     return;
                 }
             }
-        })
-        .expect("spawn writer");
+        });
     tx
 }
 
@@ -101,7 +99,7 @@ impl Aplay {
             std::thread::spawn(move || {
                 let mut s = String::new();
                 let _ = err.read_to_string(&mut s);
-                *buf.lock().unwrap() = s.lines().last().unwrap_or("").to_string();
+                *buf.locked() = s.lines().last().unwrap_or("").to_string();
             });
         }
         Ok(Self { child, tx, broken, rate, idx, stderr })
@@ -109,7 +107,7 @@ impl Aplay {
 
     /// aplay fails fast when the device is missing or busy: its error, if it has already exited.
     pub fn exited(&mut self) -> Option<String> {
-        matches!(self.child.try_wait(), Ok(Some(_))).then(|| self.stderr.lock().unwrap().trim().to_string())
+        matches!(self.child.try_wait(), Ok(Some(_))).then(|| self.stderr.locked().trim().to_string())
     }
 
     /// Queue `chunk` for the device, waiting (at real-time pace) while it is full.
@@ -132,7 +130,7 @@ impl Aplay {
         while Instant::now() < deadline && matches!(self.child.try_wait(), Ok(None)) {
             std::thread::sleep(Duration::from_millis(20));
         }
-        let s = self.stderr.lock().unwrap().trim().to_string();
+        let s = self.stderr.locked().trim().to_string();
         if s.is_empty() { e.to_string() } else { s }
     }
 

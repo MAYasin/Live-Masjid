@@ -257,6 +257,7 @@ mod tests {
 /// listings (the last one repeats), and a log of every command.
 #[cfg(test)]
 pub mod fake {
+    use crate::sync::LockExt;
     use super::Bt;
     use std::collections::VecDeque;
     use std::sync::{Arc, Mutex};
@@ -281,19 +282,19 @@ pub mod fake {
         /// Answer commands starting with `prefix` (the longest matching prefix wins).
         pub fn reply(&self, prefix: &str, out: Result<&str, &str>) -> &Self {
             let out = out.map(str::to_owned).map_err(str::to_owned);
-            self.0.lock().unwrap().replies.push((prefix.to_owned(), out));
+            self.0.locked().replies.push((prefix.to_owned(), out));
             self
         }
 
         /// Whether `mac` is audio-ready on each successive check (the last answer repeats).
         pub fn ready(&self, mac: &str, seq: &[bool]) -> &Self {
-            let mut s = self.0.lock().unwrap();
+            let mut s = self.0.locked();
             s.pcms = seq.iter().map(|&r| if r { a2dp(mac) } else { String::new() }).collect();
             self
         }
 
         pub fn calls(&self) -> Vec<String> {
-            self.0.lock().unwrap().calls.clone()
+            self.0.locked().calls.clone()
         }
 
         pub fn called(&self, cmd: &str) -> bool {
@@ -304,7 +305,7 @@ pub mod fake {
     impl Bt for FakeBt {
         async fn ctl(&self, args: &[&str], _timeout: Duration) -> anyhow::Result<String> {
             let cmd = args.join(" ");
-            let mut s = self.0.lock().unwrap();
+            let mut s = self.0.locked();
             s.calls.push(cmd.clone());
             let best = s.replies.iter().filter(|(p, _)| cmd.starts_with(p.as_str())).max_by_key(|(p, _)| p.len());
             match best {
@@ -315,7 +316,7 @@ pub mod fake {
         }
 
         async fn pcms(&self) -> String {
-            let mut s = self.0.lock().unwrap();
+            let mut s = self.0.locked();
             if s.pcms.len() > 1 { s.pcms.pop_front().unwrap_or_default() } else { s.pcms.front().cloned().unwrap_or_default() }
         }
 

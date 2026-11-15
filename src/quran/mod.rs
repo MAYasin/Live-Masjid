@@ -16,6 +16,7 @@ pub use download::{Curl, Fetcher};
 pub use playlists::{Playlist, PlaylistCtx};
 pub use reciters::Reciter;
 
+use crate::sync::LockExt;
 use download::Queue;
 use playlists::PlaylistStore;
 use reciters::Catalog;
@@ -165,18 +166,18 @@ impl<F: Fetcher> Library<F> {
             return None;
         }
         let have = file_len(&self.part_path(key, n)).unwrap_or(0);
-        let total = self.queue.lock().unwrap().totals.get(&(key.to_string(), n)).copied()?;
+        let total = self.queue.locked().totals.get(&(key.to_string(), n)).copied()?;
         u8::try_from((have * 100 / total.max(1)).min(99)).ok()
     }
 
     /// Expected size of the surah file, if known.
     pub fn total(&self, key: &str, n: u16) -> Option<u64> {
-        file_len(&self.final_path(key, n)).or_else(|| self.queue.lock().unwrap().totals.get(&(key.to_string(), n)).copied())
+        file_len(&self.final_path(key, n)).or_else(|| self.queue.locked().totals.get(&(key.to_string(), n)).copied())
     }
 
     /// Delete one surah of a recitation, or every download of every recitation (`None`).
     /// Never the one playing (`keep`).
-    pub fn delete(&self, what: Option<Item>, keep: Option<Item>) -> usize {
+    pub fn delete(&self, what: Option<Item>, keep: Option<&Item>) -> usize {
         let all = what.is_none();
         let targets: Vec<Item> = match what {
             Some(i) => vec![i],
@@ -190,13 +191,13 @@ impl<F: Fetcher> Library<F> {
                 .flat_map(|k| (1..=114).map(move |n| (k.clone(), n)))
                 .collect(),
         };
-        let mut q = self.queue.lock().unwrap();
+        let mut q = self.queue.locked();
         if all {
             q.all = None;
             q.priority.clear();
         }
         let mut removed = 0;
-        for t in targets.into_iter().filter(|t| Some(t) != keep.as_ref()) {
+        for t in targets.into_iter().filter(|t| Some(t) != keep) {
             if let Some((a, cancel)) = &q.active
                 && *a == t
             {
@@ -228,7 +229,7 @@ impl<F: Fetcher> Library<F> {
     pub fn info(&self, key: &str) -> LibraryInfo {
         let reciter = self.resolve(Some(key));
         let key = reciter.key.clone();
-        let q = self.queue.lock().unwrap();
+        let q = self.queue.locked();
         let mut surahs = Vec::with_capacity(114);
         let mut ready = 0;
         for n in 1..=114u16 {
@@ -344,7 +345,7 @@ mod tests {
         std::fs::create_dir_all(lib.dir(key)).unwrap();
         assert_eq!(lib.progress(key, 2), None, "size unknown");
         std::fs::write(lib.part_path(key, 2), vec![0u8; 512]).unwrap();
-        lib.queue.lock().unwrap().totals.insert((key.to_string(), 2), 1024);
+        lib.queue.locked().totals.insert((key.to_string(), 2), 1024);
         assert_eq!(lib.progress(key, 2), Some(50));
         assert_eq!(lib.total(key, 2), Some(1024));
         std::fs::write(lib.final_path(key, 2), vec![0u8; 1000]).unwrap();
@@ -374,15 +375,15 @@ mod tests {
 
         let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
         {
-            let mut q = lib.queue.lock().unwrap();
+            let mut q = lib.queue.locked();
             q.active = Some((("other-r1".to_string(), 5), cancel.clone()));
             q.priority.push_back((key.to_string(), 3));
             q.all = Some(key.to_string());
         }
-        assert_eq!(lib.delete(None, Some((key.to_string(), 2))), 2);
+        assert_eq!(lib.delete(None, Some(&(key.to_string(), 2))), 2);
         assert!(cancel.load(Ordering::Relaxed), "the download being deleted stops");
         assert!(lib.is_ready(key, 2), "the playing surah is kept");
-        let q = lib.queue.lock().unwrap();
+        let q = lib.queue.locked();
         assert!(q.all.is_none() && q.priority.is_empty());
         drop(q);
         let _ = std::fs::remove_dir_all(dir);
@@ -397,7 +398,7 @@ mod tests {
         std::fs::write(lib.part_path(key, 2), b"pa").unwrap();
         std::fs::write(lib.part_path(key, 3), b"par").unwrap();
         {
-            let mut q = lib.queue.lock().unwrap();
+            let mut q = lib.queue.locked();
             q.active = Some(((key.to_string(), 2), Arc::new(std::sync::atomic::AtomicBool::new(false))));
             q.priority.push_back((key.to_string(), 4));
         }

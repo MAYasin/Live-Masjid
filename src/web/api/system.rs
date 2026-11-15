@@ -5,6 +5,7 @@
 //! build); `update.sh` reports progress in `<data>/update-status.json`. Automatic (timer) updates
 //! follow the `auto_update` setting, which `update.sh` reads from `settings.json`.
 
+use crate::sync::LockExt;
 use crate::state::App;
 use crate::web::{ApiError, ApiResult, ok};
 use axum::Json;
@@ -42,7 +43,7 @@ pub async fn action(State(app): State<App>, Path(action): Path<String>) -> ApiRe
             });
         }
         "clear-history" => {
-            app.history.lock().unwrap().clear();
+            app.history.locked().clear();
             app.status.send_modify(|st| st.last_heard_ms = None);
             app.log("info", "History cleared from the UI");
         }
@@ -183,10 +184,10 @@ mod tests {
     #[tokio::test]
     async fn clear_history_and_unknown_actions() {
         let (app, dir) = app();
-        app.history.lock().unwrap().begin("m", "M", "opus", "manual");
+        app.history.locked().begin("m", "M", "opus", "manual");
         app.status.send_modify(|s| s.last_heard_ms = Some(5));
         assert!(action(State(app.clone()), Path("clear-history".into())).await.is_ok());
-        assert!(app.history.lock().unwrap().recent(10, None).is_empty());
+        assert!(app.history.locked().recent(10, None).is_empty());
         assert_eq!(app.status.borrow().last_heard_ms, None);
         let Err(e) = action(State(app.clone()), Path("format-disk".into())).await else { panic!("unknown action accepted") };
         assert_eq!(e.0, axum::http::StatusCode::BAD_REQUEST);
@@ -200,7 +201,7 @@ mod tests {
     async fn restart_is_acknowledged() {
         let (app, dir) = app();
         assert!(action(State(app.clone()), Path("restart".into())).await.is_ok());
-        assert!(app.logs.lock().unwrap().iter().any(|l| l.msg.contains("Restart")));
+        assert!(app.logs.locked().iter().any(|l| l.msg.contains("Restart")));
         let _ = std::fs::remove_dir_all(dir);
     }
 

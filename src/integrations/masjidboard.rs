@@ -92,10 +92,9 @@ pub(super) async fn lookup_at(app: &App, id: &str, api: &str) -> Lookup {
 fn time(d: &Value, key: &str) -> Option<String> {
     let s = d.get(key)?.as_str()?.trim();
     let ok = s.len() >= 4 && s != "00:00" && s.as_bytes()[0].is_ascii_digit() && s.contains(':');
-    ok.then(|| {
-        let (h, m) = s.split_once(':').unwrap();
-        format!("{:0>2}:{}", h.trim(), &m.trim()[..m.trim().len().min(2)])
-    })
+    let (h, m) = s.split_once(':').filter(|_| ok)?;
+    // chars, not bytes: a stray non-ASCII character must not split a code point.
+    Some(format!("{:0>2}:{}", h.trim(), m.trim().chars().take(2).collect::<String>()))
 }
 
 fn text(d: &Value, key: &str) -> Option<String> {

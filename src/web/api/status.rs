@@ -1,5 +1,6 @@
 //! Health, live status (snapshot + server-sent events), history and activity log.
 
+use crate::sync::LockExt;
 use crate::state::{App, now_ms};
 use axum::Json;
 use axum::extract::{Query, State};
@@ -69,7 +70,7 @@ pub struct HistoryQuery {
 /// (`salah_estimated`).
 pub async fn history(State(app): State<App>, Query(q): Query<HistoryQuery>) -> Json<Value> {
     use crate::history::{per_day, salah_matches};
-    let all = app.history.lock().unwrap().recent(usize::MAX, q.mount.as_deref());
+    let all = app.history.locked().recent(usize::MAX, q.mount.as_deref());
     let last = all.first().map(|s| json!({ "ms": s.end_ms, "live": s.reason.is_empty() }));
     let followed = app.settings().mount;
     let needs_estimate = all.iter().any(|s| s.salah.is_none() && Some(&s.mount) == followed.as_ref());
@@ -116,7 +117,7 @@ pub async fn history(State(app): State<App>, Query(q): Query<HistoryQuery>) -> J
 }
 
 pub async fn logs(State(app): State<App>) -> Json<Value> {
-    let l = app.logs.lock().unwrap();
+    let l = app.logs.locked();
     Json(json!({ "logs": l.iter().rev().collect::<Vec<_>>() }))
 }
 
@@ -216,7 +217,7 @@ mod tests {
         app.update_settings(|s| s.mount = Some("followed".into())).unwrap();
         cache_times_covering_now(&app, "followed");
         {
-            let mut h = app.history.lock().unwrap();
+            let mut h = app.history.locked();
             h.begin("other", "Other", "opus", "poll");
             let id = h.begin("followed", "Followed", "opus", "sse");
             h.finish(id, "ended", 0);

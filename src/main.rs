@@ -17,8 +17,10 @@ mod site;
 mod sysinfo;
 mod state;
 mod stream;
+mod sync;
 mod web;
 
+use crate::sync::LockExt;
 use state::{AppState, Phase, Status, now_ms};
 use std::sync::atomic::{AtomicU8, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
@@ -141,7 +143,7 @@ async fn run() -> anyhow::Result<()> {
         signal_tx,
         mount_gen: tokio::sync::watch::Sender::new(0),
         volume,
-        http: net::build_client(),
+        http: net::build_client()?,
         sink,
         hb_player: AtomicU64::new(now_ms()),
         site: site::SiteGuard::load(paths_site),
@@ -156,7 +158,7 @@ async fn run() -> anyhow::Result<()> {
         app.sink.on_status(move |out| {
             if let Some(app) = weak.upgrade() {
                 let key = out.open.then(|| out.device.clone());
-                let mut last = last_logged.lock().unwrap();
+                let mut last = last_logged.locked();
                 if *last != key {
                     match (&key, last.as_ref()) {
                         (Some(_), _) => app.log("info", format!("Audio playing on {} ({})", out.label, out.kind)),
@@ -202,7 +204,7 @@ async fn run() -> anyhow::Result<()> {
     let server = axum::serve(listener, web::router(app.clone()));
     tokio::select! {
         r = server => r?,
-        _ = shutdown_signal() => tracing::info!("shutting down"),
+        () = shutdown_signal() => tracing::info!("shutting down"),
     }
     Ok(())
 }
@@ -210,10 +212,15 @@ async fn run() -> anyhow::Result<()> {
 async fn shutdown_signal() {
     #[cfg(unix)]
     {
-        let mut term = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()).expect("sigterm");
-        tokio::select! {
-            _ = term.recv() => {}
-            _ = tokio::signal::ctrl_c() => {}
+        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
+            Ok(mut term) => tokio::select! {
+                _ = term.recv() => {}
+                _ = tokio::signal::ctrl_c() => {}
+            },
+            Err(e) => {
+                tracing::warn!("can't listen for SIGTERM ({e}); stopping on Ctrl-C only");
+                let _ = tokio::signal::ctrl_c().await;
+            }
         }
     }
     #[cfg(not(unix))]

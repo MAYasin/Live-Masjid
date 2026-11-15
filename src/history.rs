@@ -99,7 +99,7 @@ impl History {
 
     pub fn begin(&mut self, mount: &str, name: &str, codec: &str, trigger: &str) -> u64 {
         let now = crate::state::now_ms();
-        let id = self.sessions.last().map(|s| s.id + 1).unwrap_or(1).max(now);
+        let id = self.sessions.last().map_or(1, |s| s.id + 1).max(now);
         let s = Session {
             id,
             mount: mount.into(),
@@ -166,7 +166,7 @@ impl History {
     }
 
     fn compact_if_needed(&mut self, force_check: bool) {
-        let len = std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
+        let len = std::fs::metadata(&self.path).map_or(0, |m| m.len());
         let cutoff = crate::state::now_ms().saturating_sub(KEEP_MS);
         let expired = self.sessions.first().is_some_and(|s| s.end_ms < cutoff);
         if expired || self.sessions.len() > KEEP || (force_check && len > 2_000_000) || len > 4_000_000 {
@@ -193,8 +193,7 @@ pub struct DayTotal {
 
 /// Local calendar date ("YYYY-MM-DD") of `ts_ms`, for a zone `offset_s` east of UTC.
 pub fn local_date(ts_ms: u64, offset_s: i64) -> String {
-    #[allow(clippy::cast_possible_wrap)]
-    let secs = (ts_ms / 1000) as i64 + offset_s;
+    let secs = i64::try_from(ts_ms / 1000).unwrap_or(i64::MAX / 2) + offset_s;
     let (y, m, d) = civil_from_days(secs.div_euclid(86_400));
     format!("{y:04}-{m:02}-{d:02}")
 }
@@ -209,7 +208,7 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let mp = (5 * doy + 2) / 153;
     let d = doy - (153 * mp + 2) / 5 + 1;
     let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+    // m is 1..=12 and d is 1..=31 here, so the casts are exact.
     (yoe + era * 400 + i64::from(m <= 2), m as u32, d as u32)
 }
 

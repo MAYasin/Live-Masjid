@@ -1,6 +1,7 @@
 //! Optional password protection: a salted password hash in settings, and an HttpOnly
 //! session cookie derived from it (rotating the secret signs everyone out).
 
+use crate::sync::RwLockExt;
 use super::{ApiError, ok};
 use crate::config::{ct_eq, hash_password, hex, random_hex, verify_password};
 use crate::state::App;
@@ -18,7 +19,7 @@ const COOKIE_MAX_AGE: u64 = 400 * 86_400;
 /// The cookie value for the current password, or `None` when no password is set.
 fn session_token(app: &App) -> Option<String> {
     use sha2::{Digest, Sha256};
-    let s = app.settings.read().unwrap();
+    let s = app.settings.read_lock();
     let hash = s.password_hash.as_ref()?;
     Some(hex(&Sha256::digest(format!("{}|{hash}", s.secret).as_bytes())))
 }

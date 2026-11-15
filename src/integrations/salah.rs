@@ -195,7 +195,7 @@ async fn masjidscreen(app: &App, mount: &str, site: &str) -> SalahTimes {
     let (result, ttl) = match fetch(&url, Duration::from_secs(10), &it.masjidscreen).await {
         Fetched::Ok(body) => match parse(&body) {
             Some(mut t) => {
-                t.source = source.clone();
+                t.source.clone_from(&source);
                 (t, Duration::from_secs(6 * 3600)) // times change daily; re-check a few times a day
             }
             None => (failure("error", "Unexpected answer from masjidscreen.co.za", &source), Duration::from_secs(1800)),

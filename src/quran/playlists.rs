@@ -1,6 +1,7 @@
 //! Named playlists, shared by everyone using the Pi, optionally pinned to a reciter, given a
 //! speed and scheduled on weekdays.
 
+use crate::sync::LockExt;
 use super::valid;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -134,16 +135,16 @@ impl PlaylistStore {
     }
 
     pub fn all(&self) -> Vec<Playlist> {
-        self.list.lock().unwrap().clone()
+        self.list.locked().clone()
     }
 
     pub fn get(&self, id: &str) -> Option<Playlist> {
-        self.list.lock().unwrap().iter().find(|p| p.id == id).cloned()
+        self.list.locked().iter().find(|p| p.id == id).cloned()
     }
 
     /// Replace the playlist with the same id, or add it under a new id. `p` is already validated.
     pub fn save(&self, mut p: Playlist) -> Result<Playlist, String> {
-        let mut list = self.list.lock().unwrap();
+        let mut list = self.list.locked();
         match list.iter_mut().find(|x| x.id == p.id) {
             Some(x) => *x = p.clone(),
             None => {
@@ -159,7 +160,7 @@ impl PlaylistStore {
     }
 
     pub fn delete(&self, id: &str) -> Result<bool, String> {
-        let mut list = self.list.lock().unwrap();
+        let mut list = self.list.locked();
         let before = list.len();
         list.retain(|p| p.id != id);
         self.persist(&list)?;
@@ -230,7 +231,7 @@ mod tests {
         let renamed = store.save(Playlist { name: "Evening".into(), ..saved.clone() }).unwrap();
         assert_eq!(renamed.id, saved.id);
         assert_eq!(store.all().len(), 1, "replaced, not added");
-        assert_eq!(PlaylistStore::load(path.clone()).get(&saved.id).unwrap().name, "Evening", "saved to disk");
+        assert_eq!(PlaylistStore::load(path).get(&saved.id).unwrap().name, "Evening", "saved to disk");
 
         for _ in 1..MAX_PLAYLISTS {
             store.save(morning()).unwrap();

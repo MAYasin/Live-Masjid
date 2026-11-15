@@ -113,37 +113,37 @@ fn path_codec(path: &str) -> Codec {
     if path.ends_with(".mp3") { Codec::Mp3 } else { Codec::Opus }
 }
 
-fn run_session(p: SessionParams) {
+fn run_session(p: &SessionParams) {
     let cands = candidates(&p.mount, &p.codec);
     run_session_on(p, &cands, DROP_GRACE);
 }
 
 /// A session over the given candidate servers (tests point these at a local fake Icecast).
-fn run_session_on(p: SessionParams, cands: &[(&'static str, u16, String)], drop_grace: Duration) {
-    let mut conn = match connect(&p, cands, p.start_grace, None) {
+fn run_session_on(p: &SessionParams, cands: &[(&'static str, u16, String)], drop_grace: Duration) {
+    let mut conn = match connect(p, cands, p.start_grace, None) {
         Ok(c) => c,
-        Err(reason) => return end(&p, reason),
+        Err(reason) => return end(p, reason),
     };
-    let mut pipe = Pipeline::start(codec_of(&conn), &p, conn.url.clone());
+    let mut pipe = Pipeline::start(codec_of(&conn), p, conn.url.clone());
     let mut carry: Option<Vec<u8>> = None;
     loop {
-        match pump(&mut conn, &mut pipe, &p, carry.take()) {
+        match pump(&mut conn, &mut pipe, p, carry.take()) {
             Pumped::Stopped => {
                 pipe.finish();
-                return end(&p, EndReason::Stopped);
+                return end(p, EndReason::Stopped);
             }
             Pumped::NewStream(rest) => {
                 // Encoder restarted upstream: let the old decoder play out, start fresh.
                 tracing::info!("stream restarted upstream; new decoder");
                 pipe.finish();
-                pipe = Pipeline::start(Codec::Opus, &p, conn.url.clone());
+                pipe = Pipeline::start(Codec::Opus, p, conn.url.clone());
                 pipe.fresh = false; // a new encoder: no burst to skip
                 carry = Some(rest);
             }
             Pumped::Dropped(why) => {
                 let buffered = p.buffer_ms.load(Ordering::Relaxed) / 1000;
                 let _ = p.events.send(StreamEvent::Reconnecting(format!("{why}; {buffered} s buffered")));
-                match connect(&p, cands, drop_grace, Some(pipe.codec)) {
+                match connect(p, cands, drop_grace, Some(pipe.codec)) {
                     Ok(c) if codec_of(&c) == pipe.codec => {
                         pipe.filter.reconnected();
                         // Ogg pages resume exactly where we stopped; MP3 can't, so jump to live.
@@ -153,16 +153,16 @@ fn run_session_on(p: SessionParams, cands: &[(&'static str, u16, String)], drop_
                     }
                     Ok(c) => {
                         pipe.finish();
-                        pipe = Pipeline::start(codec_of(&c), &p, c.url.clone());
+                        pipe = Pipeline::start(codec_of(&c), p, c.url.clone());
                         conn = c;
                     }
                     Err(EndReason::Stopped) => {
                         pipe.finish();
-                        return end(&p, EndReason::Stopped);
+                        return end(p, EndReason::Stopped);
                     }
                     Err(_) => {
                         pipe.finish(); // play out whatever is still buffered
-                        return end(&p, EndReason::Finished);
+                        return end(p, EndReason::Finished);
                     }
                 }
             }
@@ -174,7 +174,7 @@ impl Source for SessionParams {
     const THREAD: &'static str = "stream";
 
     fn run(self) {
-        run_session(self);
+        run_session(&self);
     }
 }
 
@@ -214,10 +214,7 @@ impl Pipeline {
             speed: None,
             channel: crate::sink::Channel::Broadcast,
         };
-        let decoder = std::thread::Builder::new()
-            .name("decoder".into())
-            .spawn(move || decode::run(codec, ctx))
-            .expect("spawn decoder");
+        let decoder = crate::sync::spawn_named("decoder", move || decode::run(codec, ctx));
         Self { codec, queue, filter: OggFilter::new(), decoder, fresh: true, started: Instant::now() }
     }
 
@@ -591,7 +588,7 @@ mod tests {
             vec![ok("application/ogg"), Step::Send(head.to_vec()), Step::Wait(600), Step::Send(tail.to_vec())],
         ]);
         let (p, mut rx) = params(&app);
-        run_session_on(p, &local(port, "/m.mp3"), Duration::ZERO);
+        run_session_on(&p, &local(port, "/m.mp3"), Duration::ZERO);
 
         let events = drain(&mut rx);
         assert!(started(&events, "mp3") >= 2, "{events:?}");
@@ -616,17 +613,17 @@ mod tests {
             vec![ok("application/ogg"), Step::Send(b.clone())],
         ]);
         let (p, mut rx) = params(&app);
-        run_session_on(p, &local(port, "/m"), Duration::ZERO);
+        run_session_on(&p, &local(port, "/m"), Duration::ZERO);
         let events = drain(&mut rx);
         assert!(started(&events, "opus") >= 2, "{events:?}");
         assert!(matches!(events.last(), Some(StreamEvent::Ended(EndReason::Finished))), "{events:?}");
 
         // A restart inside the connect burst itself.
-        let mut both = b.clone();
+        let mut both = b;
         both.extend_from_slice(&c);
         let (port, _accepted) = icecast(vec![vec![ok("application/ogg"), Step::Send(both)]]);
         let (p, mut rx) = params(&app);
-        run_session_on(p, &local(port, "/m"), Duration::ZERO);
+        run_session_on(&p, &local(port, "/m"), Duration::ZERO);
         let events = drain(&mut rx);
         assert!(started(&events, "opus") >= 1, "{events:?}");
         assert!(matches!(events.last(), Some(StreamEvent::Ended(EndReason::Finished))), "{events:?}");
@@ -645,7 +642,7 @@ mod tests {
             vec![ok("audio/mpeg"), Step::Send(mp3_frames(10)), Step::Wait(600), Step::Send(mp3_frames(2)), Step::Wait(200), Step::Reset],
         ]);
         let (p, mut rx) = params(&app);
-        run_session_on(p, &local(port, "/m.mp3"), Duration::ZERO);
+        run_session_on(&p, &local(port, "/m.mp3"), Duration::ZERO);
         let events = drain(&mut rx);
         assert!(events.iter().any(|e| matches!(e, StreamEvent::Reconnecting(why) if why.contains("no data"))), "{events:?}");
         assert!(matches!(events.last(), Some(StreamEvent::Ended(EndReason::Finished))), "{events:?}");
@@ -669,7 +666,7 @@ mod tests {
         let (port, _accepted) = icecast(vec![steps]);
         let (p, mut rx) = params(&app);
         let stop = p.stop.clone();
-        let session = std::thread::spawn(move || run_session_on(p, &local(port, "/m.mp3"), Duration::ZERO));
+        let session = std::thread::spawn(move || run_session_on(&p, &local(port, "/m.mp3"), Duration::ZERO));
         wait_for(&mut rx, |e| matches!(e, StreamEvent::Started { .. }));
         stop.store(true, Ordering::Relaxed);
         session.join().unwrap();
@@ -683,7 +680,7 @@ mod tests {
         let (port, accepted) = icecast(vec![trickle(40)]);
         let (p, mut rx) = params(&app);
         let stop = p.stop.clone();
-        let session = std::thread::spawn(move || run_session_on(p, &local(port, "/m.mp3"), Duration::ZERO));
+        let session = std::thread::spawn(move || run_session_on(&p, &local(port, "/m.mp3"), Duration::ZERO));
         accepted.recv_timeout(Duration::from_secs(5)).unwrap();
         std::thread::sleep(Duration::from_millis(300));
         stop.store(true, Ordering::Relaxed);
@@ -699,7 +696,7 @@ mod tests {
         let (p, mut rx) = params(&app);
         let stop = p.stop.clone();
         // A long drop grace: the 404s keep it retrying until stopped.
-        let session = std::thread::spawn(move || run_session_on(p, &local(port, "/m.mp3"), Duration::from_secs(30)));
+        let session = std::thread::spawn(move || run_session_on(&p, &local(port, "/m.mp3"), Duration::from_secs(30)));
         wait_for(&mut rx, |e| matches!(e, StreamEvent::Reconnecting(_)));
         stop.store(true, Ordering::Relaxed);
         session.join().unwrap();
@@ -714,7 +711,7 @@ mod tests {
         let (p, mut rx) = params(&app);
         let buffer = p.buffer_ms.clone();
         buffer.store(5, Ordering::Relaxed);
-        run_session_on(p, &local(port, "/m"), Duration::ZERO);
+        run_session_on(&p, &local(port, "/m"), Duration::ZERO);
         assert!(matches!(drain(&mut rx).as_slice(), [StreamEvent::Ended(EndReason::NotLive)]));
         assert_eq!(buffer.load(Ordering::Relaxed), 0);
         let _ = std::fs::remove_dir_all(dir);

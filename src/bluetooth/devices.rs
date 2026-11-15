@@ -149,6 +149,7 @@ async fn release_with<B: Bt>(bt: &B, app: &App, mac: &str, forget: bool) -> anyh
 
 #[cfg(test)]
 mod tests {
+    use crate::sync::LockExt;
     use super::*;
 
     fn dev(mac: &str, name: &str, paired: bool, connected: bool, preferred: bool) -> Device {
@@ -260,7 +261,7 @@ mod tests {
         assert!(bt.called(&format!("trust {MAC}")) && bt.called("pairable off"));
         let s = app.settings();
         assert_eq!((s.bt_device.as_deref(), s.bt_name.as_deref()), (Some(MAC), Some("VSW07")));
-        assert!(app.logs.lock().unwrap().iter().any(|l| l.msg == "Bluetooth speaker set: VSW07"));
+        assert!(app.logs.locked().iter().any(|l| l.msg == "Bluetooth speaker set: VSW07"));
         let _ = std::fs::remove_dir_all(dir);
     }
 

@@ -125,7 +125,7 @@ mod tests {
     fn waits_before_resetting_and_backs_off() {
         let mut r = Recovery::new();
         assert!(!r.should_reset(AdapterState::Unresponsive), "grace period first");
-        r.unhealthy_since = Some(Instant::now() - Duration::from_secs(30));
+        r.unhealthy_since = Some(Instant::now().checked_sub(Duration::from_secs(30)).unwrap());
         assert!(r.should_reset(AdapterState::Unresponsive));
         assert!(!r.should_reset(AdapterState::Unresponsive), "backed off");
         assert!(!r.should_reset(AdapterState::Blocked));

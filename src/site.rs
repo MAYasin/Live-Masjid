@@ -6,6 +6,7 @@
 //! for hours — never retry in a loop, never disguise the client. The back-off is saved to
 //! disk so restarts and reboots don't reset it.
 
+use crate::sync::LockExt;
 use crate::state::now_ms;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -42,14 +43,14 @@ impl SiteGuard {
     }
 
     pub fn blocked_until(&self) -> Option<u64> {
-        let t = self.state.lock().unwrap().blocked_until_ms;
+        let t = self.state.locked().blocked_until_ms;
         (t > now_ms()).then_some(t)
     }
 
     /// Record a refusal. Pauses all website traffic for 6 h, then 12 h, then 24 h.
     /// Returns the time (ms) until which we stay away.
     pub fn refused(&self) -> u64 {
-        let mut s = self.state.lock().unwrap();
+        let mut s = self.state.locked();
         s.strikes += 1;
         let hours = match s.strikes {
             1 => 6,
@@ -63,7 +64,7 @@ impl SiteGuard {
 
     /// A successful website request: forget past strikes.
     pub fn ok(&self) {
-        let mut s = self.state.lock().unwrap();
+        let mut s = self.state.locked();
         if s.strikes != 0 || s.blocked_until_ms != 0 {
             *s = State::default();
             self.save(*s);

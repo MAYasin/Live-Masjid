@@ -1,6 +1,7 @@
 //! Masjid directory, scraped from livemasjid.com's index page (the site has no JSON
 //! API for it) and cached on disk so the UI works offline and instantly after boot.
 
+use crate::sync::RwLockExt;
 use crate::state::{App, now_ms};
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::Ordering;
@@ -28,12 +29,12 @@ pub fn load_cache(app: &App) {
     if let Ok(bytes) = std::fs::read(&app.paths.catalog)
         && let Ok(c) = serde_json::from_slice::<CacheFile>(&bytes)
             && !c.stations.is_empty() {
-                *app.catalog.write().unwrap() = c.stations;
+                *app.catalog.write_lock() = c.stations;
                 app.catalog_fetched_ms.store(c.fetched_ms, Ordering::Relaxed);
                 return;
             }
     if let Ok(seed) = serde_json::from_str::<Vec<Station>>(SEED) {
-        *app.catalog.write().unwrap() = seed;
+        *app.catalog.write_lock() = seed;
         // fetched_ms stays 0, so the background task refreshes it as soon as it can.
     }
 }
@@ -74,7 +75,7 @@ async fn refresh_from(app: &App, bases: &[&str]) -> anyhow::Result<usize> {
                 let now = now_ms();
                 let file = CacheFile { fetched_ms: now, stations: stations.clone() };
                 crate::config::write_atomic(&app.paths.catalog, &serde_json::to_vec(&file)?)?;
-                *app.catalog.write().unwrap() = stations;
+                *app.catalog.write_lock() = stations;
                 app.catalog_fetched_ms.store(now, Ordering::Relaxed);
                 return Ok(n);
             }
@@ -145,7 +146,7 @@ pub fn parse(html: &str) -> Vec<Station> {
         let rest = &chunk[i + "masjidname\" href=\"/".len()..];
         let Some(end) = rest.find('"') else { continue };
         let mount = rest[..end].trim().to_string();
-        let name = between(&rest[end..], ">", "</a>").map(clean).unwrap_or_else(|| mount.clone());
+        let name = between(&rest[end..], ">", "</a>").map_or_else(|| mount.clone(), clean);
         if mount.is_empty() || mount.contains(['/', '?', ' ']) || out.iter().any(|s| s.mount == mount) {
             continue;
         }
@@ -324,16 +325,16 @@ mod tests {
         });
         std::fs::write(&app.paths.catalog, serde_json::to_vec(&file).unwrap()).unwrap();
         load_cache(&app);
-        assert_eq!(app.catalog.read().unwrap().len(), 1);
-        assert_eq!(app.catalog.read().unwrap()[0].mount, "saved");
+        assert_eq!(app.catalog.read_lock().len(), 1);
+        assert_eq!(app.catalog.read_lock()[0].mount, "saved");
         assert_eq!(app.catalog_fetched_ms.load(Ordering::Relaxed), 1234);
 
         // A broken cache file must not leave the app without a directory.
         std::fs::write(&app.paths.catalog, b"not json").unwrap();
-        app.catalog.write().unwrap().clear();
+        app.catalog.write_lock().clear();
         app.catalog_fetched_ms.store(0, Ordering::Relaxed);
         load_cache(&app);
-        assert!(app.catalog.read().unwrap().len() > 400, "the embedded seed is used");
+        assert!(app.catalog.read_lock().len() > 400, "the embedded seed is used");
         assert_eq!(app.catalog_fetched_ms.load(Ordering::Relaxed), 0);
 
         let _ = std::fs::remove_dir_all(dir);
@@ -360,9 +361,11 @@ mod tests {
 
     /// A directory page with `n` cards.
     fn page(n: usize) -> String {
-        (0..n)
-            .map(|i| format!(r#"<div class="bs-component"><p hidden class="location d-none">Town {i}</p><a class="text-muted masjidname" href="/m{i}">Masjid {i}</a></div>"#))
-            .collect()
+        (0..n).fold(String::new(), |mut s, i| {
+            use std::fmt::Write;
+            let _ = write!(s, r#"<div class="bs-component"><p hidden class="location d-none">Town {i}</p><a class="text-muted masjidname" href="/m{i}">Masjid {i}</a></div>"#);
+            s
+        })
     }
 
     #[tokio::test]
@@ -375,11 +378,11 @@ mod tests {
 
         // The first base fails; the next one answers.
         assert_eq!(refresh_from(&app, &[broken.as_str(), good.as_str()]).await.unwrap(), 12);
-        assert_eq!(app.catalog.read().unwrap().len(), 12);
+        assert_eq!(app.catalog.read_lock().len(), 12);
         assert!(app.catalog_fetched_ms.load(Ordering::Relaxed) > 0);
-        app.catalog.write().unwrap().clear();
+        app.catalog.write_lock().clear();
         load_cache(&app);
-        assert_eq!(app.catalog.read().unwrap()[0].location, "Town 0", "saved to disk");
+        assert_eq!(app.catalog.read_lock()[0].location, "Town 0", "saved to disk");
 
         let err = refresh_from(&app, &[short.as_str()]).await.unwrap_err().to_string();
         assert!(err.contains("only 3 stations"), "{err}");

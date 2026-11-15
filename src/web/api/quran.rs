@@ -16,7 +16,7 @@ pub struct ReciterQuery {
 
 /// The recitation asked for, or the app's default.
 fn reciter_key(app: &App, asked: Option<&str>) -> String {
-    asked.filter(|k| quran::valid_key(k)).map(str::to_string).unwrap_or_else(|| app.settings().quran_reciter)
+    asked.filter(|k| quran::valid_key(k)).map_or_else(|| app.settings().quran_reciter, str::to_string)
 }
 
 /// Surahs of one recitation (default: the app's reciter) with download states.
@@ -42,7 +42,7 @@ pub struct SetReciter {
 /// Choose the app's default reciter.
 pub async fn set_reciter(State(app): State<App>, Json(r): Json<SetReciter>) -> ApiResult {
     let rc = app.quran.reciter(&r.reciter).ok_or_else(|| ApiError::bad("Unknown reciter"))?;
-    app.update_settings(|s| s.quran_reciter = rc.key.clone())?;
+    app.update_settings(|s| s.quran_reciter.clone_from(&rc.key))?;
     app.log("info", format!("Quran reciter: {}", rc.label()));
     ok()
 }
@@ -183,7 +183,7 @@ pub async fn delete(State(app): State<App>, Json(r): Json<DeleteReq>) -> ApiResu
     };
     let playing = app.status.borrow().recording.as_ref().and_then(|x| Some((x.reciter_key.clone()?, x.surah?)));
     let lib = app.quran.clone();
-    let removed = tokio::task::spawn_blocking(move || lib.delete(what, playing)).await.map_err(ApiError::bad)?;
+    let removed = tokio::task::spawn_blocking(move || lib.delete(what, playing.as_ref())).await.map_err(ApiError::bad)?;
     Ok(Json(json!({ "ok": true, "removed": removed })))
 }
 
@@ -214,6 +214,7 @@ pub async fn speed(State(app): State<App>, Json(r): Json<SpeedReq>) -> ApiResult
 
 #[cfg(test)]
 mod tests {
+    use crate::sync::LockExt;
     use super::*;
     use crate::state::test_app;
 
@@ -314,7 +315,7 @@ mod tests {
         assert!(super::download(State(app.clone()), Json(req(Some(1), None))).await.is_ok());
         assert!(super::download(State(app.clone()), Json(req(None, Some(true)))).await.is_ok());
         assert!(super::download(State(app.clone()), Json(req(None, Some(false)))).await.is_ok());
-        let logs: Vec<String> = app.logs.lock().unwrap().iter().map(|l| l.msg.clone()).collect();
+        let logs: Vec<String> = app.logs.locked().iter().map(|l| l.msg.clone()).collect();
         assert!(logs.iter().any(|m| m.contains("downloading all")));
         assert!(logs.iter().any(|m| m.contains("stopped downloading all")));
         let _ = std::fs::remove_dir_all(dir);

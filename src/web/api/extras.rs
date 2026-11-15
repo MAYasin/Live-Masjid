@@ -1,6 +1,7 @@
 //! Salah times and recordings. All third-party fetching happens on the Pi, cached
 //! (see `crate::integrations`), so browsing the UI never adds load to those sites.
 
+use crate::sync::RwLockExt;
 use crate::integrations::{recordings, salah, valid_mount};
 use crate::state::{App, PlayerCmd};
 use crate::web::{ApiError, ApiResult, ok};
@@ -119,7 +120,7 @@ pub async fn listen(State(app): State<App>, Query(q): Query<MountQuery>) -> ApiR
     browser_listening_enabled(&app)?;
     let mount = mount_or_selected(&app, q)?;
     let base = mount.strip_suffix(".mp3").unwrap_or(&mount).to_string();
-    let live = crate::monitor::is_live(&app.live.read().unwrap(), &base);
+    let live = crate::monitor::is_live(&app.live.read_lock(), &base);
     // First: the Pi's own output, in sync with the speaker (and plays recordings too).
     // Fallback: livemasjid's streams directly (not in sync).
     let mut sources = vec![json!({ "url": "/api/listen/live.wav", "type": "audio/wav", "synced": true })];

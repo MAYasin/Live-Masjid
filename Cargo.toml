@@ -38,3 +38,31 @@ lto = "fat"
 codegen-units = 1
 panic = "abort"
 strip = true
+
+# Lint policy (see .agents/skills/rust-best-practices). CI runs clippy with -D warnings.
+[lints.rust]
+unsafe_code = "forbid"
+future_incompatible = { level = "warn", priority = -1 }
+nonstandard_style = { level = "deny", priority = -1 }
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+# No panics in production code: errors are returned or handled (tests may unwrap: clippy.toml).
+unwrap_used = "warn"
+expect_used = "warn"
+# Silencing a lint needs #[expect(..., reason = "...")], which also fails once it is stale.
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+# Real bugs or waste, from the pedantic and nursery groups.
+unchecked_time_subtraction = "warn"
+needless_pass_by_value = "warn"
+redundant_clone = "warn"
+needless_collect = "warn"
+format_collect = "warn"
+assigning_clones = "warn"
+redundant_closure_for_method_calls = "warn"
+map_unwrap_or = "warn"
+unnecessary_wraps = "warn"
+unused_async = "warn"
+manual_string_new = "warn"
+ignored_unit_patterns = "warn"

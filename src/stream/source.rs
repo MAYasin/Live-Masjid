@@ -49,10 +49,7 @@ pub trait Source: Send + 'static {
 /// # Panics
 /// If the OS refuses to create a thread (out of memory); the service restarts.
 pub fn spawn<S: Source>(source: S) {
-    std::thread::Builder::new()
-        .name(S::THREAD.into())
-        .spawn(move || source.run())
-        .expect("spawn playback thread");
+    crate::sync::spawn_named(S::THREAD, move || source.run());
 }
 
 #[cfg(test)]

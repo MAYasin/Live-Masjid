@@ -4,6 +4,7 @@
 //!
 //! The network side is the [`Fetcher`] trait: [`Curl`] on the Pi, a fake in the tests.
 
+use crate::sync::LockExt;
 use super::{Item, Library, name, valid};
 use std::collections::{HashMap, VecDeque};
 use std::future::Future;
@@ -127,7 +128,7 @@ impl<F: Fetcher> Library<F> {
             return;
         }
         let item = (key.to_string(), n);
-        let mut q = self.queue.lock().unwrap();
+        let mut q = self.queue.locked();
         if q.active.as_ref().is_some_and(|(a, _)| *a == item) {
             return;
         }
@@ -145,7 +146,7 @@ impl<F: Fetcher> Library<F> {
 
     /// Start (Some) / stop (None) downloading every surah of a recitation.
     pub fn download_all(&self, key: Option<&str>) {
-        let mut q = self.queue.lock().unwrap();
+        let mut q = self.queue.locked();
         q.all = key.map(str::to_string);
         q.error = None;
         // Stopping ends background work, but keeps a surah someone is listening to.
@@ -161,7 +162,7 @@ impl<F: Fetcher> Library<F> {
 
     /// Next surah to fetch: requested ones first, then (with "download all") in order.
     fn next_job(&self) -> Option<Item> {
-        let mut q = self.queue.lock().unwrap();
+        let mut q = self.queue.locked();
         while let Some(item) = q.priority.front().cloned() {
             if self.is_ready(&item.0, item.1) {
                 q.priority.pop_front();
@@ -201,9 +202,9 @@ impl<F: Fetcher> Library<F> {
     /// Download one surah and record the outcome; returns how long to back off, if at all.
     async fn run_job(&self, item: &Item, failures: &mut u32) -> Option<Duration> {
         let cancel = Arc::new(AtomicBool::new(false));
-        self.queue.lock().unwrap().active = Some((item.clone(), cancel.clone()));
+        self.queue.locked().active = Some((item.clone(), cancel.clone()));
         let result = self.download(item, &cancel).await;
-        let mut q = self.queue.lock().unwrap();
+        let mut q = self.queue.locked();
         q.active = None;
         match result {
             Ok(()) => {
@@ -236,19 +237,19 @@ impl<F: Fetcher> Library<F> {
         let _ = std::fs::create_dir_all(self.dir(key));
         let part = self.part_path(key, n);
         // Learn the size (for progress, and to finish a .part that is already complete).
-        let known = self.queue.lock().unwrap().totals.get(item).copied();
+        let known = self.queue.locked().totals.get(item).copied();
         let total = match known {
             Some(t) => Some(t),
             None => self.fetcher.content_length(&url).await,
         };
         if let Some(t) = total {
-            self.queue.lock().unwrap().totals.insert(item.clone(), t);
+            self.queue.locked().totals.insert(item.clone(), t);
         }
-        let have = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+        let have = std::fs::metadata(&part).map_or(0, |m| m.len());
         if total.is_none_or(|t| have < t) {
             self.fetcher.fetch(&url, &part, cancel).await?;
         }
-        let got = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+        let got = std::fs::metadata(&part).map_or(0, |m| m.len());
         if total.is_some_and(|t| got != t) || got < MIN_FILE {
             return Err(format!("incomplete ({got} bytes)"));
         }
@@ -278,7 +279,7 @@ mod tests {
         }
 
         async fn fetch(&self, url: &str, dest: &Path, cancel: &AtomicBool) -> Result<(), String> {
-            self.fetched.lock().unwrap().push(url.to_string());
+            self.fetched.locked().push(url.to_string());
             if self.cancelled {
                 cancel.store(true, Ordering::Relaxed);
                 return Err("cancelled".into());
@@ -373,7 +374,7 @@ mod tests {
         let mut failures = 0;
         assert_eq!(block_on(lib.run_job(&(key.to_string(), 2), &mut failures)), None);
         assert!(lib.is_ready(key, 2));
-        assert!(lib.fetcher.fetched.lock().unwrap().is_empty());
+        assert!(lib.fetcher.fetched.locked().is_empty());
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -391,9 +392,9 @@ mod tests {
 
         // A surah that is downloading isn't queued again.
         let cancel = Arc::new(AtomicBool::new(false));
-        lib.queue.lock().unwrap().active = Some(((key.to_string(), 5), cancel.clone()));
+        lib.queue.locked().active = Some(((key.to_string(), 5), cancel.clone()));
         lib.request(key, 5);
-        assert!(lib.queue.lock().unwrap().priority.is_empty());
+        assert!(lib.queue.locked().priority.is_empty());
         assert!(!cancel.load(Ordering::Relaxed));
         // Another surah pauses it.
         lib.request(key, 6);
@@ -406,14 +407,14 @@ mod tests {
         let (lib, dir) = library(2048, false);
         let key = super::super::DEFAULT_RECITER;
         let bg = Arc::new(AtomicBool::new(false));
-        lib.queue.lock().unwrap().active = Some(((key.to_string(), 10), bg.clone()));
+        lib.queue.locked().active = Some(((key.to_string(), 10), bg.clone()));
         lib.download_all(Some(key));
         lib.download_all(None);
         assert!(bg.load(Ordering::Relaxed), "background download stopped");
 
         let listened = Arc::new(AtomicBool::new(false));
         {
-            let mut q = lib.queue.lock().unwrap();
+            let mut q = lib.queue.locked();
             q.active = Some(((key.to_string(), 11), listened.clone()));
             q.priority.push_back((key.to_string(), 11));
         }
@@ -430,14 +431,14 @@ mod tests {
         std::fs::create_dir_all(lib.dir(key)).unwrap();
         std::fs::write(lib.final_path(key, 7), b"x").unwrap();
         assert_eq!(lib.next_job(), None, "a request that finished meanwhile is dropped");
-        assert!(lib.queue.lock().unwrap().priority.is_empty());
+        assert!(lib.queue.locked().priority.is_empty());
 
         for n in 1..=114 {
             std::fs::write(lib.final_path(key, n), b"x").unwrap();
         }
         lib.download_all(Some(key));
         assert_eq!(lib.next_job(), None);
-        assert!(lib.queue.lock().unwrap().all.is_none(), "nothing left: download-all ends");
+        assert!(lib.queue.locked().all.is_none(), "nothing left: download-all ends");
         let _ = std::fs::remove_dir_all(dir);
     }
 
@@ -457,7 +458,7 @@ mod tests {
         let (lib, dir) = library(2048, false);
         let mut failures = 0;
         assert!(block_on(lib.run_job(&("nobody".to_string(), 1), &mut failures)).is_some());
-        assert!(lib.queue.lock().unwrap().error.as_deref().unwrap().contains("unknown reciter"));
+        assert!(lib.queue.locked().error.as_deref().unwrap().contains("unknown reciter"));
         // A recitation without surah 2.
         let partial = r#"[{"key":"partial-r1","name":"P","style":"","server":"https://cdn.mp3quran.net/p/","surahs":[1]}]"#;
         std::fs::write(dir.join("quran").join("reciters.json"), partial).unwrap();
@@ -471,7 +472,7 @@ mod tests {
     fn a_known_size_is_not_asked_again() {
         let (lib, dir) = library(2048, false);
         let item = (super::super::DEFAULT_RECITER.to_string(), 4);
-        lib.queue.lock().unwrap().totals.insert(item.clone(), 2048);
+        lib.queue.locked().totals.insert(item.clone(), 2048);
         let mut failures = 0;
         assert_eq!(block_on(lib.run_job(&item, &mut failures)), None);
         assert!(lib.is_ready(&item.0, 4));
@@ -501,11 +502,11 @@ mod tests {
         let (lib, dir) = library(2048, true);
         let task = tokio::spawn(lib.clone().run());
         lib.request(key, 114);
-        wait_until(|| lib.queue.lock().unwrap().error.is_some()).await;
+        wait_until(|| lib.queue.locked().error.is_some()).await;
         // Backing off now (30 s); a new request wakes it at once.
         lib.request(key, 112);
-        wait_until(|| lib.fetcher.fetched.lock().unwrap().len() >= 2).await;
-        assert!(lib.fetcher.fetched.lock().unwrap().len() >= 2, "woken from the back-off");
+        wait_until(|| lib.fetcher.fetched.locked().len() >= 2).await;
+        assert!(lib.fetcher.fetched.locked().len() >= 2, "woken from the back-off");
         task.abort();
         let _ = std::fs::remove_dir_all(dir);
     }

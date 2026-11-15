@@ -90,7 +90,7 @@ async fn supervise_with<B: Bt>(bt: &B, app: &App, sp: &mut Speaker, mac: &str, n
         }
         sp.ready = true;
         sp.succeeded();
-        publish(app, sp, true).await;
+        publish(app, sp, true);
         ensure_routed(app, sp);
         return;
     }
@@ -105,7 +105,7 @@ async fn supervise_with<B: Bt>(bt: &B, app: &App, sp: &mut Speaker, mac: &str, n
     } else if Instant::now() >= sp.next_attempt {
         connect_once(bt, app, sp, mac, name).await;
     }
-    publish(app, sp, audio_ready_with(bt, mac).await).await;
+    publish(app, sp, audio_ready_with(bt, mac).await);
 }
 
 async fn connect_once<B: Bt>(bt: &B, app: &App, sp: &mut Speaker, mac: &str, name: &str) {
@@ -159,7 +159,7 @@ async fn discoverable<B: Bt>(bt: &B, mac: &str) -> bool {
     ctl::quick_with(bt, &["info", mac]).await.is_ok_and(|s| s.contains("RSSI:"))
 }
 
-async fn publish(app: &App, sp: &Speaker, ready: bool) {
+fn publish(app: &App, sp: &Speaker, ready: bool) {
     let needs_repair = sp.needs_repair;
     let changed = app.status.send_if_modified(|st| {
         let before = (st.bt.connected, st.bt.needs_repair);
@@ -183,6 +183,7 @@ fn ensure_routed(app: &App, sp: &mut Speaker) {
 
 #[cfg(test)]
 mod tests {
+    use crate::sync::LockExt;
     use super::*;
 
     #[test]
@@ -212,7 +213,7 @@ mod tests {
     }
 
     fn logged(app: &App, needle: &str) -> bool {
-        app.logs.lock().unwrap().iter().any(|l| l.msg.contains(needle))
+        app.logs.locked().iter().any(|l| l.msg.contains(needle))
     }
 
     fn ago(secs: u64) -> Instant {
@@ -255,7 +256,7 @@ mod tests {
         // Still ready: no second "ready" line, no second reopen within 12 s.
         let reopened = sp.last_reopen;
         supervise_with(&bt, &app, &mut sp, MAC, "VSW07").await;
-        assert_eq!(app.logs.lock().unwrap().iter().filter(|l| l.msg.contains("ready")).count(), 1);
+        assert_eq!(app.logs.locked().iter().filter(|l| l.msg.contains("ready")).count(), 1);
         assert_eq!(sp.last_reopen, reopened);
 
         // Already routed to Bluetooth: never reopen.

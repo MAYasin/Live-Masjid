@@ -1,6 +1,7 @@
 //! Layer 1: Icecast status polling (origin, then relay), politely.
 //! Also feeds the live badges for the whole directory in the UI.
 
+use crate::sync::RwLockExt;
 use super::jitter;
 use crate::state::{App, LiveInfo, Signal, now_ms};
 use std::collections::HashMap;
@@ -26,7 +27,7 @@ async fn run_urls(app: App, urls: Vec<String>) {
     loop {
         let wait = poll_once(&app, &urls, &mut st).await;
         tokio::select! {
-            _ = tokio::time::sleep(Duration::from_secs(jitter(wait))) => {}
+            () = tokio::time::sleep(Duration::from_secs(jitter(wait))) => {}
             _ = gen_rx.changed() => { st.was_live = None; }
         }
     }
@@ -40,7 +41,7 @@ async fn poll_once(app: &App, urls: &[String], st: &mut PollState) -> u64 {
             st.fails = 0;
             let live = app.settings().mount.as_deref().is_some_and(|m| is_live(&map, m));
             let count = map.len();
-            *app.live.write().unwrap() = map;
+            *app.live.write_lock() = map;
             app.status.send_modify(|s| {
                 s.signals.poll_ok = true;
                 s.signals.poll_last_ms = now_ms();
@@ -111,7 +112,7 @@ pub fn parse(bytes: &[u8]) -> anyhow::Result<LiveMap> {
         let info = LiveInfo {
             server_type: str_field("server_type").unwrap_or_default(),
             stream_start: Some(stream_start),
-            listeners: s.get("listeners").and_then(|x| x.as_u64()),
+            listeners: s.get("listeners").and_then(serde_json::Value::as_u64),
             title: str_field("title"),
         };
         map.entry(base).or_default().push((name, info));
@@ -121,6 +122,7 @@ pub fn parse(bytes: &[u8]) -> anyhow::Result<LiveMap> {
 
 #[cfg(test)]
 mod tests {
+    use crate::sync::RwLockExt;
     #[test]
     fn parses_status() {
         let j = br#"{"icestats":{"source":[
@@ -218,7 +220,7 @@ mod tests {
         assert_eq!(st.was_live, Some(true));
         assert!(app.status.borrow().signals.poll_ok && app.status.borrow().signals.poll_live);
         assert_eq!(app.status.borrow().live_count, 1);
-        assert!(super::is_live(&app.live.read().unwrap(), "makkah"));
+        assert!(super::is_live(&app.live.read_lock(), "makkah"));
 
         assert_eq!(poll_once(&app, &[format!("{base}/idle")], &mut st).await, secs);
         assert_eq!(st.was_live, Some(false));

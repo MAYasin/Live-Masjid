@@ -9,6 +9,7 @@
 //! * never while the site is refusing this network (shared [`crate::site::SiteGuard`]); then,
 //!   and on any other failure, the last good list is shown (`stale`) instead of an error.
 
+use crate::sync::LockExt;
 use super::{Fetched, fetch, valid_mount};
 use crate::state::{App, now_ms};
 use serde::{Deserialize, Serialize};
@@ -129,11 +130,11 @@ impl Store {
     }
 
     pub fn get(&self, mount: &str) -> Option<Saved> {
-        self.map.lock().unwrap().get(mount).cloned()
+        self.map.locked().get(mount).cloned()
     }
 
     pub fn put(&self, mount: &str, saved: Saved) {
-        let mut map = self.map.lock().unwrap();
+        let mut map = self.map.locked();
         map.insert(mount.to_string(), saved);
         if map.len() > KEEP_MOUNTS {
             let mut by_age: Vec<(u64, String)> = map.iter().map(|(k, v)| (v.fetched_ms, k.clone())).collect();

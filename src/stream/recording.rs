@@ -38,11 +38,11 @@ impl Source for RecordingParams {
     const THREAD: &'static str = "recording";
 
     fn run(self) {
-        run(self);
+        run(&self);
     }
 }
 
-fn run(p: RecordingParams) {
+fn run(p: &RecordingParams) {
     let child = Command::new("curl")
         .args(["-sS", "-L", "--fail", "--max-redirs", "3", "--proto", "=https,http", "--max-time", "21600"])
         .args(["-A", crate::integrations::USER_AGENT, &p.url])
@@ -57,15 +57,16 @@ fn run(p: RecordingParams) {
             return;
         }
     };
-    let mut body = child.stdout.take().expect("stdout");
+    let Some(mut body) = child.stdout.take() else {
+        let _ = p.events.send(RecordingEvent::Ended(Some("cannot read the download".into())));
+        return;
+    };
     let queue = ByteQueue::new();
 
     // Download thread: file → jitter buffer (blocks while the buffer is full = natural pacing).
     let feeder = {
         let (queue, stop) = (queue.clone(), p.stop.clone());
-        std::thread::Builder::new()
-            .name("rec-download".into())
-            .spawn(move || {
+        crate::sync::spawn_named("rec-download", move || {
                 let mut buf = vec![0u8; 32 * 1024];
                 loop {
                     match body.read(&mut buf) {
@@ -79,7 +80,6 @@ fn run(p: RecordingParams) {
                 }
                 queue.close();
             })
-            .expect("spawn download thread")
     };
 
     let events = p.events.clone();
@@ -111,7 +111,7 @@ fn run(p: RecordingParams) {
     }
     let failed = !p.stop.load(Ordering::Relaxed)
         && p.position_ms.load(Ordering::Relaxed) == 0
-        && status.map(|s| !s.success()).unwrap_or(true);
+        && status.map_or(true, |s| !s.success());
     let reason = failed.then(|| {
         let e = err.trim();
         if e.is_empty() { "could not download the recording".to_string() } else { e.lines().last().unwrap_or(e).to_string() }
@@ -197,7 +197,7 @@ mod tests {
         let (dir, app) = temp_app();
         let port = serve(b"HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\n\r\n".to_vec());
         let (p, mut rx) = params(&app, format!("http://127.0.0.1:{port}/gone.mp3"));
-        run(p);
+        run(&p);
         match events(&mut rx).as_slice() {
             [RecordingEvent::Ended(Some(why))] => assert!(why.contains("404"), "{why}"),
             other => panic!("unexpected events: {other:?}"),
@@ -214,7 +214,7 @@ mod tests {
         let (p, mut rx) = params(&app, format!("http://127.0.0.1:{port}/slow.ogg"));
         let stop = p.stop.clone();
         let t0 = Instant::now();
-        let player = std::thread::spawn(move || run(p));
+        let player = std::thread::spawn(move || run(&p));
         std::thread::sleep(Duration::from_millis(300));
         stop.store(true, Ordering::Relaxed);
         player.join().unwrap();

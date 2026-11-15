@@ -8,6 +8,7 @@
 mod live;
 mod media;
 
+use crate::sync::{LockExt, RwLockExt};
 use crate::config::Settings;
 use crate::quran::{PlaylistCtx, Reciter};
 use crate::state::{App, Phase, PlayerCmd, QuranResume, Signal, now_ms};
@@ -133,7 +134,7 @@ impl Player {
 
     /// Is the selected masjid on air?
     fn live_now(&self) -> bool {
-        self.app.settings().mount.as_deref().is_some_and(|m| crate::monitor::is_live(&self.app.live.read().unwrap(), m))
+        self.app.settings().mount.as_deref().is_some_and(|m| crate::monitor::is_live(&self.app.live.read_lock(), m))
     }
 
     /// Live is playing, or will start by itself.
@@ -350,7 +351,7 @@ impl Player {
             token,
             controls: controls.clone(),
             mount,
-            title: title.clone(),
+            title,
             duration_s,
             live_at_start: self.live_now(),
             surah: None,
@@ -370,7 +371,7 @@ impl Player {
         let st = m.status();
         self.app.status.send_modify(|s| s.recording = Some(st));
         self.app.set_phase(Phase::Recording);
-        self.app.log("info", format!("▶ Playing recording: {title}"));
+        self.app.log("info", format!("▶ Playing recording: {}", m.title));
         self.media = Some(m);
     }
 
@@ -467,7 +468,7 @@ impl Player {
         let buffer_ms = Arc::new(AtomicU64::new(0));
         (self.spawn_live)(SessionParams {
             mount: mount.clone(),
-            codec: s.codec.clone(),
+            codec: s.codec,
             sink: self.app.sink.clone(),
             epoch: self.app.sink.new_epoch(),
             stop: stop.clone(),
@@ -491,7 +492,7 @@ impl Player {
             StreamEvent::Started { url, codec } => {
                 let name = app.settings().station_name.unwrap_or_else(|| a.mount.clone());
                 if a.hist_id.is_none() {
-                    let id = app.history.lock().unwrap().begin(&a.mount, &name, codec, a.trigger.as_str());
+                    let id = app.history.locked().begin(&a.mount, &name, codec, a.trigger.as_str());
                     a.hist_id = Some(id);
                     label_salah(app.clone(), a.mount.clone(), id);
                     app.log("info", format!("▶ Playing {name} ({codec}, via {})", a.trigger.as_str()));
@@ -527,7 +528,7 @@ impl Player {
         let app = &self.app;
         let why = end_label(reason, a.stop_reason);
         if let Some(id) = a.hist_id {
-            app.history.lock().unwrap().finish(id, why, a.reconnects);
+            app.history.locked().finish(id, why, a.reconnects);
             app.log("info", format!("■ Broadcast {why}"));
         } else if matches!(reason, EndReason::NotLive) {
             tracing::info!("live signal but no stream available yet");
@@ -538,7 +539,7 @@ impl Player {
             st.stream_url = None;
             st.buffer_ms = 0;
             if let Some(m) = &st.mount {
-                st.last_heard_ms = app.history.lock().unwrap().last_heard(m);
+                st.last_heard_ms = app.history.locked().last_heard(m);
             }
         });
         let s = app.settings();
@@ -598,7 +599,7 @@ impl Player {
                 changed
             });
             if let Some(id) = a.hist_id {
-                self.app.history.lock().unwrap().touch(id, a.reconnects);
+                self.app.history.locked().touch(id, a.reconnects);
                 self.app.status.send_modify(|st| st.last_heard_ms = Some(now_ms()));
             }
         }
@@ -685,7 +686,7 @@ fn label_salah(app: App, mount: String, id: u64) {
         if times.status == "ok" {
             let (weekday, minute) = crate::salah_match::local_day_minute(now_ms(), crate::salah_match::utc_offset_s());
             let label = crate::salah_match::salah_for(&times, weekday, minute);
-            app.history.lock().unwrap().set_salah(id, label);
+            app.history.locked().set_salah(id, label);
         }
     });
 }
@@ -720,7 +721,7 @@ mod tests {
     }
 
     fn logged(app: &App, needle: &str) -> bool {
-        app.logs.lock().unwrap().iter().any(|l| l.msg.contains(needle))
+        app.logs.locked().iter().any(|l| l.msg.contains(needle))
     }
 
     fn phase(app: &App) -> Phase {
@@ -728,7 +729,7 @@ mod tests {
     }
 
     fn not_live(app: &App) {
-        app.live.write().unwrap().clear();
+        app.live.write_lock().clear();
     }
 
     fn play_surah(p: &mut Player, surah: u16) {
@@ -792,7 +793,7 @@ mod tests {
         })
         .unwrap();
         let info = LiveInfo { server_type: "audio/ogg".into(), stream_start: Some("x".into()), listeners: None, title: None };
-        app.live.write().unwrap().insert("m".into(), vec![("m".into(), info)]);
+        app.live.write_lock().insert("m".into(), vec![("m".into(), info)]);
     }
 
     #[test]
@@ -863,7 +864,7 @@ mod tests {
         assert!(p.live_now());
         assert!(p.live_has_priority(&s));
         assert!(p.should_resume_live(&s));
-        app.live.write().unwrap().clear();
+        app.live.write_lock().clear();
         assert!(!p.live_now());
         assert!(!p.live_has_priority(&s));
         assert!(!p.should_resume_live(&s));
@@ -890,11 +891,11 @@ mod tests {
             s.signals.poll_last_ms = 0;
             s.started_ms = 0;
         });
-        p.last_probe = Instant::now() - PROBE_EVERY - Duration::from_secs(1);
+        p.last_probe = Instant::now().checked_sub(PROBE_EVERY + Duration::from_secs(1)).unwrap();
         assert_eq!(p.on_tick(), Some(Trigger::Probe));
         assert!(p.on_tick().is_none(), "not due again at once");
         app.status.send_modify(|s| s.signals.poll_ok = true);
-        p.last_probe = Instant::now() - PROBE_EVERY - Duration::from_secs(1);
+        p.last_probe = Instant::now().checked_sub(PROBE_EVERY + Duration::from_secs(1)).unwrap();
         assert!(p.on_tick().is_none(), "signals are fine");
     }
 
@@ -903,7 +904,7 @@ mod tests {
         let (app, _dir) = fx();
         select(&app, true);
         let mut p = player(&app);
-        p.suppressed_at = Some(Instant::now() - SUPPRESS_MAX - Duration::from_secs(1));
+        p.suppressed_at = Some(Instant::now().checked_sub(SUPPRESS_MAX + Duration::from_secs(1)).unwrap());
         app.set_phase(Phase::Stopped);
         p.on_tick();
         assert!(p.suppressed_at.is_none());
@@ -961,7 +962,7 @@ mod tests {
         p.live = Some(session(1, Some(StopReason::Stopped)));
         assert!(p.on_live_event(1, StreamEvent::Started { url: "u".into(), codec: "opus" }).is_none());
         assert!(p.live.is_some(), "still the same session");
-        assert!(app.history.lock().unwrap().last_heard("m").is_none(), "no history entry");
+        assert!(app.history.locked().last_heard("m").is_none(), "no history entry");
     }
 
     #[test]
@@ -994,7 +995,7 @@ mod tests {
         let controls = Controls::new(5_000, false);
         let m = Media {
             token: 1,
-            controls: controls.clone(),
+            controls,
             mount: "m".into(),
             title: "R".into(),
             duration_s: Some(120),
@@ -1020,7 +1021,7 @@ mod tests {
         let surah = Surah { number: 36, playlist: None, reciter: reciter.clone(), lib: app.quran.clone() };
         let m = Media {
             token: 1,
-            controls: controls.clone(),
+            controls,
             mount: String::new(),
             title: "36. Ya-Sin".into(),
             duration_s: None,
@@ -1234,7 +1235,7 @@ mod tests {
         // A broadcast that lasts too long: the playlist is skipped.
         select(&app, true);
         p.on_command(PlayerCmd::ScheduledPlaylist(id));
-        p.pending.as_mut().unwrap().until = Instant::now() - Duration::from_secs(1);
+        p.pending.as_mut().unwrap().until = Instant::now().checked_sub(Duration::from_secs(1)).unwrap();
         p.on_tick();
         assert!(p.pending.is_none() && p.media.is_none());
         assert!(app.status.borrow().quran_pending.is_none());
@@ -1312,7 +1313,7 @@ mod tests {
         assert!(app.status.borrow().last_heard_ms.is_some());
 
         assert!(p.on_live_event(1, StreamEvent::Ended(EndReason::Finished)).is_none());
-        let s = app.history.lock().unwrap().recent(1, None);
+        let s = app.history.locked().recent(1, None);
         assert_eq!((s[0].reason.as_str(), s[0].reconnects, s[0].mount.as_str()), ("ended", 1, "bad mount"));
         assert!(logged(&app, "■ Broadcast ended"));
         assert_eq!(app.status.borrow().buffer_ms, 0);
@@ -1393,7 +1394,7 @@ mod tests {
         p.quran_resume = Some(resume(&app, 36, true));
         p.on_tick();
         assert!(p.closed_since.is_some() && p.media.is_none(), "waits a little first");
-        p.closed_since = Some(Instant::now() - RESUME_AFTER_CLOSED - Duration::from_secs(1));
+        p.closed_since = Some(Instant::now().checked_sub(RESUME_AFTER_CLOSED + Duration::from_secs(1)).unwrap());
         p.on_tick();
         assert_eq!(surah_of(&p), Some(36));
         assert_eq!(p.media.as_ref().unwrap().controls.position_ms.load(Ordering::Relaxed), 30_000);

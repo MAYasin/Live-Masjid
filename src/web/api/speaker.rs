@@ -13,7 +13,7 @@ pub async fn devices(State(app): State<App>) -> ApiResult {
 }
 
 pub async fn scan(State(app): State<App>) -> ApiResult {
-    tokio::spawn(bluetooth::scan(app.clone(), 20));
+    tokio::spawn(bluetooth::scan(app, 20));
     ok()
 }
 

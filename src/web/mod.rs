@@ -38,6 +38,7 @@ impl IntoResponse for ApiError {
 
 pub type ApiResult<T = axum::Json<serde_json::Value>> = Result<T, ApiError>;
 
+#[expect(clippy::unnecessary_wraps, reason = "handlers end with `ok()` as their own ApiResult")]
 pub fn ok() -> ApiResult {
     Ok(axum::Json(serde_json::json!({ "ok": true })))
 }

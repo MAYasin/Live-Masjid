@@ -32,8 +32,8 @@ pub async fn refresh(app: &App) {
         None => false,
     };
     app.status.send_modify(|st| {
-        st.bt.device = s.bt_device.clone();
-        st.bt.name = s.bt_name.clone();
+        st.bt.device.clone_from(&s.bt_device);
+        st.bt.name.clone_from(&s.bt_name);
         st.bt.connected = ready;
         st.bt.battery = info.as_ref().and_then(|i| i.battery);
     });

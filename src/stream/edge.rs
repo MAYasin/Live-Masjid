@@ -13,7 +13,7 @@ const FLAG_CONTINUED: u8 = 0x01;
 
 /// Granule of an Ogg page (bytes 6..14), or -1 if it isn't a page.
 fn granule(page: &[u8]) -> i64 {
-    page.get(6..14).map_or(-1, |b| i64::from_le_bytes(b.try_into().unwrap()))
+    page.get(6..14).and_then(|b| <[u8; 8]>::try_from(b).ok()).map_or(-1, i64::from_le_bytes)
 }
 
 /// Keep the stream headers (the leading granule-0 pages) and the newest `delay` of audio

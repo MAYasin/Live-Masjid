@@ -14,6 +14,7 @@ pub mod masjidboard;
 pub mod recordings;
 pub mod salah;
 
+use crate::sync::LockExt;
 use crate::site::SiteGuard;
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -77,12 +78,12 @@ impl<T: Clone> Default for Cache<T> {
 
 impl<T: Clone> Cache<T> {
     pub fn get(&self, key: &str) -> Option<T> {
-        let map = self.map.lock().unwrap();
+        let map = self.map.locked();
         map.get(key).filter(|(exp, _)| Instant::now() < *exp).map(|(_, v)| v.clone())
     }
 
     pub fn put(&self, key: &str, value: T, ttl: Duration) {
-        let mut map = self.map.lock().unwrap();
+        let mut map = self.map.locked();
         if map.len() > 500 {
             map.retain(|_, (exp, _)| Instant::now() < *exp);
         }
@@ -213,8 +214,8 @@ mod tests {
         let (base, hits) = test_http::serve(|path| match path {
             "/ok" => (200, "hello\nworld".into()),
             "/missing" => (404, "no".into()),
-            "/forbidden" => (403, "".into()),
-            "/slow-down" => (429, "".into()),
+            "/forbidden" => (403, String::new()),
+            "/slow-down" => (429, String::new()),
             _ => (500, "boom".into()),
         })
         .await;
@@ -297,14 +298,14 @@ mod tests {
     fn cache_prunes_expired_entries_when_large() {
         let c: Cache<u32> = Cache::default();
         {
-            let mut m = c.map.lock().unwrap();
+            let mut m = c.map.locked();
             m.insert("keep".into(), (Instant::now() + Duration::from_secs(60), 7));
             for i in 0..600 {
-                m.insert(format!("k{i}"), (Instant::now() - Duration::from_secs(1), i));
+                m.insert(format!("k{i}"), (Instant::now().checked_sub(Duration::from_secs(1)).unwrap(), i));
             }
         }
         c.put("fresh", 9, Duration::from_secs(60));
-        assert_eq!(c.map.lock().unwrap().len(), 2, "expired entries dropped");
+        assert_eq!(c.map.locked().len(), 2, "expired entries dropped");
         assert_eq!(c.get("keep"), Some(7));
         assert_eq!(c.get("fresh"), Some(9));
     }

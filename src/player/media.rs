@@ -145,7 +145,7 @@ pub(super) fn heard_ms(decoded: u64, paused: bool, queued_ms: u64, speed: f32) -
     if paused {
         return decoded;
     }
-    #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss, clippy::cast_precision_loss)]
+    // A few seconds of audio: the float maths and the cast back are exact enough.
     let queued = ((queued_ms + OUTPUT_LAG_MS) as f32 * speed) as u64;
     decoded.saturating_sub(queued)
 }

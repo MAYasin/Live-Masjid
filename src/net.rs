@@ -130,14 +130,13 @@ fn parse_http_url(u: &str) -> Option<(String, u16, String)> {
     Some((host.to_string(), port, path.to_string()))
 }
 
-pub fn build_client() -> reqwest::Client {
+pub fn build_client() -> reqwest::Result<reqwest::Client> {
     reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .connect_timeout(Duration::from_secs(8))
         .pool_idle_timeout(Duration::from_secs(50))
         .tcp_keepalive(Duration::from_secs(30))
         .build()
-        .expect("http client")
 }
 
 #[cfg(test)]
